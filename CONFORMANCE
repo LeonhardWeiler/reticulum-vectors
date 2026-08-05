@@ -1,10 +1,17 @@
 Conformance of independent implementations
 
-Run on 2026-08-05 against the 31 vectors in test/, through the
-harnesses in conformance/. Each calls that implementation's own code
-and prints the corpus field format. Where an implementation lacks a
-check, the harness does not supply one, so the vector fails and the
-divergence appears in the result rather than in a footnote.
+Run on 2026-08-05 against the 31 milestone 1 vectors, through the
+harnesses in conformance/.
+
+The five test/encrypted/ vectors are not covered. No harness implements
+that kind yet, so nothing here says anything about how these
+implementations handle key agreement, derivation, token authentication
+or padding. Every count below is out of 31, not 36.
+
+Each harness calls that implementation's own code and prints the corpus
+field format. Where an implementation lacks a check, the harness does
+not supply one, so the vector fails and the divergence appears in the
+result rather than in a footnote.
 
     implementation      commit    date        result
     -----------------------------------------------------
