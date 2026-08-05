@@ -261,11 +261,7 @@ fn print_header(out: &mut Vec<String>, p: &Packet, raw: &[u8]) {
         None => f(out, "transport_id", "-"),
     }
     f(out, "destination_hash", &hexs(&h.destination_hash));
-    f(out, "context", match h.context.to_byte() {
-        0x00 => "none".to_string(),
-        0x0b => "path_response".to_string(),
-        c => format!("{:02x}", c),
-    }.as_str());
+    f(out, "context", &context_name(h.context.to_byte()));
     f(out, "payload_length", &format!("{}", p.data().len()));
 }
 
@@ -360,6 +356,223 @@ fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     }
 }
 
+// Named from rsReticulum's own PacketContext at
+// crates/rns-wire/src/context.rs:7.
+fn context_name(c: u8) -> String {
+    use rns_wire::context::PacketContext;
+    match PacketContext::from_byte(c) {
+        PacketContext::None => "none".to_string(),
+        PacketContext::PathResponse => "path_response".to_string(),
+        PacketContext::Keepalive => "keepalive".to_string(),
+        PacketContext::LinkIdentify => "link_identify".to_string(),
+        PacketContext::LinkClose => "link_close".to_string(),
+        PacketContext::LinkProof => "link_proof".to_string(),
+        PacketContext::Lrrtt => "link_rtt".to_string(),
+        PacketContext::Lrproof => "link_request_proof".to_string(),
+        _ => format!("{:02x}", c),
+    }
+}
+
+fn mode_name(mode: u8) -> String {
+    if mode == 1 { "aes256_cbc".to_string() } else { format!("{:02x}", mode) }
+}
+
+fn link_id_of(raw: &[u8], p: &Packet) -> [u8; 16] {
+    rns_wire::hash::link_id_from_raw(raw, p.header.flags.header_type)
+}
+
+fn linkrequest(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    use rns_link::handshake::LinkRequestData;
+
+    let raw = b[0].as_ref().unwrap();
+    let p = match Packet::from_raw(raw) {
+        Ok(p) => p,
+        Err(_) => return invalid(out, "short-header",
+                                 &[("length", raw.len()), ("minimum_length", 19)]),
+    };
+    let payload = p.data();
+
+    let request = match LinkRequestData::unpack(payload) {
+        Ok(r) => r,
+        Err(_) => return invalid(out, "invalid-length",
+                                 &[("payload_length", payload.len()), ("accepted_length", 64),
+                                   ("signalled_length", 67)]),
+    };
+
+    let signalled = payload.len() == 67;
+    print_header(out, &p, raw);
+    f(out, "x25519_public", &hexs(&request.peer_x25519_pub));
+    f(out, "ed25519_public", &hexs(&request.peer_ed25519_pub));
+    if signalled {
+        f(out, "signalling", &hexs(&payload[64..]));
+    } else {
+        f(out, "signalling", "-");
+    }
+    f(out, "mode", &mode_name(request.signalling.mode));
+
+    // unpack fills in the default MTU when nothing was signalled, so
+    // the field is shown only where the packet carried one.
+    if signalled {
+        f(out, "mtu", &format!("{}", request.signalling.mtu));
+    } else {
+        f(out, "mtu", "-");
+    }
+    f(out, "link_id", &hexs(&link_id_of(raw, &p)));
+}
+
+fn linkproof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    use rns_link::handshake::LinkProofData;
+
+    let request_raw = b[0].as_ref().unwrap();
+    let identity_public = b[1].as_ref().unwrap();
+    let raw = b[2].as_ref().unwrap();
+
+    let p = match Packet::from_raw(raw) {
+        Ok(p) => p,
+        Err(_) => return invalid(out, "short-header",
+                                 &[("length", raw.len()), ("minimum_length", 19)]),
+    };
+    let payload = p.data();
+
+    let proof = match LinkProofData::unpack(payload) {
+        Ok(r) => r,
+        Err(_) => return invalid(out, "invalid-length",
+                                 &[("payload_length", payload.len()), ("accepted_length", 96),
+                                   ("signalled_length", 99)]),
+    };
+
+    let request = Packet::from_raw(request_raw).expect("the link request does not decode");
+    let link_id = link_id_of(request_raw, &request);
+
+    let mut peer_ed = [0u8; 32];
+    peer_ed.copy_from_slice(&identity_public[32..]);
+    let verify_key = rns_crypto::ed25519::Ed25519PublicKey::from_bytes(&peer_ed).unwrap();
+
+    // validate assembles the signed material itself and returns only a
+    // verdict, so the same four parts are assembled here to be printed.
+    // rsReticulum always appends its signalling, including the default
+    // it substitutes for a 96-byte proof: handshake.rs:245.
+    let signalled = payload.len() == 99;
+    let mut signed = Vec::new();
+    signed.extend_from_slice(&link_id);
+    signed.extend_from_slice(&proof.responder_x25519_pub);
+    signed.extend_from_slice(&peer_ed);
+    signed.extend_from_slice(&proof.signalling.pack());
+
+    print_header(out, &p, raw);
+    f(out, "link_id", &hexs(&link_id));
+    f(out, "link_id_match",
+      if p.header.destination_hash == link_id { "yes" } else { "no" });
+    f(out, "signature", &hexs(&proof.signature));
+    f(out, "x25519_public", &hexs(&proof.responder_x25519_pub));
+    if signalled {
+        f(out, "signalling", &hexs(&payload[96..]));
+        f(out, "mode", &mode_name(proof.signalling.mode));
+        f(out, "mtu", &format!("{}", proof.signalling.mtu));
+    } else {
+        f(out, "signalling", "-");
+        f(out, "mode", &mode_name(proof.signalling.mode));
+        f(out, "mtu", "-");
+    }
+    f(out, "signer_ed25519", &hexs(&peer_ed));
+    f(out, "signed_data", &hexs(&signed));
+    f(out, "signature_valid",
+      if proof.validate(&verify_key, &link_id, &peer_ed) { "yes" } else { "no" });
+}
+
+fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    use rns_link::constants::MODE_AES256_CBC;
+    use rns_link::encryption::link_decrypt;
+    use rns_link::key_derivation::LinkKeys;
+
+    let request_raw = b[0].as_ref().unwrap();
+    let responder_private = b[1].as_ref().unwrap();
+    let raw = b[2].as_ref().unwrap();
+
+    let p = match Packet::from_raw(raw) {
+        Ok(p) => p,
+        Err(_) => return invalid(out, "short-header",
+                                 &[("length", raw.len()), ("minimum_length", 19)]),
+    };
+    let payload = p.data().to_vec();
+
+    let request = Packet::from_raw(request_raw).expect("the link request does not decode");
+    let link_id = link_id_of(request_raw, &request);
+
+    print_header(out, &p, raw);
+    f(out, "link_id", &hexs(&link_id));
+    f(out, "link_id_match",
+      if p.header.destination_hash == link_id { "yes" } else { "no" });
+
+    if p.header.context.to_byte() == 0xfa {
+        f(out, "encrypted", "no");
+        f(out, "plaintext_length", &format!("{}", payload.len()));
+        if payload.is_empty() { f(out, "plaintext", "-"); }
+        else { f(out, "plaintext", &hexs(&payload)); }
+        return;
+    }
+    f(out, "encrypted", "yes");
+
+    let iv = &payload[..16];
+    let ct = &payload[16..payload.len() - 32];
+    let mac = &payload[payload.len() - 32..];
+
+    let mut prv = [0u8; 32];
+    prv.copy_from_slice(responder_private);
+    let mut peer = [0u8; 32];
+    peer.copy_from_slice(&request.data()[..32]);
+
+    let peer_key = X25519PublicKey::from_bytes(&peer);
+    let own_key = X25519PrivateKey::from_bytes(&prv);
+    let keys = LinkKeys::derive(&own_key, &peer_key, &link_id, MODE_AES256_CBC).unwrap();
+    let plaintext = link_decrypt(&keys, &payload).ok();
+
+    // LinkKeys keeps the agreement to itself, so it is repeated through
+    // rsReticulum's own curve wrapper.
+    let shared = own_key.exchange(&peer_key);
+
+    f(out, "iv", &hexs(iv));
+    f(out, "ciphertext", &hexs(ct));
+    f(out, "hmac", &hexs(mac));
+    f(out, "shared_key", &hexs(&shared));
+    f(out, "signing_key", &hexs(&keys.signing_key));
+    f(out, "encryption_key", &hexs(&keys.encryption_key));
+    f(out, "hmac_valid", if plaintext.is_some() { "yes" } else { "no" });
+
+    let pt = match plaintext {
+        None => {
+            f(out, "plaintext_length", "-");
+            f(out, "plaintext", "-");
+            return;
+        }
+        Some(pt) => {
+            f(out, "plaintext_length", &format!("{}", pt.len()));
+            if pt.is_empty() { f(out, "plaintext", "-"); } else { f(out, "plaintext", &hexs(&pt)); }
+            pt
+        }
+    };
+
+    if p.header.context.to_byte() == 0xfb && pt.len() == 128 {
+        let pub_key = &pt[..64];
+        let sig = &pt[64..];
+        let mut signed = Vec::new();
+        signed.extend_from_slice(&link_id);
+        signed.extend_from_slice(pub_key);
+
+        let mut ed = [0u8; 32];
+        ed.copy_from_slice(&pub_key[32..]);
+        let key = rns_crypto::ed25519::Ed25519PublicKey::from_bytes(&ed).unwrap();
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes.copy_from_slice(sig);
+
+        f(out, "identity_public", &hexs(pub_key));
+        f(out, "identity_hash", &hexs(&sha256(pub_key)[..16]));
+        f(out, "identity_signed", &hexs(&signed));
+        f(out, "identity_valid",
+          if key.verify(&signed, &sig_bytes).is_ok() { "yes" } else { "no" });
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -376,6 +589,9 @@ fn main() {
         "signature" => signature(&mut out, &blobs),
         "announce" => announce(&mut out, &blobs),
         "encrypted" => encrypted(&mut out, &blobs),
+        "linkrequest" => linkrequest(&mut out, &blobs),
+        "linkproof" => linkproof(&mut out, &blobs),
+        "linkdata" => linkdata(&mut out, &blobs),
         k => {
             eprintln!("unknown kind {}", k);
             std::process::exit(2);

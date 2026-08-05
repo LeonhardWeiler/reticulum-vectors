@@ -7,3 +7,4 @@ edition = "2021"
 rns-crypto = { path = "../src/rsReticulum/crates/rns-crypto" }
 rns-identity = { path = "../src/rsReticulum/crates/rns-identity" }
 rns-wire = { path = "../src/rsReticulum/crates/rns-wire" }
+rns-link = { path = "../src/rsReticulum/crates/rns-link" }

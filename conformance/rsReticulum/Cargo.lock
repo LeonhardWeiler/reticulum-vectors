@@ -386,6 +386,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rns-link"
+version = "1.1.0"
+dependencies = [
+ "hex",
+ "rand",
+ "rmpv",
+ "rns-crypto",
+ "rns-identity",
+ "rns-wire",
+ "thiserror",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "rns-wire"
 version = "1.1.0"
 dependencies = [
@@ -400,6 +415,7 @@ version = "0.1.0"
 dependencies = [
  "rns-crypto",
  "rns-identity",
+ "rns-link",
  "rns-wire",
 ]
 
