@@ -1,5 +1,3 @@
 source             constructed by tools/gen from linkproof/signalling
-generated          2026-08-06
-kind               linkproof
 determinism        encode
 purpose            first signature byte altered

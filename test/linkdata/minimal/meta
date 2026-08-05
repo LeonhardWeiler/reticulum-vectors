@@ -1,5 +1,3 @@
 source             python-rns 1.4.2 (b48b96e6)
-generated          2026-08-06
-kind               linkdata
 determinism        encode
 purpose            nine bytes of plaintext over the link

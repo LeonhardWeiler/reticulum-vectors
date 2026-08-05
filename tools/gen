@@ -15,7 +15,6 @@
 
 import argparse
 import contextlib
-import datetime
 import hashlib
 import os
 import shutil
@@ -146,9 +145,9 @@ PINNED_TIME = 1750000000
 
 class DetRandom:
     """A deterministic byte stream, so that regenerating a vector
-    produces the same bytes. Consumers never see this: an announce
-    carries a timestamp and cannot be re-encoded from raw alone, so
-    announce vectors are decode class regardless."""
+    produces the same bytes. Consumers never see it, and the encode
+    class does not rest on it: expect records what these bytes came out
+    as, which is what raw is rebuilt from."""
 
     def __init__(self, tag):
         self.seed    = tag.encode("utf-8")
@@ -311,8 +310,6 @@ class Writer:
     def vector(self, kind, name, purpose, raw, expect, source=GENERATED_SOURCE):
         meta = [
             line("source", source),
-            line("generated", datetime.date.today().isoformat()),
-            line("kind", kind),
             line("determinism", determinism(kind, expect)),
             line("purpose", purpose),
         ]
@@ -320,43 +317,13 @@ class Writer:
         path = os.path.join(self.root, "test", kind, name)
         os.makedirs(path, exist_ok=True)
 
-        rawpath, expectpath = os.path.join(path, "raw"), os.path.join(path, "expect")
-        unchanged = self.same(rawpath, raw) and self.same(expectpath, expect)
-
-        # generated records the day these bytes were produced. Stamping
-        # today onto a vector whose bytes did not change would make
-        # every regeneration differ from the last, and make verify would
-        # report a difference on any day after the corpus was generated,
-        # which is the one thing it exists to rule out. A vector whose
-        # bytes did change is dated today, because it is new.
-        self.file(os.path.join(path, "meta"),
-                  self.dated(os.path.join(path, "meta"), meta) if unchanged else meta)
-        self.file(rawpath, raw)
-        self.file(expectpath, expect)
+        self.file(os.path.join(path, "meta"), meta)
+        self.file(os.path.join(path, "raw"), raw)
+        self.file(os.path.join(path, "expect"), expect)
 
     @staticmethod
     def body(lines):
         return "\n".join(lines) + "\n"
-
-    def same(self, path, lines):
-        try:
-            with open(path) as f:
-                return f.read() == self.body(lines)
-        except FileNotFoundError:
-            return False
-
-    @staticmethod
-    def dated(path, meta):
-        try:
-            with open(path) as f:
-                for existing in f:
-                    if existing.startswith("generated"):
-                        existing = existing.rstrip("\n")
-                        return [existing if m.startswith("generated") else m
-                                for m in meta]
-        except FileNotFoundError:
-            pass
-        return meta
 
     def file(self, path, lines):
         body = self.body(lines)

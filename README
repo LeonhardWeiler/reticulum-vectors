@@ -103,14 +103,15 @@ case does not renumber the rest, and doc/ can refer to one by name.
 meta records these fields, spelled in lower case as shown:
 
     source        which implementation and version produced this
-    generated     the date
-    kind          which decoder applies
     determinism   decode or encode
     purpose       one line
 
-cmd/check requires all five, rejects an unknown kind or determinism
-class, and rejects a vector filed under a directory that disagrees with
-its kind. A field nothing reads is a field that drifts.
+cmd/check requires all three and rejects an unknown determinism class.
+A field nothing reads is a field that drifts.
+
+The kind is not among them. It is the directory the vector is filed
+under, and recording it twice only bought a rule to keep the two
+agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs

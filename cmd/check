@@ -71,7 +71,7 @@ for dir in "$root"/test/*/*/; do
 
 	# meta must be complete before anything is read from it.
 	missing=
-	for f in source generated kind determinism purpose; do
+	for f in source determinism purpose; do
 		[ -n "$(meta_field "$dir" "$f")" ] || missing="$missing $f"
 	done
 	if [ -n "$missing" ]; then
@@ -79,23 +79,21 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
-	kind=$(meta_field "$dir" kind)
+	# The kind is the directory the vector is filed under. Recording it
+	# in meta as well meant a rule to keep the two agreeing, and a way
+	# for them to disagree.
+	kind=$(basename "$(dirname "$dir")")
 	determinism=$(meta_field "$dir" determinism)
 
 	case " $KINDS " in
 		*" $kind "*) ;;
-		*) fail_with "$dir" "meta names an unknown kind: $kind"; continue ;;
+		*) fail_with "$dir" "no decoder for kind $kind"; continue ;;
 	esac
 
 	case "$determinism" in
 		decode|encode) ;;
 		*) fail_with "$dir" "meta names an unknown determinism class: $determinism"; continue ;;
 	esac
-
-	if [ "$(basename "$(dirname "$dir")")" != "$kind" ]; then
-		fail_with "$dir" "kind $kind does not match the directory it is filed under"
-		continue
-	fi
 
 	# stderr is kept out of the comparison. A decoder that writes a
 	# warning there would otherwise have it diffed against expect, and
