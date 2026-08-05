@@ -1,0 +1,16 @@
+flags              0c
+header_type        1
+context_flag       unset
+transport_type     broadcast
+destination_type   link
+packet_type        data
+hops               0
+transport_id       -
+destination_hash   4be2a2dc5ff0321315222d5deca76937
+context            keepalive
+payload_length     1
+link_id            4be2a2dc5ff0321315222d5deca76937
+link_id_match      yes
+encrypted          no
+plaintext_length   1
+plaintext          ff

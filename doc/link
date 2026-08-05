@@ -4,7 +4,7 @@ Byte layouts and derivations for link establishment. For what a link
 is and why it exists, see upstream docs/source/understanding.rst,
 section "Reticulum Link Establishment".
 
-Vectors: test/linkrequest/, test/linkproof/
+Vectors: test/linkrequest/, test/linkproof/, test/linkdata/
 
 See doc/packet for the header. Only the payload and the derivations
 are described here.
@@ -154,3 +154,70 @@ which is what binds a link to a destination.
 test/linkproof/signalling-removed is the 96-byte form, made by
 removing the signalling bytes from a valid proof. It decodes, and the
 signature does not verify: the bytes were part of the signed material.
+
+
+Key derivation
+
+    shared  = X25519(own private, peer public)
+    derived = HKDF-SHA256(length, shared, salt = link id, context = "")
+
+The length is 64 bytes for MODE_AES256_CBC and 32 for
+MODE_AES128_CBC, which is not enabled at this pin. The 64 bytes split
+into a 32-byte signing key and a 32-byte encryption key, exactly as
+doc/encryption describes for a token.
+
+    RNS/Link.py:348, RNS/Link.py:607, RNS/Link.py:610
+
+The salt is the link id. It is not the identity hash, which is what a
+packet to a destination uses, and it is in no packet: a decoder that
+did not follow the request cannot derive the key even holding both
+private keys.
+
+The context is empty. get_context returns nothing, and hkdf turns
+that into an empty string rather than refusing it.
+
+    RNS/Cryptography/HKDF.py:50
+
+
+Packets on the link
+
+Destination type link, address field the link id.
+
+    offset  size  field
+    0       16    initialisation vector
+    16      -     ciphertext, a multiple of 16 bytes
+    -32     32    HMAC-SHA256
+
+There is no ephemeral public key. Both ends already hold the shared
+secret, so the payload is a bare token, 48 bytes of overhead rather
+than 80.
+
+The context byte says what the plaintext holds. One context is not
+encrypted at all:
+
+    0x00   none            application data
+    0xfa   keepalive       one byte, in clear, not a token: 0xff from
+                           the initiator and 0xfe in reply
+    0xfb   link identify   identity public key || signature
+    0xfc   link close      the link id
+    0xfe   link rtt        msgpack float, sent by the initiator
+
+    RNS/Packet.py:206, RNS/Link.py:800, RNS/Link.py:1126
+
+A decoder that treats every packet on a link as encrypted fails on
+keepalives.
+
+
+Identify
+
+Sent by the initiator only, over the established link.
+
+    plaintext   identity public key (64) || signature (64)
+    signed      link id || identity public key
+
+    RNS/Link.py:454
+
+The signature covers the link id, so an identify proof cannot be
+lifted onto another link. Nothing else on a link names either end: the
+keys in the request and the proof are per link, and the identity of
+the initiator is revealed here or not at all.

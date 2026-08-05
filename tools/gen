@@ -545,7 +545,8 @@ def describe_header(raw):
         field("context",          CONTEXTS.get(context, "%02x" % context)),
         field("payload_length",   "%d" % len(payload)),
     ]
-    return lines, {"payload": payload, "context_flag": context_flag, "dest_hash": dest_hash}
+    return lines, {"payload": payload, "context_flag": context_flag,
+                   "dest_hash": dest_hash, "context": context}
 
 
 def describe_announce(raw, verify):
@@ -800,13 +801,46 @@ def link_session(RNS, tag):
             link.prove()
 
     return {
-        "identity": identity,
-        "prv":      prv,
-        "sig_prv":  sig_prv,
-        "request":  request,
-        "link":     link,
-        "proof":    sent[0],
+        "identity":       identity,
+        "in_destination": in_destination,
+        "prv":            prv,
+        "sig_prv":        sig_prv,
+        "request":        request,
+        "link":           link,
+        "proof":          sent[0],
     }
+
+
+def initiator_link(RNS, session):
+    """The initiator half, as validate_proof completes it at
+    RNS/Link.py:405.
+
+    Link.__init__ draws keys of its own, and the initiator's are already
+    fixed by the request it sent, so the object is built through the
+    inert constructor and then given those keys. Status is set to
+    ACTIVE, which is what validate_proof does at RNS/Link.py:424 once
+    the signature checks out, and what identify requires.
+    """
+    proof_data = session["proof"].data
+    peer_ed25519 = session["identity"].get_public_key()[KEYHALF:]
+
+    link = RNS.Link(owner=session["in_destination"])
+    link.initiator     = True
+    link.prv           = session["prv"]
+    link.sig_prv       = session["sig_prv"]
+    link.pub_bytes     = link.prv.public_key().public_bytes()
+    link.sig_pub_bytes = link.sig_prv.public_key().public_bytes()
+    link.set_link_id(session["request"])
+    link.mtu           = session["link"].mtu
+    link.mode          = session["link"].mode
+    link.load_peer(proof_data[SIGLEN:SIGLEN+KEYHALF], peer_ed25519)
+    link.handshake()
+    link.status = RNS.Link.ACTIVE
+
+    # The point of the handshake: two ends, no shared secret in any
+    # packet, one key.
+    assert link.derived_key == session["link"].derived_key
+    return link
 
 
 def gen_linkrequest(RNS, w, session):
@@ -940,6 +974,145 @@ def gen_linkproof(RNS, w, verify, session):
                    source="constructed by tools/gen from linkproof/signalling"),
         blobs + [altered.hex()],
         describe_linkproof(request_raw, public, altered, verify))
+
+
+def describe_linkdata(request_raw, responder_private, raw, verify):
+    """Decode a packet sent on an established link.
+
+    Unlike a packet to a destination, this one carries no ephemeral
+    key: both ends already hold the shared secret. The salt of the
+    derivation is the link id, which is in no packet either.
+    """
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    import hmac as _hmac
+
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    _, rh = describe_header(request_raw)
+    link_id = hashlib.sha256(
+        hashable_part(request_raw, len(rh["payload"]))).digest()[:ADDRLEN]
+
+    lines += [
+        field("link_id",       link_id.hex()),
+        field("link_id_match", "yes" if h["dest_hash"] == link_id else "no"),
+    ]
+
+    # Keepalives carry no data and are the one link packet the
+    # reference does not encrypt. RNS/Packet.py:206.
+    if h["context"] == 0xfa:
+        return lines + [
+            field("encrypted",        "no"),
+            field("plaintext_length", "%d" % len(payload)),
+            field("plaintext",        payload.hex() if payload else "-"),
+        ]
+
+    lines.append(field("encrypted", "yes"))
+
+    if len(payload) < TOKEN_OVERHEAD:
+        return lines + invalid("short-payload",
+                               ("payload_length", len(payload)),
+                               ("minimum_length", TOKEN_OVERHEAD))
+
+    iv         = payload[:16]
+    ciphertext = payload[16:-32]
+    mac        = payload[-32:]
+
+    initiator_public = rh["payload"][:KEYHALF]
+    shared = X25519PrivateKey.from_private_bytes(responder_private).exchange(
+        X25519PublicKey.from_public_bytes(initiator_public))
+    derived = hkdf_sha256(64, shared, link_id)
+    signing_key, encryption_key = derived[:32], derived[32:]
+
+    mac_ok = _hmac.compare_digest(
+        mac, _hmac.new(signing_key, iv + ciphertext, hashlib.sha256).digest())
+
+    plaintext = None
+    if mac_ok and len(ciphertext) > 0 and len(ciphertext) % 16 == 0:
+        dec = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
+        padded = dec.update(ciphertext) + dec.finalize()
+        n = padded[-1]
+        if 0 < n <= 16 and n <= len(padded):
+            plaintext = padded[:len(padded) - n]
+
+    lines += [
+        field("iv",               iv.hex()),
+        field("ciphertext",       ciphertext.hex()),
+        field("hmac",             mac.hex()),
+        field("shared_key",       shared.hex()),
+        field("signing_key",      signing_key.hex()),
+        field("encryption_key",   encryption_key.hex()),
+        field("hmac_valid",       "yes" if mac_ok else "no"),
+        field("plaintext_length", "-" if plaintext is None else "%d" % len(plaintext)),
+        field("plaintext",        plaintext.hex() if plaintext else "-"),
+    ]
+
+    # An identify proof names the initiator, which nothing else on a
+    # link does. Its signature covers the link id, so it cannot be
+    # replayed onto another link. RNS/Link.py:464.
+    if h["context"] == 0xfb and plaintext is not None and len(plaintext) == KEYSIZE + SIGLEN:
+        identity_public = plaintext[:KEYSIZE]
+        signature       = plaintext[KEYSIZE:]
+        signed_data     = link_id + identity_public
+        lines += [
+            field("identity_public",    identity_public.hex()),
+            field("identity_hash",      hashlib.sha256(identity_public).digest()[:ADDRLEN].hex()),
+            field("identity_signed",    signed_data.hex()),
+            field("identity_valid",     "yes" if verify(identity_public[KEYHALF:], signature, signed_data) else "no"),
+        ]
+
+    return lines
+
+
+def gen_linkdata(RNS, w, verify, session):
+    from RNS.vendor import umsgpack
+
+    request_raw = session["request"].raw
+    responder_private = session["link"].prv.private_bytes()
+
+    # A second identity, so that the one identifying over the link is
+    # plainly not the one the link was established to.
+    initiator_identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[1][0]))
+
+    # The measured round trip time is zero under a pinned clock, which
+    # would record the msgpack layout of a value no link ever reports.
+    rtt = 0.0625
+
+    with pinned(RNS, "linkdata"):
+        link = initiator_link(RNS, session)
+        with captured(RNS) as sent:
+            RNS.Packet(link, b"reticulum").send()
+            link.identify(initiator_identity)
+            RNS.Packet(link, umsgpack.packb(rtt), context=RNS.Packet.LRRTT).send()
+            RNS.Packet(link, link.link_id, context=RNS.Packet.LINKCLOSE).send()
+            link.send_keepalive()
+
+    cases = [
+        ("minimal",   sent[0], "nine bytes of plaintext over the link"),
+        ("identify",  sent[1], "the initiator names itself, signing over the link id"),
+        ("rtt",       sent[2], "round trip time, msgpack encoded, sent by the initiator"),
+        ("close",     sent[3], "teardown; the plaintext is the link id"),
+        ("keepalive", sent[4], "one byte, and the one link packet that is not encrypted"),
+    ]
+
+    for name, packet, purpose in cases:
+        blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]
+        described = describe_linkdata(request_raw, responder_private, packet.raw, verify)
+        w.vector("linkdata", name,
+            meta_block("linkdata", "decode", purpose),
+            blobs, described)
+
+    base = sent[0].raw
+    altered = base[:-1] + bytes([base[-1] ^ 0x01])
+    w.vector("linkdata", "altered-hmac",
+        meta_block("linkdata", "decode",
+                   "last byte of the token hmac altered; nothing is decrypted",
+                   source="constructed by tools/gen from linkdata/minimal"),
+        [request_raw.hex(), responder_private.hex(), altered.hex()],
+        describe_linkdata(request_raw, responder_private, altered, verify))
 
 
 def lookup_field(lines, name):
@@ -1117,6 +1290,7 @@ def main():
         session = link_session(RNS, "link")
         gen_linkrequest(RNS, w, session)
         gen_linkproof(RNS, w, verify, session)
+        gen_linkdata(RNS, w, verify, session)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

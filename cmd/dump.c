@@ -886,6 +886,115 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	      ed25519_verify(signer, signature, signed_data, sdlen) ? "yes" : "no");
 }
 
+/* linkdata: three blobs, the link request, the responder's X25519
+ * private key, and the packet. See ../doc/link. */
+static void dump_linkdata(struct blob *b, int nblobs)
+{
+	struct header h, rh;
+	enum reason r;
+	size_t got = 0, need = 0, ctlen, ptlen = 0;
+	const uint8_t *iv, *ciphertext, *mac, *initiator_public;
+	uint8_t link_id[ADDRLEN], shared[KEYHALF], derived[DERIVEDLEN];
+	uint8_t expected[MACLEN], plain[MAXBLOB], signed_part[MAXBLOB];
+	uint8_t identity_hash[ADDRLEN], signed_data[ADDRLEN + KEYSIZE];
+	int mac_ok, decrypted = 0;
+
+	if (nblobs != 3)
+		fatal("linkdata: expected 3 blobs, got %d", nblobs);
+	if (b[1].len != KEYHALF)
+		fatal("linkdata: private key is %zu bytes, expected %d", b[1].len, KEYHALF);
+
+	if (parse_header(b[0].data, b[0].len, &rh, &got, &need) != OK)
+		fatal("linkdata: the link request does not decode");
+
+	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	link_id_of(b[0].data, b[0].len, &rh, link_id);
+
+	print_header(&h);
+	field_hex("link_id", link_id, ADDRLEN);
+	field("link_id_match", "%s",
+	      memcmp(h.destination_hash, link_id, ADDRLEN) == 0 ? "yes" : "no");
+
+	/* Keepalives carry no data and are the one link packet the
+	 * reference does not encrypt. RNS/Packet.py:206. */
+	if (h.context == 0xfa) {
+		field("encrypted", "no");
+		field("plaintext_length", "%zu", h.payload_len);
+		if (h.payload_len > 0)
+			field_hex("plaintext", h.payload, h.payload_len);
+		else
+			field("plaintext", "-");
+		return;
+	}
+
+	field("encrypted", "yes");
+
+	if (h.payload_len < TOKEN_OVERHEAD) {
+		print_invalid(SHORT_PAYLOAD, h.payload_len, TOKEN_OVERHEAD);
+		return;
+	}
+
+	iv         = h.payload;
+	ciphertext = h.payload + IVLEN;
+	ctlen      = h.payload_len - TOKEN_OVERHEAD;
+	mac        = h.payload + h.payload_len - MACLEN;
+
+	/* Both ends already hold the shared secret, so no packet on the
+	 * link carries an ephemeral key. The salt is the link id, which is
+	 * in no packet either. RNS/Link.py:351, RNS/Link.py:607. */
+	initiator_public = rh.payload;
+	crypto_scalarmult(shared, b[1].data, initiator_public);
+	hkdf_sha256(shared, KEYHALF, link_id, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
+
+	memcpy(signed_part, iv, IVLEN);
+	memcpy(signed_part + IVLEN, ciphertext, ctlen);
+	hmac_sha256(derived, MACLEN, signed_part, IVLEN + ctlen, expected);
+	mac_ok = memcmp(mac, expected, MACLEN) == 0;
+
+	if (mac_ok && ctlen > 0 && ctlen % 16 == 0 &&
+	    aes256_cbc_decrypt(derived + MACLEN, iv, ciphertext, ctlen, plain) == 0 &&
+	    pkcs7_unpad(plain, ctlen, &ptlen) == 0)
+		decrypted = 1;
+
+	field_hex("iv", iv, IVLEN);
+	field_hex("ciphertext", ciphertext, ctlen);
+	field_hex("hmac", mac, MACLEN);
+	field_hex("shared_key", shared, KEYHALF);
+	field_hex("signing_key", derived, MACLEN);
+	field_hex("encryption_key", derived + MACLEN, MACLEN);
+	field("hmac_valid", "%s", mac_ok ? "yes" : "no");
+	if (!decrypted) {
+		field("plaintext_length", "-");
+		field("plaintext", "-");
+		return;
+	}
+	field("plaintext_length", "%zu", ptlen);
+	if (ptlen > 0)
+		field_hex("plaintext", plain, ptlen);
+	else
+		field("plaintext", "-");
+
+	/* An identify proof names the initiator, which nothing else on a
+	 * link does. Its signature covers the link id, so it cannot be
+	 * replayed onto another link. RNS/Link.py:464. */
+	if (h.context == 0xfb && ptlen == KEYSIZE + SIGLEN) {
+		truncated_hash(plain, KEYSIZE, identity_hash, ADDRLEN);
+		memcpy(signed_data, link_id, ADDRLEN);
+		memcpy(signed_data + ADDRLEN, plain, KEYSIZE);
+
+		field_hex("identity_public", plain, KEYSIZE);
+		field_hex("identity_hash", identity_hash, ADDRLEN);
+		field_hex("identity_signed", signed_data, ADDRLEN + KEYSIZE);
+		field("identity_valid", "%s",
+		      ed25519_verify(plain + KEYHALF, plain + KEYSIZE,
+		                     signed_data, ADDRLEN + KEYSIZE) ? "yes" : "no");
+	}
+}
+
 /* ------------------------------------------------------------ encoding */
 
 static void print_hex_field(const char *value)
@@ -963,6 +1072,8 @@ int main(int argc, char **argv)
 		dump_linkrequest(blobs, n);
 	else if (strcmp(kind, "linkproof") == 0)
 		dump_linkproof(blobs, n);
+	else if (strcmp(kind, "linkdata") == 0)
+		dump_linkdata(blobs, n);
 	else
 		fatal("unknown kind %s", kind);
 
