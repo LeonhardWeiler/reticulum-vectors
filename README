@@ -81,6 +81,12 @@ It gives up most of what the corpus can tell it. Decoding proves an
 implementation reads what python-rns writes; the round trip is the only
 thing here that says anything about what it writes.
 
+A decoder that covers some kinds and not others exits 77 for the rest.
+Those vectors are reported as skipped and named, and are not counted
+against it:
+
+    40 passed, 9 failed, 1 skipped: ifac
+
     make verify
 
 additionally regenerates every vector from the pinned reference

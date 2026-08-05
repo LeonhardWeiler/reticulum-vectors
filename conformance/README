@@ -32,6 +32,26 @@ The commit each result was measured at is recorded in ../CONFORMANCE,
 and the row is only reproducible at that commit.
 
 
+A harness need not cover every kind
+
+Exit 77 for a kind the harness does not implement. cmd/check reports
+those vectors as skipped, names the kinds, and does not count them
+against the result:
+
+    40 passed, 9 failed, 1 skipped: ifac
+
+Nothing else may use that status. A harness that implements a kind and
+disagrees with the vector has found something, and that is the result.
+
+The distinction matters because the alternative is worse in both
+directions. A harness that has no ifac code and exits 2 reports a
+failure the implementation did not earn. One that prints the
+reference's answer reports a pass it did not earn either, which is
+finding 14. Skipping is the only honest third thing, and it is what
+makes a harness worth writing before it is finished: four kinds on the
+first day is a result.
+
+
 What a harness may and may not do
 
 A harness calls the implementation. It does not reimplement it, and it

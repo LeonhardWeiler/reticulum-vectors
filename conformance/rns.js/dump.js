@@ -407,9 +407,11 @@ const [kind, path] = process.argv.slice(2);
 const blobs = readRaw(path);
 const kinds = { identity, keyset, destination, signature, sign, announce, encrypted,
                 linkrequest, linkproof, linkdata };
+// 77 says the kind is not implemented here. cmd/check counts it as
+// skipped rather than failed; see ../README.
 if (!(kind in kinds)) {
-    console.error("unknown kind " + kind);
-    process.exit(2);
+    console.error("kind not implemented: " + kind);
+    process.exit(77);
 }
 try {
     kinds[kind](blobs);

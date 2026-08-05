@@ -404,7 +404,12 @@ defmodule Dump do
     end
   end
 
-  def run(kind, _), do: IO.puts(:stderr, "unknown kind " <> kind)
+  # 77 says the kind is not implemented here. cmd/check counts it as
+  # skipped rather than failed; see ../README.
+  def run(kind, _) do
+    IO.puts(:stderr, "kind not implemented: " <> kind)
+    System.halt(77)
+  end
 end
 
 [kind, path] = System.argv()

@@ -514,7 +514,9 @@ int main(int argc, char **argv) {
 		else if (kind == "linkrequest") kind_linkrequest(blobs);
 		else if (kind == "linkproof") kind_linkproof(blobs);
 		else if (kind == "linkdata") kind_linkdata(blobs);
-		else { fprintf(stderr, "unknown kind %s\n", argv[1]); return 2; }
+		// 77 says the kind is not implemented here. cmd/check counts it
+		// as skipped rather than failed; see ../README.
+		else { fprintf(stderr, "kind not implemented: %s\n", argv[1]); return 77; }
 	} catch (const std::exception &e) {
 		out.clear();
 		f("error", e.what());

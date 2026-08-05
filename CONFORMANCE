@@ -1,16 +1,12 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against all 49 vectors in test/, through the
+Run on 2026-08-06 against the 50 vectors in test/, through the
 harnesses in conformance/.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
 not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
-
-The rows are against the 49 vectors that existed when they were run.
-test/ifac was added afterwards and no harness covers it yet; see the
-end of this file.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
 from expect for the forty-four vectors of the encode class, and no
@@ -28,6 +24,9 @@ failed, not by the corpus itself.
     Reticulum-rs        be7a7fc   2026-07-31  39 / 49   6 / 12
     rns.js              d4602ca   2025-02-10  29 / 49   0 / 12
     sgiath/reticulum    0c4904e   2026-07-09  23 / 49   0 / 12
+
+Out of 49, not 50: every harness skips test/ifac. See the end of this
+file.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot
@@ -434,10 +433,13 @@ of cmd/check names the exact vector and field behind every claim above.
 
 Not yet measured: interface access codes
 
-test/ifac is not covered by any harness. Every one of the six has IFAC
-code, and none of them exposes it in a way this harness format reaches
-without going through interface plumbing, so the row is missing rather
-than zero. A frame with bit 7 set is not a packet, and an
-implementation that reads one as a packet gets random flags, a random
-hop count and a destination hash matching nothing, so this is worth
-measuring and it has not been measured.
+Every harness exits 77 for test/ifac, so all six report it skipped.
+Every one of the six has IFAC code, and none of them exposes it in a
+way this harness format reaches without going through interface
+plumbing.
+
+Skipped is not a pass and not a failure. It means nobody has looked. A
+frame with bit 7 set is not a packet, and an implementation that reads
+one as a packet gets random flags, a random hop count and a destination
+hash that matches nothing, so this is worth measuring and it has not
+been measured.

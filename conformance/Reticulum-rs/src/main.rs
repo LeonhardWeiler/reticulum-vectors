@@ -624,8 +624,10 @@ fn main() {
         "linkproof" => linkproof(&mut out, &blobs),
         "linkdata" => linkdata(&mut out, &blobs),
         k => {
-            eprintln!("unknown kind {}", k);
-            std::process::exit(2);
+            // 77 says the kind is not implemented here. cmd/check
+            // counts it as skipped rather than failed; see ../README.
+            eprintln!("kind not implemented: {}", k);
+            std::process::exit(77);
         }
     }
 

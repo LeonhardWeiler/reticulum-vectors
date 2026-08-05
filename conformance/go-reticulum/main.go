@@ -757,8 +757,10 @@ func main() {
 	case "linkdata":
 		linkdata(blobs)
 	default:
-		fmt.Fprintln(os.Stderr, "unknown kind "+kind)
-		os.Exit(2)
+		// 77 says the kind is not implemented here. cmd/check counts
+		// it as skipped rather than failed; see ../README.
+		fmt.Fprintln(os.Stderr, "kind not implemented: "+kind)
+		os.Exit(77)
 	}
 	fmt.Print(strings.Join(out, "\n") + "\n")
 }

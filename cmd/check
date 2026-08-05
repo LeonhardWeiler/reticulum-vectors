@@ -15,6 +15,11 @@
 #	DUMP=./my-decoder cmd/check	check another implementation
 #	ENCODE=no cmd/check		skip the round trip
 #
+# A decoder that implements some of the kinds and not others exits 77
+# for the ones it does not, and those vectors are reported as skipped
+# rather than failed. Requiring all of them before a decoder can get a
+# result is the reason a new one starts with nothing to show.
+#
 # Exits non-zero if any vector fails.
 
 root=$(dirname "$0")/..
@@ -31,6 +36,8 @@ fi
 pass=0
 fail=0
 seen=0
+skip=0
+skipped_kinds=
 
 err=$(mktemp) || exit 2
 trap 'rm -f "$err"' EXIT INT TERM
@@ -116,7 +123,20 @@ for dir in "$root"/test/*/*/; do
 	# stderr is kept out of the comparison. A decoder that writes a
 	# warning there would otherwise have it diffed against expect, and
 	# the vector would fail for something that is not a field.
-	if ! out=$("$DUMP" "$kind" "$dir/raw" 2>"$err"); then
+	out=$("$DUMP" "$kind" "$dir/raw" 2>"$err")
+	status=$?
+
+	# A decoder that does not implement a kind says so with status 77
+	# and is not counted against. Nothing else may use that status: a
+	# decoder that implements a kind and rejects a vector has found a
+	# disagreement, which is the result.
+	if [ "$status" -eq 77 ]; then
+		skip=$((skip + 1))
+		skipped_kinds=$(printf '%s\n%s' "$skipped_kinds" "$kind")
+		continue
+	fi
+
+	if [ "$status" -ne 0 ]; then
 		fail_with "$dir" "$(cat "$err")"
 		continue
 	fi
@@ -150,11 +170,25 @@ for dir in "$root"/test/*/*/; do
 	pass=$((pass + 1))
 done
 
-echo "$pass passed, $fail failed"
+if [ "$skip" -eq 0 ]; then
+	echo "$pass passed, $fail failed"
+else
+	# Naming the kinds keeps a partial result from reading as a whole
+	# one. A decoder is free to implement four kinds and say so.
+	# Unquoted, so the shell splits the list and joins it with single
+	# spaces. The empty first line of the accumulator drops out.
+	echo "$pass passed, $fail failed, $skip skipped:" \
+	     $(printf '%s\n' "$skipped_kinds" | sort -u)
+fi
 
-# A corpus with nothing in it must not report success.
+# A corpus with nothing in it must not report success, and neither must
+# a decoder that skipped everything.
 if [ "$seen" -eq 0 ]; then
 	echo "no vectors under $root/test" >&2
+	exit 2
+fi
+if [ "$pass" -eq 0 ]; then
+	echo "nothing was checked" >&2
 	exit 2
 fi
 
