@@ -1,11 +1,15 @@
+# Build output
 cmd/dump
 *.o
-conformance/src/
 conformance/*/target/
 conformance/*/node_modules/
 conformance/go-reticulum/goret
-conformance/rns.js/dump
 conformance/microReticulum/micro
-conformance/*/src/main.rs
-conformance/*/Cargo.lock
-conformance/go-reticulum/go.sum
+
+# The implementations under test are cloned, not vendored.
+# See conformance/README.
+conformance/src/
+
+# The BEAM writes this into the working directory when it dies, and
+# cmd/check runs a harness with the repository root as its directory.
+erl_crash.dump
