@@ -21,9 +21,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAXBLOB   8192
-#define MAXBLOBS  8
-#define MAXFIELDS 64
+/* Each bound is the largest thing the format can hold, not one number
+ * applied everywhere. A packet is bounded by the 500-byte MTU; the
+ * largest input in the corpus is the 950-byte message of the adopted
+ * signature vector. No vector carries more than three blobs or more
+ * than 27 fields. */
+#define MAXBLOB   2048
+#define MAXBLOBS  4
+#define MAXFIELDS 32
 #define FIELDW    18
 
 #define ADDRLEN      16
@@ -589,17 +594,81 @@ static void print_announce(const struct header *h, const struct announce *a)
 	                     signed_data, sdlen) ? "yes" : "no");
 }
 
+/* A token is iv || ciphertext || hmac. Opening one is the same sequence
+ * for a packet addressed to a destination and for one on a link; only
+ * the key differs, and where that key comes from is the whole of what
+ * the two kinds do not share. RNS/Cryptography/Token.py:100. */
+struct token {
+	const uint8_t *iv, *ciphertext, *mac;
+	size_t   ctlen, ptlen;
+	uint8_t  plain[MAXBLOB];
+	int      mac_ok, opened;
+};
+
+static void token_open(const uint8_t *p, size_t len,
+                       const uint8_t derived[DERIVEDLEN], struct token *t)
+{
+	uint8_t expected[MACLEN], signed_part[MAXBLOB];
+
+	t->iv         = p;
+	t->ciphertext = p + IVLEN;
+	t->ctlen      = len - TOKEN_OVERHEAD;
+	t->mac        = p + len - MACLEN;
+	t->ptlen      = 0;
+	t->opened     = 0;
+
+	memcpy(signed_part, t->iv, IVLEN);
+	memcpy(signed_part + IVLEN, t->ciphertext, t->ctlen);
+	hmac_sha256(derived, MACLEN, signed_part, IVLEN + t->ctlen, expected);
+	t->mac_ok = memcmp(t->mac, expected, MACLEN) == 0;
+
+	if (t->mac_ok && t->ctlen > 0 && t->ctlen % 16 == 0 &&
+	    aes256_cbc_decrypt(derived + MACLEN, t->iv, t->ciphertext, t->ctlen,
+	                       t->plain) == 0 &&
+	    pkcs7_unpad(t->plain, t->ctlen, &t->ptlen) == 0)
+		t->opened = 1;
+}
+
+static void print_token(const struct token *t)
+{
+	field_hex("iv", t->iv, IVLEN);
+	field_hex("ciphertext", t->ciphertext, t->ctlen);
+	field_hex("hmac", t->mac, MACLEN);
+}
+
+static void print_keys(const uint8_t shared[KEYHALF],
+                       const uint8_t derived[DERIVEDLEN])
+{
+	field_hex("shared_key", shared, KEYHALF);
+	field_hex("signing_key", derived, MACLEN);
+	field_hex("encryption_key", derived + MACLEN, MACLEN);
+}
+
+static void print_plaintext(const struct token *t)
+{
+	field("hmac_valid", "%s", t->mac_ok ? "yes" : "no");
+	if (!t->opened) {
+		field("plaintext_length", "-");
+		field("plaintext", "-");
+		return;
+	}
+	field("plaintext_length", "%zu", t->ptlen);
+	if (t->ptlen > 0)
+		field_hex("plaintext", t->plain, t->ptlen);
+	else
+		field("plaintext", "-");
+}
+
 static void dump_encrypted(struct blob *b, int nblobs)
 {
 	struct header h;
+	struct token t;
 	enum reason r;
-	size_t got = 0, need = 0, ctlen, ptlen = 0;
-	const uint8_t *ephemeral, *iv, *ciphertext, *mac;
+	size_t got = 0, need = 0;
+	const uint8_t *ephemeral;
 	uint8_t pub[KEYSIZE], identity_hash[ADDRLEN];
 	uint8_t agree[KEYHALF], shared[KEYHALF], derived[DERIVEDLEN];
-	uint8_t expected[MACLEN], plain[MAXBLOB], ratchet_pub[KEYHALF];
-	uint8_t signed_part[MAXBLOB];
-	int mac_ok, decrypted = 0;
+	uint8_t ratchet_pub[KEYHALF];
 
 	if (nblobs != 3)
 		fatal("encrypted: expected 3 blobs, got %d", nblobs);
@@ -618,11 +687,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 		return;
 	}
 
-	ephemeral  = h.payload;
-	iv         = h.payload + KEYHALF;
-	ciphertext = h.payload + KEYHALF + IVLEN;
-	ctlen      = h.payload_len - KEYHALF - TOKEN_OVERHEAD;
-	mac        = h.payload + h.payload_len - MACLEN;
+	ephemeral = h.payload;
 
 	/* The salt is the recipient's identity hash, derived from its own
 	 * public key, even when the shared secret came from a ratchet.
@@ -640,41 +705,18 @@ static void dump_encrypted(struct blob *b, int nblobs)
 
 	crypto_scalarmult(shared, agree, ephemeral);
 	hkdf_sha256(shared, KEYHALF, identity_hash, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
-
-	memcpy(signed_part, iv, IVLEN);
-	memcpy(signed_part + IVLEN, ciphertext, ctlen);
-	hmac_sha256(derived, MACLEN, signed_part, IVLEN + ctlen, expected);
-	mac_ok = memcmp(mac, expected, MACLEN) == 0;
-
-	if (mac_ok && ctlen > 0 && ctlen % 16 == 0 &&
-	    aes256_cbc_decrypt(derived + MACLEN, iv, ciphertext, ctlen, plain) == 0 &&
-	    pkcs7_unpad(plain, ctlen, &ptlen) == 0)
-		decrypted = 1;
+	token_open(h.payload + KEYHALF, h.payload_len - KEYHALF, derived, &t);
 
 	print_header(&h);
 	field_hex("ephemeral_public", ephemeral, KEYHALF);
-	field_hex("iv", iv, IVLEN);
-	field_hex("ciphertext", ciphertext, ctlen);
-	field_hex("hmac", mac, MACLEN);
+	print_token(&t);
 	field_hex("identity_hash", identity_hash, ADDRLEN);
 	if (b[1].absent)
 		field("ratchet_public", "-");
 	else
 		field_hex("ratchet_public", ratchet_pub, KEYHALF);
-	field_hex("shared_key", shared, KEYHALF);
-	field_hex("signing_key", derived, MACLEN);
-	field_hex("encryption_key", derived + MACLEN, MACLEN);
-	field("hmac_valid", "%s", mac_ok ? "yes" : "no");
-	if (!decrypted) {
-		field("plaintext_length", "-");
-		field("plaintext", "-");
-	} else {
-		field("plaintext_length", "%zu", ptlen);
-		if (ptlen > 0)
-			field_hex("plaintext", plain, ptlen);
-		else
-			field("plaintext", "-");
-	}
+	print_keys(shared, derived);
+	print_plaintext(&t);
 }
 
 static void dump_announce(struct blob *b, int nblobs)
@@ -858,13 +900,12 @@ static void dump_linkproof(struct blob *b, int nblobs)
 static void dump_linkdata(struct blob *b, int nblobs)
 {
 	struct header h, rh;
+	struct token t;
 	enum reason r;
-	size_t got = 0, need = 0, ctlen, ptlen = 0;
-	const uint8_t *iv, *ciphertext, *mac, *initiator_public;
+	size_t got = 0, need = 0;
+	const uint8_t *initiator_public;
 	uint8_t link_id[ADDRLEN], shared[KEYHALF], derived[DERIVEDLEN];
-	uint8_t expected[MACLEN], plain[MAXBLOB], signed_part[MAXBLOB];
 	uint8_t identity_hash[ADDRLEN], signed_data[ADDRLEN + KEYSIZE];
-	int mac_ok, decrypted = 0;
 
 	if (nblobs != 3)
 		fatal("linkdata: expected 3 blobs, got %d", nblobs);
@@ -905,59 +946,33 @@ static void dump_linkdata(struct blob *b, int nblobs)
 		return;
 	}
 
-	iv         = h.payload;
-	ciphertext = h.payload + IVLEN;
-	ctlen      = h.payload_len - TOKEN_OVERHEAD;
-	mac        = h.payload + h.payload_len - MACLEN;
-
 	/* Both ends already hold the shared secret, so no packet on the
 	 * link carries an ephemeral key. The salt is the link id, which is
 	 * in no packet either. RNS/Link.py:351, RNS/Link.py:607. */
 	initiator_public = rh.payload;
 	crypto_scalarmult(shared, b[1].data, initiator_public);
 	hkdf_sha256(shared, KEYHALF, link_id, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
+	token_open(h.payload, h.payload_len, derived, &t);
 
-	memcpy(signed_part, iv, IVLEN);
-	memcpy(signed_part + IVLEN, ciphertext, ctlen);
-	hmac_sha256(derived, MACLEN, signed_part, IVLEN + ctlen, expected);
-	mac_ok = memcmp(mac, expected, MACLEN) == 0;
-
-	if (mac_ok && ctlen > 0 && ctlen % 16 == 0 &&
-	    aes256_cbc_decrypt(derived + MACLEN, iv, ciphertext, ctlen, plain) == 0 &&
-	    pkcs7_unpad(plain, ctlen, &ptlen) == 0)
-		decrypted = 1;
-
-	field_hex("iv", iv, IVLEN);
-	field_hex("ciphertext", ciphertext, ctlen);
-	field_hex("hmac", mac, MACLEN);
-	field_hex("shared_key", shared, KEYHALF);
-	field_hex("signing_key", derived, MACLEN);
-	field_hex("encryption_key", derived + MACLEN, MACLEN);
-	field("hmac_valid", "%s", mac_ok ? "yes" : "no");
-	if (!decrypted) {
-		field("plaintext_length", "-");
-		field("plaintext", "-");
+	print_token(&t);
+	print_keys(shared, derived);
+	print_plaintext(&t);
+	if (!t.opened)
 		return;
-	}
-	field("plaintext_length", "%zu", ptlen);
-	if (ptlen > 0)
-		field_hex("plaintext", plain, ptlen);
-	else
-		field("plaintext", "-");
 
 	/* An identify proof names the initiator, which nothing else on a
 	 * link does. Its signature covers the link id, so it cannot be
 	 * replayed onto another link. RNS/Link.py:464. */
-	if (h.context == 0xfb && ptlen == KEYSIZE + SIGLEN) {
-		truncated_hash(plain, KEYSIZE, identity_hash, ADDRLEN);
+	if (h.context == 0xfb && t.ptlen == KEYSIZE + SIGLEN) {
+		truncated_hash(t.plain, KEYSIZE, identity_hash, ADDRLEN);
 		memcpy(signed_data, link_id, ADDRLEN);
-		memcpy(signed_data + ADDRLEN, plain, KEYSIZE);
+		memcpy(signed_data + ADDRLEN, t.plain, KEYSIZE);
 
-		field_hex("identity_public", plain, KEYSIZE);
+		field_hex("identity_public", t.plain, KEYSIZE);
 		field_hex("identity_hash", identity_hash, ADDRLEN);
 		field_hex("identity_signed", signed_data, ADDRLEN + KEYSIZE);
 		field("identity_valid", "%s",
-		      ed25519_verify(plain + KEYHALF, plain + KEYSIZE,
+		      ed25519_verify(t.plain + KEYHALF, t.plain + KEYSIZE,
 		                     signed_data, ADDRLEN + KEYSIZE) ? "yes" : "no");
 	}
 }
@@ -985,8 +1000,8 @@ static void encode_destination(struct kv *f, int n)
 
 int main(int argc, char **argv)
 {
-	struct blob blobs[MAXBLOBS];
-	struct kv fields[MAXFIELDS];
+	static struct blob blobs[MAXBLOBS];
+	static struct kv fields[MAXFIELDS];
 	const char *kind, *path;
 	int n, encode = 0;
 

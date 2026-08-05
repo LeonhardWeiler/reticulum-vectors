@@ -13,6 +13,13 @@ Vendored code.
         used for  Ed25519 verification, SHA-512, and X25519 base point
                   multiplication. dump uses nothing else from it.
 
+Built without the warning flags the corpus applies to its own code, and
+UBSan reports left shifts of negative values in it, at tweetnacl.c:281
+and tweetnacl.c:685. Both are the reference file as published. The
+policy here is that a vendored file is not edited, so they stand; they
+are noted because a sanitizer build of dump will print them, and the
+first reaction should not be to look for the bug in cmd/.
+
 tweetnacl declares randombytes but does not define it. dump supplies a
 definition that serves crypto_sign_keypair a caller-chosen seed, which
 is how an Ed25519 public key is derived from a given private key
