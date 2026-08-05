@@ -14,6 +14,7 @@ import Fernet from "../src/rns.js/src/fernet.js";
 import Identity from "../src/rns.js/src/identity.js";
 import Destination from "../src/rns.js/src/destination.js";
 import Packet from "../src/rns.js/src/packet.js";
+import Link from "../src/rns.js/src/link.js";
 import Cryptography from "../src/rns.js/src/cryptography.js";
 import Constants from "../src/rns.js/src/constants.js";
 
@@ -76,6 +77,19 @@ function signature(blobs) {
     f("valid", id.validate(blobs[2], blobs[1]) ? "yes" : "no");
 }
 
+// Named from rns.js's own constants, and only those. KEEPALIVE and
+// LINKIDENTIFY are commented out at src/packet.js:34-35, so a packet
+// carrying either has no name here and prints as a number.
+const CONTEXT_NAMES = new Map([
+    [Packet.NONE, "none"],
+    [Packet.PATH_RESPONSE, "path_response"],
+    [Packet.LINKCLOSE, "link_close"],
+    [Packet.LRRTT, "link_rtt"],
+    [Packet.LRPROOF, "link_request_proof"],
+]);
+const contextName = (c) =>
+    CONTEXT_NAMES.get(c) ?? c.toString(16).padStart(2, "0");
+
 const DEST_TYPES = ["single", "group", "plain", "link"];
 const PACKET_TYPES = ["data", "announce", "linkrequest", "proof"];
 const XPORT_TYPES = ["broadcast", "transport", "relay", "tunnel"];
@@ -127,8 +141,7 @@ function announce(blobs) {
     f("hops", String(p.hops));
     f("transport_id", p.headerType === Packet.HEADER_2 ? hex(p.transportId) : "-");
     f("destination_hash", hex(p.destinationHash));
-    f("context", p.context === 0 ? "none" : p.context === 0x0b ? "path_response"
-        : p.context.toString(16).padStart(2, "0"));
+    f("context", contextName(p.context));
     f("payload_length", String(payload.length));
     f("public_key", hex(publicKey));
     f("name_hash", hex(nameHash));
@@ -155,8 +168,7 @@ function header(p, raw) {
     f("hops", String(p.hops));
     f("transport_id", p.headerType === Packet.HEADER_2 ? hex(p.transportId) : "-");
     f("destination_hash", hex(p.destinationHash));
-    f("context", p.context === 0 ? "none" : p.context === 0x0b ? "path_response"
-        : p.context.toString(16).padStart(2, "0"));
+    f("context", contextName(p.context));
     f("payload_length", String(p.data.length));
 }
 
@@ -218,9 +230,164 @@ function encrypted(blobs) {
     f("plaintext", plaintext === null || plaintext.length === 0 ? "-" : hex(plaintext));
 }
 
+// rns.js has a Link class, but every entry point into it drives a state
+// machine and returns a boolean. The steps below are its own, in its own
+// order, using its own primitives, and are marked where they are.
+
+function linkOf(packet) {
+    const link = new Link();
+    link.setLinkId(packet);
+    return link;
+}
+
+function linkrequest(blobs) {
+    const raw = blobs[0];
+    const p = Packet.fromBytes(raw);
+    if (p === null || p === undefined) {
+        f("invalid", "short-header");
+        f("length", String(raw.length));
+        f("minimum_length", "19");
+        return;
+    }
+
+    // src/link.js:103 accepts one payload length and no other. The
+    // reference accepts two, and sends the one rns.js rejects.
+    if (p.data.length !== Link.ECPUBSIZE) {
+        f("invalid", "invalid-length");
+        f("payload_length", String(p.data.length));
+        f("accepted_length", String(Link.ECPUBSIZE));
+        return;
+    }
+
+    header(p, raw);
+    f("x25519_public", hex(p.data.slice(0, Link.ECPUBSIZE / 2)));
+    f("ed25519_public", hex(p.data.slice(Link.ECPUBSIZE / 2, Link.ECPUBSIZE)));
+    f("signalling", "-");
+
+    // rns.js signals no mode and reads none. The mode it uses is the one
+    // its key derivation and its Fernet fix: 32 derived bytes at
+    // src/link.js:289, aes-128-cbc at src/fernet.js:76.
+    f("mode", "aes128_cbc");
+    f("mtu", "-");
+    f("link_id", hex(linkOf(p).hash));
+}
+
+function linkproof(blobs) {
+    const [requestRaw, identityPublic, raw] = blobs;
+    const request = Packet.fromBytes(requestRaw);
+    const p = Packet.fromBytes(raw);
+    if (p === null || p === undefined) {
+        f("invalid", "short-header");
+        f("length", String(raw.length));
+        f("minimum_length", "19");
+        return;
+    }
+
+    // src/link.js:189, one accepted length.
+    const accepted = Identity.SIGLENGTH_IN_BYTES + Link.ECPUBSIZE / 2;
+    if (p.data.length !== accepted) {
+        f("invalid", "invalid-length");
+        f("payload_length", String(p.data.length));
+        f("accepted_length", String(accepted));
+        return;
+    }
+
+    const linkId = linkOf(request).hash;
+    const signature = p.data.slice(0, Identity.SIGLENGTH_IN_BYTES);
+    const x25519Public = p.data.slice(Identity.SIGLENGTH_IN_BYTES);
+    const signer = Identity.fromPublicKey(identityPublic);
+
+    // Follows src/link.js:195-211. rns.js loads the peer signature key
+    // from the destination identity, as the reference does, and signs
+    // nothing else: it has no signalling bytes to append.
+    const signedData = Buffer.concat([linkId, x25519Public, signer.signaturePublicKeyBytes]);
+
+    header(p, raw);
+    f("link_id", hex(linkId));
+    f("link_id_match", p.destinationHash.equals(linkId) ? "yes" : "no");
+    f("signature", hex(signature));
+    f("x25519_public", hex(x25519Public));
+    f("signalling", "-");
+    f("mode", "aes128_cbc");
+    f("mtu", "-");
+    f("signer_ed25519", hex(signer.signaturePublicKeyBytes));
+    f("signed_data", hex(signedData));
+    f("signature_valid", signer.validate(signature, signedData) ? "yes" : "no");
+}
+
+function linkdata(blobs) {
+    const [requestRaw, responderPrivate, raw] = blobs;
+    const request = Packet.fromBytes(requestRaw);
+    const p = Packet.fromBytes(raw);
+    if (p === null || p === undefined) {
+        f("invalid", "short-header");
+        f("length", String(raw.length));
+        f("minimum_length", "19");
+        return;
+    }
+
+    const linkId = linkOf(request).hash;
+    header(p, raw);
+    f("link_id", hex(linkId));
+    f("link_id_match", p.destinationHash.equals(linkId) ? "yes" : "no");
+
+    if (p.context === 0xfa) {
+        f("encrypted", "no");
+        f("plaintext_length", String(p.data.length));
+        f("plaintext", p.data.length ? hex(p.data) : "-");
+        return;
+    }
+    f("encrypted", "yes");
+
+    const iv = p.data.slice(0, 16);
+    const ct = p.data.slice(16, -32);
+    const mac = p.data.slice(-32);
+
+    const initiatorPublic = request.data.slice(0, Link.ECPUBSIZE / 2);
+    const shared = Buffer.from(x25519.getSharedSecret(responderPrivate, initiatorPublic));
+
+    // Follows src/link.js:289. The 32 is rns.js's own.
+    const derived = Cryptography.hkdf(32, shared, linkId);
+    const half = derived.length / 2;
+    const signing = derived.slice(0, half);
+    const encryption = derived.slice(half);
+
+    const hmacOk = Cryptography.hmacSha256(signing, Buffer.concat([iv, ct])).equals(mac);
+
+    let plaintext = null;
+    try {
+        plaintext = new Fernet(derived).decrypt(p.data);
+    } catch (e) {
+        plaintext = null;
+    }
+
+    f("iv", hex(iv));
+    f("ciphertext", hex(ct));
+    f("hmac", hex(mac));
+    f("shared_key", hex(shared));
+    f("signing_key", hex(signing));
+    f("encryption_key", hex(encryption));
+    f("hmac_valid", hmacOk ? "yes" : "no");
+    f("plaintext_length", plaintext === null ? "-" : String(plaintext.length));
+    f("plaintext", plaintext === null || plaintext.length === 0 ? "-" : hex(plaintext));
+
+    if (p.context === 0xfb && plaintext !== null
+        && plaintext.length === Identity.KEYSIZE_IN_BYTES + Identity.SIGLENGTH_IN_BYTES) {
+        const pub = plaintext.slice(0, Identity.KEYSIZE_IN_BYTES);
+        const sig = plaintext.slice(Identity.KEYSIZE_IN_BYTES);
+        const signed = Buffer.concat([linkId, pub]);
+        const id = Identity.fromPublicKey(pub);
+        f("identity_public", hex(pub));
+        f("identity_hash", hex(id.hash));
+        f("identity_signed", hex(signed));
+        f("identity_valid", id.validate(sig, signed) ? "yes" : "no");
+    }
+}
+
 const [kind, path] = process.argv.slice(2);
 const blobs = readRaw(path);
-const kinds = { identity, keyset, destination, signature, announce, encrypted };
+const kinds = { identity, keyset, destination, signature, announce, encrypted,
+                linkrequest, linkproof, linkdata };
 if (!(kind in kinds)) {
     console.error("unknown kind " + kind);
     process.exit(2);
