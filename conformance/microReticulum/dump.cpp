@@ -16,6 +16,9 @@
 #include "Packet.h"
 #include "Bytes.h"
 #include "Type.h"
+#include "Cryptography/HKDF.h"
+#include "Cryptography/Token.h"
+#include "Cryptography/X25519.h"
 
 static const int W = 18;
 static std::vector<std::string> out;
@@ -196,6 +199,92 @@ static void kind_announce(std::vector<RNS::Bytes> &b) {
 	f("signature_valid", RNS::Identity::validate_announce(p, true) ? "yes" : "no");
 }
 
+// microReticulum exposes no entry point that yields the header fields
+// on their own, so this mirrors what kind_announce() above already does.
+static void print_header(RNS::Packet &p, const RNS::Bytes &raw) {
+	char buf[32];
+	unsigned flags = raw.data()[0];
+	unsigned header_type = (flags & 0x40) >> 6;
+	snprintf(buf, sizeof buf, "%02x", flags); f("flags", buf);
+	snprintf(buf, sizeof buf, "%u", header_type + 1); f("header_type", buf);
+	f("context_flag", ((flags & 0x20) >> 5) ? "set" : "unset");
+	f("transport_type", xport_types[(flags & 0x10) >> 4]);
+	f("destination_type", dest_types[(flags & 0x0c) >> 2]);
+	f("packet_type", packet_types[flags & 0x03]);
+	snprintf(buf, sizeof buf, "%u", (unsigned)raw.data()[1]); f("hops", buf);
+	if (header_type == 1) f("transport_id", hexs(p.transport_id()));
+	else f("transport_id", "-");
+	f("destination_hash", hexs(p.destination_hash()));
+	unsigned context = (unsigned)p.context();
+	if (context == 0x00) f("context", "none");
+	else if (context == 0x0b) f("context", "path_response");
+	else { snprintf(buf, sizeof buf, "%02x", context); f("context", buf); }
+	snprintf(buf, sizeof buf, "%zu", (size_t)p.data().size()); f("payload_length", buf);
+}
+
+static void kind_encrypted(std::vector<RNS::Bytes> &b, bool no_ratchet) {
+	const RNS::Bytes &priv = b[0];
+	const RNS::Bytes &raw = b[2];
+	char buf[32];
+
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	RNS::Packet p(raw);
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+
+	RNS::Bytes payload = p.data();
+	if (payload.size() < 32 + 48) {
+		invalid("short-payload", "payload_length", payload.size(), "minimum_length", 32 + 48);
+		return;
+	}
+
+	RNS::Bytes ephemeral = payload.left(32);
+	RNS::Bytes token = payload.mid(32);
+	RNS::Bytes iv = token.left(16);
+	RNS::Bytes ct = token.mid(16, token.size() - 48);
+	RNS::Bytes mac = token.mid(token.size() - 32);
+
+	RNS::Identity id(false);
+	id.load_private_key(priv);
+
+	RNS::Bytes agree = no_ratchet ? priv.left(32) : b[1];
+	RNS::Bytes ratchet_pub;
+	if (!no_ratchet)
+		ratchet_pub = RNS::Cryptography::X25519PrivateKey::from_private_bytes(b[1])->public_key()->public_bytes();
+
+	RNS::Bytes shared = RNS::Cryptography::X25519PrivateKey::from_private_bytes(agree)->exchange(ephemeral);
+	RNS::Bytes derived = RNS::Cryptography::hkdf(RNS::Type::Identity::DERIVED_KEY_LENGTH,
+	                                             shared, id.hash(), {RNS::Bytes::NONE});
+	size_t half = derived.size() / 2;
+
+	RNS::Cryptography::Token tok(derived);
+	bool hmac_ok = tok.verify_hmac(token);
+
+	// microReticulum's decrypt takes no ratchet, so the ratchet vector
+	// exercises the identity key path here. The divergence is reported
+	// rather than worked around.
+	RNS::Bytes plaintext = id.decrypt(payload);
+
+	print_header(p, raw);
+	f("ephemeral_public", hexs(ephemeral));
+	f("iv", hexs(iv));
+	f("ciphertext", hexs(ct));
+	f("hmac", hexs(mac));
+	f("identity_hash", hexs(id.hash()));
+	f("ratchet_public", no_ratchet ? "-" : hexs(ratchet_pub));
+	f("shared_key", hexs(shared));
+	f("signing_key", hexs(derived.left(half)));
+	f("encryption_key", hexs(derived.mid(half)));
+	f("hmac_valid", hmac_ok ? "yes" : "no");
+	if (!hmac_ok) {
+		f("plaintext_length", "-");
+		f("plaintext", "-");
+	} else {
+		snprintf(buf, sizeof buf, "%zu", (size_t)plaintext.size());
+		f("plaintext_length", buf);
+		f("plaintext", plaintext.size() ? hexs(plaintext) : "-");
+	}
+}
+
 int main(int argc, char **argv) {
 	if (argc != 3) { fprintf(stderr, "usage: micro kind rawfile\n"); return 2; }
 
@@ -209,6 +298,7 @@ int main(int argc, char **argv) {
 		else if (kind == "destination") kind_destination(blobs, absent[1]);
 		else if (kind == "signature") kind_signature(blobs);
 		else if (kind == "announce") kind_announce(blobs);
+		else if (kind == "encrypted") kind_encrypted(blobs, absent[1]);
 		else { fprintf(stderr, "unknown kind %s\n", argv[1]); return 2; }
 	} catch (const std::exception &e) {
 		out.clear();

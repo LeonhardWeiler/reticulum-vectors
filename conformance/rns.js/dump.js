@@ -8,6 +8,9 @@
 //	node dump.js kind rawfile
 
 import fs from "fs";
+// Imported by file path: the harness lives outside rns.js's package.
+import { x25519 } from "../src/rns.js/node_modules/@noble/curves/esm/ed25519.js";
+import Fernet from "../src/rns.js/src/fernet.js";
 import Identity from "../src/rns.js/src/identity.js";
 import Destination from "../src/rns.js/src/destination.js";
 import Packet from "../src/rns.js/src/packet.js";
@@ -140,9 +143,84 @@ function announce(blobs) {
     f("signature_valid", announced.validate(sig, signedData) ? "yes" : "no");
 }
 
+// rns.js exposes no entry point that yields the header fields on their
+// own, so this mirrors what announce() above already does.
+function header(p, raw) {
+    f("flags", raw[0].toString(16).padStart(2, "0"));
+    f("header_type", String(p.headerType + 1));
+    f("context_flag", p.contextFlag === Packet.FLAG_SET ? "set" : "unset");
+    f("transport_type", XPORT_TYPES[p.transportType]);
+    f("destination_type", DEST_TYPES[p.destinationType]);
+    f("packet_type", PACKET_TYPES[p.packetType]);
+    f("hops", String(p.hops));
+    f("transport_id", p.headerType === Packet.HEADER_2 ? hex(p.transportId) : "-");
+    f("destination_hash", hex(p.destinationHash));
+    f("context", p.context === 0 ? "none" : p.context === 0x0b ? "path_response"
+        : p.context.toString(16).padStart(2, "0"));
+    f("payload_length", String(p.data.length));
+}
+
+function encrypted(blobs) {
+    const priv = blobs[0], ratchetPriv = blobs[1], raw = blobs[2];
+    const invalid = (reason, ...pairs) => {
+        f("invalid", reason);
+        for (const [k, v] of pairs) f(k, String(v));
+    };
+
+    if (raw.length < 2) return invalid("short-header", ["length", raw.length], ["minimum_length", 2]);
+    const p = Packet.fromBytes(raw);
+    if (p === null || p === undefined) return invalid("short-header", ["length", raw.length], ["minimum_length", 19]);
+
+    const payload = p.data;
+    const min = Identity.KEYSIZE_IN_BYTES / 2 + Fernet.FERNET_OVERHEAD;
+    if (payload.length < min) return invalid("short-payload", ["payload_length", payload.length], ["minimum_length", min]);
+
+    const ephemeral = payload.slice(0, Identity.KEYSIZE_IN_BYTES / 2);
+    const token = payload.slice(Identity.KEYSIZE_IN_BYTES / 2);
+    const iv = token.slice(0, 16);
+    const ct = token.slice(16, -32);
+    const mac = token.slice(-32);
+
+    const id = Identity.fromPrivateKey(priv);
+
+    // rns.js has no ratchet path in decrypt(); the agreement is done
+    // with its own primitive so the rest can still be compared.
+    const agree = ratchetPriv === null ? id.privateKeyBytes : ratchetPriv;
+    const shared = Buffer.from(x25519.getSharedSecret(agree, ephemeral));
+
+    // Follows src/identity.js:237. The derived length is rns.js's own.
+    const derived = Cryptography.hkdf(32, shared, id.hash);
+    const half = derived.length / 2;
+    const signing = derived.slice(0, half);
+    const encryption = derived.slice(half);
+
+    const hmacOk = Cryptography.hmacSha256(signing, Buffer.concat([iv, ct])).equals(mac);
+
+    let plaintext = null;
+    try {
+        plaintext = new Fernet(derived).decrypt(token);
+    } catch (e) {
+        plaintext = null;
+    }
+
+    header(p, raw);
+    f("ephemeral_public", hex(ephemeral));
+    f("iv", hex(iv));
+    f("ciphertext", hex(ct));
+    f("hmac", hex(mac));
+    f("identity_hash", hex(id.hash));
+    f("ratchet_public", ratchetPriv === null ? "-" : hex(Buffer.from(x25519.getPublicKey(ratchetPriv))));
+    f("shared_key", hex(shared));
+    f("signing_key", hex(signing));
+    f("encryption_key", hex(encryption));
+    f("hmac_valid", hmacOk ? "yes" : "no");
+    f("plaintext_length", plaintext === null ? "-" : String(plaintext.length));
+    f("plaintext", plaintext === null || plaintext.length === 0 ? "-" : hex(plaintext));
+}
+
 const [kind, path] = process.argv.slice(2);
 const blobs = readRaw(path);
-const kinds = { identity, keyset, destination, signature, announce };
+const kinds = { identity, keyset, destination, signature, announce, encrypted };
 if (!(kind in kinds)) {
     console.error("unknown kind " + kind);
     process.exit(2);

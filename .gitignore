@@ -5,3 +5,7 @@ conformance/*/target/
 conformance/*/node_modules/
 conformance/go-reticulum/goret
 conformance/rns.js/dump
+conformance/microReticulum/micro
+conformance/*/src/main.rs
+conformance/*/Cargo.lock
+conformance/go-reticulum/go.sum

@@ -7,7 +7,7 @@ use std::fs;
 
 use reticulum::destination::{DestinationAnnounce, DestinationName};
 use reticulum::hash::AddressHash;
-use reticulum::identity::{Identity, PrivateIdentity};
+use reticulum::identity::{DecryptIdentity, Identity, PrivateIdentity};
 use reticulum::buffer::InputBuffer;
 use reticulum::packet::Packet;
 use sha2::{Digest, Sha256};
@@ -268,6 +268,110 @@ fn announce(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let _ = AddressHash::new_from_slice(raw);
 }
 
+// Reticulum-rs exposes no entry point that yields the header fields on
+// their own, so this mirrors what announce() above already does.
+fn print_header(out: &mut Vec<String>, raw: &[u8]) {
+    let flags = raw[0];
+    let header_type = (flags & 0x40) >> 6;
+    let payload_at = 3 + 16 * (header_type as usize + 1);
+    f(out, "flags", &format!("{:02x}", flags));
+    f(out, "header_type", &format!("{}", header_type + 1));
+    f(out, "context_flag", if (flags & 0x20) >> 5 == 1 { "set" } else { "unset" });
+    f(out, "transport_type", XPORT_TYPES[((flags & 0x10) >> 4) as usize]);
+    f(out, "destination_type", DEST_TYPES[((flags & 0x0c) >> 2) as usize]);
+    f(out, "packet_type", PACKET_TYPES[(flags & 0x03) as usize]);
+    f(out, "hops", &format!("{}", raw[1]));
+    if header_type == 1 {
+        f(out, "transport_id", &hexs(&raw[2..18]));
+        f(out, "destination_hash", &hexs(&raw[18..34]));
+        f(out, "context", match raw[34] {
+            0x00 => "none".to_string(), 0x0b => "path_response".to_string(),
+            c => format!("{:02x}", c) }.as_str());
+    } else {
+        f(out, "transport_id", "-");
+        f(out, "destination_hash", &hexs(&raw[2..18]));
+        f(out, "context", match raw[18] {
+            0x00 => "none".to_string(), 0x0b => "path_response".to_string(),
+            c => format!("{:02x}", c) }.as_str());
+    }
+    f(out, "payload_length", &format!("{}", raw.len() - payload_at));
+}
+
+fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    use rand_core::OsRng;
+    use x25519_dalek::{PublicKey, StaticSecret};
+
+    let priv_key = b[0].as_ref().unwrap();
+    let ratchet_priv = b[1].as_ref();
+    let raw = b[2].as_ref().unwrap();
+
+    if raw.len() < 19 {
+        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 19)]);
+    }
+    let payload = &raw[19..];
+    if payload.len() < 32 + 48 {
+        return invalid(out, "short-payload",
+                       &[("payload_length", payload.len()), ("minimum_length", 32 + 48)]);
+    }
+
+    let ephemeral = &payload[..32];
+    let tok = &payload[32..];
+    let iv = &tok[..16];
+    let ct = &tok[16..tok.len() - 32];
+    let mac = &tok[tok.len() - 32..];
+
+    let id = PrivateIdentity::new_from_hex_string(&hexs(priv_key)).unwrap();
+
+    let mut eph = [0u8; 32];
+    eph.copy_from_slice(ephemeral);
+    let peer = PublicKey::from(eph);
+
+    let mut agree = [0u8; 32];
+    let mut ratchet_pub: Option<[u8; 32]> = None;
+    match ratchet_priv {
+        Some(r) => {
+            agree.copy_from_slice(r);
+            ratchet_pub = Some(PublicKey::from(&StaticSecret::from(agree)).to_bytes());
+        }
+        None => agree.copy_from_slice(&priv_key[..32]),
+    }
+    let shared = StaticSecret::from(agree).diffie_hellman(&peer);
+
+    // Reticulum-rs derives through DerivedKey; the salt is the identity
+    // address hash, as in the reference.
+    let derived = reticulum::identity::DerivedKey::new(&shared, Some(id.address_hash().as_slice()));
+    let bytes = derived.as_bytes();
+    let half = bytes.len() / 2;
+
+    let mut buf = [0u8; 1024];
+    let plaintext = id.decrypt(OsRng, tok, &derived, &mut buf).ok().map(|p| p.to_vec());
+
+    print_header(out, raw);
+    f(out, "ephemeral_public", &hexs(ephemeral));
+    f(out, "iv", &hexs(iv));
+    f(out, "ciphertext", &hexs(ct));
+    f(out, "hmac", &hexs(mac));
+    f(out, "identity_hash", &hexs(id.address_hash().as_slice()));
+    match ratchet_pub {
+        Some(r) => f(out, "ratchet_public", &hexs(&r)),
+        None => f(out, "ratchet_public", "-"),
+    }
+    f(out, "shared_key", &hexs(shared.as_bytes()));
+    f(out, "signing_key", &hexs(&bytes[..half]));
+    f(out, "encryption_key", &hexs(&bytes[half..]));
+    f(out, "hmac_valid", if plaintext.is_some() { "yes" } else { "no" });
+    match plaintext {
+        None => {
+            f(out, "plaintext_length", "-");
+            f(out, "plaintext", "-");
+        }
+        Some(pt) => {
+            f(out, "plaintext_length", &format!("{}", pt.len()));
+            if pt.is_empty() { f(out, "plaintext", "-"); } else { f(out, "plaintext", &hexs(&pt)); }
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -283,6 +387,7 @@ fn main() {
         "destination" => destination(&mut out, &blobs),
         "signature" => signature(&mut out, &blobs),
         "announce" => announce(&mut out, &blobs),
+        "encrypted" => encrypted(&mut out, &blobs),
         k => {
             eprintln!("unknown kind {}", k);
             std::process::exit(2);

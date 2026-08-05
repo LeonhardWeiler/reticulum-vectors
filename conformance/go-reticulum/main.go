@@ -15,7 +15,10 @@ import (
 	"os"
 	"strings"
 
+	"crypto/ecdh"
+
 	"github.com/svanichkin/go-reticulum/rns"
+	Cryptography "github.com/svanichkin/go-reticulum/rns/cryptography"
 )
 
 const (
@@ -260,6 +263,149 @@ func announce(b [][]byte) {
 	}
 }
 
+// go-reticulum exposes no entry point that yields the header fields on
+// their own, so this mirrors what announce() above already does.
+func printHeader(p *rns.Packet, raw []byte) {
+	f("flags", fmt.Sprintf("%02x", raw[0]))
+	f("header_type", fmt.Sprintf("%d", p.HeaderType+1))
+	if p.ContextFlag == rns.FlagSet {
+		f("context_flag", "set")
+	} else {
+		f("context_flag", "unset")
+	}
+	f("transport_type", xportTypes[p.TransportType])
+	f("destination_type", destTypes[p.DestinationType])
+	f("packet_type", packetTypes[p.PacketType])
+	f("hops", fmt.Sprintf("%d", p.Hops))
+	if p.HeaderType == rns.HeaderType2 {
+		f("transport_id", hex.EncodeToString(p.TransportID))
+	} else {
+		f("transport_id", "-")
+	}
+	f("destination_hash", hex.EncodeToString(p.DestinationHash))
+	switch p.Context {
+	case 0x00:
+		f("context", "none")
+	case 0x0b:
+		f("context", "path_response")
+	default:
+		f("context", fmt.Sprintf("%02x", p.Context))
+	}
+	f("payload_length", fmt.Sprintf("%d", len(p.Data)))
+}
+
+func encrypted(b [][]byte) {
+	priv, ratchetPriv, raw := b[0], b[1], b[2]
+
+	if len(raw) < 2 {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
+		return
+	}
+	p := &rns.Packet{Raw: raw}
+	if !p.Unpack() {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		return
+	}
+
+	payload := p.Data
+	min := 32 + 48
+	if len(payload) < min {
+		invalid("short-payload", [2]interface{}{"payload_length", len(payload)}, [2]interface{}{"minimum_length", min})
+		return
+	}
+
+	ephemeral := payload[:32]
+	token := payload[32:]
+	iv := token[:16]
+	ct := token[16 : len(token)-32]
+	mac := token[len(token)-32:]
+
+	id, err := rns.IdentityFromBytes(priv)
+	if err != nil {
+		panic(err)
+	}
+
+	// The agreement uses the standard library curve, because the one
+	// go-reticulum holds is unexported. Everything after it is its own
+	// code: HKDF, the token, and Decrypt.
+	curve := ecdh.X25519()
+	agree := priv[:32]
+	var ratchetPub []byte
+	if ratchetPriv != nil {
+		agree = ratchetPriv
+		rp, e := curve.NewPrivateKey(ratchetPriv)
+		if e != nil {
+			panic(e)
+		}
+		ratchetPub = rp.PublicKey().Bytes()
+	}
+	sk, err := curve.NewPrivateKey(agree)
+	if err != nil {
+		panic(err)
+	}
+	pp, err := curve.NewPublicKey(ephemeral)
+	if err != nil {
+		panic(err)
+	}
+	shared, err := sk.ECDH(pp)
+	if err != nil {
+		panic(err)
+	}
+
+	// derivedKeyLen is 64 at rns/identity.go:28, transcribed here
+	// because it is not exported.
+	derived, err := Cryptography.HKDF(64, shared, id.GetSalt(), id.GetContext())
+	if err != nil {
+		panic(err)
+	}
+	half := len(derived) / 2
+	signing, encryption := derived[:half], derived[half:]
+
+	tok, err := Cryptography.NewToken(derived)
+	hmacOk := false
+	if err == nil {
+		_, derr := tok.Decrypt(token)
+		hmacOk = derr == nil
+	}
+
+	var ratchets [][]byte
+	if ratchetPriv != nil {
+		ratchets = [][]byte{ratchetPriv}
+	}
+	plaintext, _ := id.Decrypt(payload, ratchets, false)
+
+	printHeader(p, raw)
+	f("ephemeral_public", hex.EncodeToString(ephemeral))
+	f("iv", hex.EncodeToString(iv))
+	f("ciphertext", hex.EncodeToString(ct))
+	f("hmac", hex.EncodeToString(mac))
+	f("identity_hash", hex.EncodeToString(id.Hash))
+	if ratchetPub == nil {
+		f("ratchet_public", "-")
+	} else {
+		f("ratchet_public", hex.EncodeToString(ratchetPub))
+	}
+	f("shared_key", hex.EncodeToString(shared))
+	f("signing_key", hex.EncodeToString(signing))
+	f("encryption_key", hex.EncodeToString(encryption))
+	if hmacOk {
+		f("hmac_valid", "yes")
+	} else {
+		f("hmac_valid", "no")
+	}
+	if plaintext == nil {
+		f("plaintext_length", "-")
+		f("plaintext", "-")
+	} else {
+		f("plaintext_length", fmt.Sprintf("%d", len(plaintext)))
+		if len(plaintext) == 0 {
+			f("plaintext", "-")
+		} else {
+			f("plaintext", hex.EncodeToString(plaintext))
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) != 3 {
 		fmt.Fprintln(os.Stderr, "usage: goret kind rawfile")
@@ -286,6 +432,8 @@ func main() {
 		signature(blobs)
 	case "announce":
 		announce(blobs)
+	case "encrypted":
+		encrypted(blobs)
 	default:
 		fmt.Fprintln(os.Stderr, "unknown kind "+kind)
 		os.Exit(2)

@@ -5,7 +5,10 @@
 use std::env;
 use std::fs;
 
+use rns_crypto::hkdf::derive_key_64;
 use rns_crypto::sha::sha256;
+use rns_crypto::token;
+use rns_crypto::x25519::{X25519PrivateKey, X25519PublicKey};
 use rns_identity::announce::AnnounceData as Announce;
 use rns_identity::destination::Destination;
 use rns_identity::identity::Identity;
@@ -239,6 +242,124 @@ fn announce(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "signature_valid", if ok { "yes" } else { "no" });
 }
 
+// rsReticulum exposes no entry point that yields the header fields on
+// their own, so this mirrors what announce() above already does.
+fn print_header(out: &mut Vec<String>, p: &Packet, raw: &[u8]) {
+    let h = &p.header;
+    f(out, "flags", &format!("{:02x}", raw[0]));
+    f(out, "header_type", match h.flags.header_type {
+        HeaderType::Header1 => "1",
+        HeaderType::Header2 => "2",
+    });
+    f(out, "context_flag", if h.flags.context_flag { "set" } else { "unset" });
+    f(out, "transport_type", xport_type_name(h.flags.transport_type));
+    f(out, "destination_type", dest_type_name(h.flags.destination_type));
+    f(out, "packet_type", packet_type_name(h.flags.packet_type));
+    f(out, "hops", &format!("{}", h.hops));
+    match h.transport_id {
+        Some(t) => f(out, "transport_id", &hexs(&t)),
+        None => f(out, "transport_id", "-"),
+    }
+    f(out, "destination_hash", &hexs(&h.destination_hash));
+    f(out, "context", match h.context.to_byte() {
+        0x00 => "none".to_string(),
+        0x0b => "path_response".to_string(),
+        c => format!("{:02x}", c),
+    }.as_str());
+    f(out, "payload_length", &format!("{}", p.data().len()));
+}
+
+fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    let priv_key = b[0].as_ref().unwrap();
+    let ratchet_priv = b[1].as_ref();
+    let raw = b[2].as_ref().unwrap();
+
+    if raw.len() < 2 {
+        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 2)]);
+    }
+    let p = match Packet::from_raw(raw) {
+        Ok(p) => p,
+        Err(_) => return invalid(out, "short-header",
+                                 &[("length", raw.len()), ("minimum_length", 19)]),
+    };
+
+    let payload = p.data();
+    if payload.len() < 32 + 48 {
+        return invalid(out, "short-payload",
+                       &[("payload_length", payload.len()), ("minimum_length", 32 + 48)]);
+    }
+
+    let ephemeral = &payload[..32];
+    let tok = &payload[32..];
+    let iv = &tok[..16];
+    let ct = &tok[16..tok.len() - 32];
+    let mac = &tok[tok.len() - 32..];
+
+    let id = Identity::from_private_key(priv_key).unwrap();
+
+    let mut eph = [0u8; 32];
+    eph.copy_from_slice(ephemeral);
+    let peer = X25519PublicKey::from_bytes(&eph);
+
+    let mut agree = [0u8; 32];
+    let mut ratchet_pub: Option<[u8; 32]> = None;
+    match ratchet_priv {
+        Some(r) => {
+            agree.copy_from_slice(r);
+            ratchet_pub = Some(X25519PrivateKey::from_bytes(&agree).public_key().to_bytes());
+        }
+        None => agree.copy_from_slice(&priv_key[..32]),
+    }
+    let shared = X25519PrivateKey::from_bytes(&agree).exchange(&peer);
+
+    let derived = derive_key_64(&shared, &id.hash).unwrap();
+    let half = derived.len() / 2;
+
+    let hmac_ok = token::decrypt(tok, &derived).is_ok();
+
+    let ratchets_owned: Vec<[u8; 32]> = match ratchet_priv {
+        Some(r) => {
+            let mut a = [0u8; 32];
+            a.copy_from_slice(r);
+            vec![a]
+        }
+        None => vec![],
+    };
+    let ratchet_refs: Vec<&[u8; 32]> = ratchets_owned.iter().collect();
+    let plaintext = id
+        .decrypt(payload, if ratchet_refs.is_empty() { None } else { Some(&ratchet_refs) }, false)
+        .ok();
+
+    print_header(out, &p, raw);
+    f(out, "ephemeral_public", &hexs(ephemeral));
+    f(out, "iv", &hexs(iv));
+    f(out, "ciphertext", &hexs(ct));
+    f(out, "hmac", &hexs(mac));
+    f(out, "identity_hash", &hexs(&id.hash));
+    match ratchet_pub {
+        Some(r) => f(out, "ratchet_public", &hexs(&r)),
+        None => f(out, "ratchet_public", "-"),
+    }
+    f(out, "shared_key", &hexs(&shared));
+    f(out, "signing_key", &hexs(&derived[..half]));
+    f(out, "encryption_key", &hexs(&derived[half..]));
+    f(out, "hmac_valid", if hmac_ok { "yes" } else { "no" });
+    match plaintext {
+        None => {
+            f(out, "plaintext_length", "-");
+            f(out, "plaintext", "-");
+        }
+        Some(pt) => {
+            f(out, "plaintext_length", &format!("{}", pt.len()));
+            if pt.is_empty() {
+                f(out, "plaintext", "-");
+            } else {
+                f(out, "plaintext", &hexs(&pt));
+            }
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -254,6 +375,7 @@ fn main() {
         "destination" => destination(&mut out, &blobs),
         "signature" => signature(&mut out, &blobs),
         "announce" => announce(&mut out, &blobs),
+        "encrypted" => encrypted(&mut out, &blobs),
         k => {
             eprintln!("unknown kind {}", k);
             std::process::exit(2);
