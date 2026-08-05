@@ -19,6 +19,7 @@
 #include "Cryptography/HKDF.h"
 #include "Cryptography/Token.h"
 #include "Cryptography/X25519.h"
+#include "Link.h"
 
 static const int W = 18;
 static std::vector<std::string> out;
@@ -130,6 +131,23 @@ static const char *dest_types[] = {"single", "group", "plain", "link"};
 static const char *packet_types[] = {"data", "announce", "linkrequest", "proof"};
 static const char *xport_types[] = {"broadcast", "transport", "relay", "tunnel"};
 
+// Named from microReticulum's own context constants at Type.h:428-437.
+static std::string context_name(unsigned c) {
+	static char buf[8];
+	switch (c) {
+	case RNS::Type::Packet::CONTEXT_NONE:   return "none";
+	case RNS::Type::Packet::PATH_RESPONSE:  return "path_response";
+	case RNS::Type::Packet::KEEPALIVE:      return "keepalive";
+	case RNS::Type::Packet::LINKIDENTIFY:   return "link_identify";
+	case RNS::Type::Packet::LINKCLOSE:      return "link_close";
+	case RNS::Type::Packet::LINKPROOF:      return "link_proof";
+	case RNS::Type::Packet::LRRTT:          return "link_rtt";
+	case RNS::Type::Packet::LRPROOF:        return "link_request_proof";
+	}
+	snprintf(buf, sizeof buf, "%02x", c);
+	return std::string(buf);
+}
+
 static void kind_announce(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &raw = b[0];
 	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
@@ -179,10 +197,7 @@ static void kind_announce(std::vector<RNS::Bytes> &b) {
 	if (header_type == 1) f("transport_id", hexs(p.transport_id()));
 	else f("transport_id", "-");
 	f("destination_hash", hexs(p.destination_hash()));
-	unsigned context = (unsigned)p.context();
-	if (context == 0x00) f("context", "none");
-	else if (context == 0x0b) f("context", "path_response");
-	else { snprintf(buf, sizeof buf, "%02x", context); f("context", buf); }
+	f("context", context_name((unsigned)p.context()));
 	snprintf(buf, sizeof buf, "%zu", (size_t)payload.size()); f("payload_length", buf);
 	f("public_key", hexs(public_key));
 	f("name_hash", hexs(name_hash));
@@ -215,10 +230,7 @@ static void print_header(RNS::Packet &p, const RNS::Bytes &raw) {
 	if (header_type == 1) f("transport_id", hexs(p.transport_id()));
 	else f("transport_id", "-");
 	f("destination_hash", hexs(p.destination_hash()));
-	unsigned context = (unsigned)p.context();
-	if (context == 0x00) f("context", "none");
-	else if (context == 0x0b) f("context", "path_response");
-	else { snprintf(buf, sizeof buf, "%02x", context); f("context", buf); }
+	f("context", context_name((unsigned)p.context()));
 	snprintf(buf, sizeof buf, "%zu", (size_t)p.data().size()); f("payload_length", buf);
 }
 
@@ -285,6 +297,175 @@ static void kind_encrypted(std::vector<RNS::Bytes> &b, bool no_ratchet) {
 	}
 }
 
+static const size_t ECPUBSIZE = 64;
+static const size_t SIGNALLEN = 3;
+
+static void print_mode(RNS::Type::Link::link_mode mode) {
+	char buf[8];
+	if (mode == RNS::Type::Link::MODE_AES256_CBC) { f("mode", "aes256_cbc"); return; }
+	snprintf(buf, sizeof buf, "%02x", (unsigned)mode);
+	f("mode", buf);
+}
+
+static void kind_linkrequest(std::vector<RNS::Bytes> &b) {
+	const RNS::Bytes &raw = b[0];
+	char buf[32];
+
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	RNS::Packet p(raw);
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+
+	RNS::Bytes payload = p.data();
+	bool signalled = payload.size() == ECPUBSIZE + SIGNALLEN;
+	if (!signalled && payload.size() != ECPUBSIZE) {
+		invalid("invalid-length", "payload_length", payload.size(), "accepted_length", ECPUBSIZE);
+		snprintf(buf, sizeof buf, "%zu", ECPUBSIZE + SIGNALLEN);
+		f("signalled_length", buf);
+		return;
+	}
+
+	print_header(p, raw);
+	f("x25519_public", hexs(payload.left(32)));
+	f("ed25519_public", hexs(payload.mid(32, 32)));
+	f("signalling", signalled ? hexs(payload.mid(ECPUBSIZE)) : "-");
+	print_mode(RNS::Link::mode_from_lr_packet(p));
+	if (signalled) {
+		snprintf(buf, sizeof buf, "%u", (unsigned)RNS::Link::mtu_from_lr_packet(p));
+		f("mtu", buf);
+	} else {
+		f("mtu", "-");
+	}
+	f("link_id", hexs(RNS::Link::link_id_from_lr_packet(p)));
+}
+
+static void kind_linkproof(std::vector<RNS::Bytes> &b) {
+	const RNS::Bytes &request_raw = b[0];
+	const RNS::Bytes &identity_public = b[1];
+	const RNS::Bytes &raw = b[2];
+	char buf[32];
+
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	RNS::Packet p(raw);
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+
+	RNS::Bytes payload = p.data();
+	bool signalled = payload.size() == 96 + SIGNALLEN;
+	if (!signalled && payload.size() != 96) {
+		invalid("invalid-length", "payload_length", payload.size(), "accepted_length", 96);
+		snprintf(buf, sizeof buf, "%zu", (size_t)(96 + SIGNALLEN));
+		f("signalled_length", buf);
+		return;
+	}
+
+	RNS::Packet request(request_raw);
+	request.unpack();
+	RNS::Bytes link_id = RNS::Link::link_id_from_lr_packet(request);
+
+	RNS::Bytes signature = payload.left(64);
+	RNS::Bytes x25519_public = payload.mid(64, 32);
+	RNS::Bytes signalling = signalled ? payload.mid(96) : RNS::Bytes();
+	RNS::Bytes signer_ed = identity_public.mid(32);
+
+	// validate_proof drives a link state machine and returns nothing, so
+	// the material is assembled here and verified with microReticulum's
+	// own Identity::validate.
+	RNS::Bytes signed_data;
+	signed_data << link_id << x25519_public << signer_ed << signalling;
+
+	RNS::Identity signer(false);
+	signer.load_public_key(identity_public);
+
+	print_header(p, raw);
+	f("link_id", hexs(link_id));
+	f("link_id_match", p.destination_hash() == link_id ? "yes" : "no");
+	f("signature", hexs(signature));
+	f("x25519_public", hexs(x25519_public));
+	f("signalling", signalled ? hexs(signalling) : "-");
+	print_mode(RNS::Link::mode_from_lp_packet(p));
+	if (signalled) {
+		snprintf(buf, sizeof buf, "%u", (unsigned)RNS::Link::mtu_from_lp_packet(p));
+		f("mtu", buf);
+	} else {
+		f("mtu", "-");
+	}
+	f("signer_ed25519", hexs(signer_ed));
+	f("signed_data", hexs(signed_data));
+	f("signature_valid", signer.validate(signature, signed_data) ? "yes" : "no");
+}
+
+static void kind_linkdata(std::vector<RNS::Bytes> &b) {
+	const RNS::Bytes &request_raw = b[0];
+	const RNS::Bytes &responder_private = b[1];
+	const RNS::Bytes &raw = b[2];
+	char buf[32];
+
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	RNS::Packet p(raw);
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+
+	RNS::Packet request(request_raw);
+	request.unpack();
+	RNS::Bytes link_id = RNS::Link::link_id_from_lr_packet(request);
+	RNS::Bytes payload = p.data();
+
+	print_header(p, raw);
+	f("link_id", hexs(link_id));
+	f("link_id_match", p.destination_hash() == link_id ? "yes" : "no");
+
+	if ((unsigned)p.context() == RNS::Type::Packet::KEEPALIVE) {
+		f("encrypted", "no");
+		snprintf(buf, sizeof buf, "%zu", (size_t)payload.size());
+		f("plaintext_length", buf);
+		f("plaintext", payload.size() ? hexs(payload) : "-");
+		return;
+	}
+	f("encrypted", "yes");
+
+	RNS::Bytes iv = payload.left(16);
+	RNS::Bytes ct = payload.mid(16, payload.size() - 48);
+	RNS::Bytes mac = payload.mid(payload.size() - 32);
+
+	RNS::Bytes shared = RNS::Cryptography::X25519PrivateKey::from_private_bytes(responder_private)
+	                        ->exchange(request.data().left(32));
+	RNS::Bytes derived = RNS::Cryptography::hkdf(64, shared, link_id, {RNS::Bytes::NONE});
+	size_t half = derived.size() / 2;
+
+	RNS::Cryptography::Token tok(derived);
+	bool hmac_ok = tok.verify_hmac(payload);
+	RNS::Bytes plaintext = hmac_ok ? tok.decrypt(payload) : RNS::Bytes();
+
+	f("iv", hexs(iv));
+	f("ciphertext", hexs(ct));
+	f("hmac", hexs(mac));
+	f("shared_key", hexs(shared));
+	f("signing_key", hexs(derived.left(half)));
+	f("encryption_key", hexs(derived.mid(half)));
+	f("hmac_valid", hmac_ok ? "yes" : "no");
+	if (!hmac_ok) {
+		f("plaintext_length", "-");
+		f("plaintext", "-");
+		return;
+	}
+	snprintf(buf, sizeof buf, "%zu", (size_t)plaintext.size());
+	f("plaintext_length", buf);
+	f("plaintext", plaintext.size() ? hexs(plaintext) : "-");
+
+	if ((unsigned)p.context() == RNS::Type::Packet::LINKIDENTIFY && plaintext.size() == 128) {
+		RNS::Bytes pub = plaintext.left(64);
+		RNS::Bytes sig = plaintext.mid(64);
+		RNS::Bytes signed_data;
+		signed_data << link_id << pub;
+
+		RNS::Identity id(false);
+		id.load_public_key(pub);
+
+		f("identity_public", hexs(pub));
+		f("identity_hash", hexs(id.hash()));
+		f("identity_signed", hexs(signed_data));
+		f("identity_valid", id.validate(sig, signed_data) ? "yes" : "no");
+	}
+}
+
 int main(int argc, char **argv) {
 	if (argc != 3) { fprintf(stderr, "usage: micro kind rawfile\n"); return 2; }
 
@@ -299,6 +480,9 @@ int main(int argc, char **argv) {
 		else if (kind == "signature") kind_signature(blobs);
 		else if (kind == "announce") kind_announce(blobs);
 		else if (kind == "encrypted") kind_encrypted(blobs, absent[1]);
+		else if (kind == "linkrequest") kind_linkrequest(blobs);
+		else if (kind == "linkproof") kind_linkproof(blobs);
+		else if (kind == "linkdata") kind_linkdata(blobs);
 		else { fprintf(stderr, "unknown kind %s\n", argv[1]); return 2; }
 	} catch (const std::exception &e) {
 		out.clear();
