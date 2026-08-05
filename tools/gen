@@ -14,10 +14,15 @@
 # with different content, and reports the difference instead.
 
 import argparse
+import contextlib
 import datetime
+import hashlib
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
 
 PIN_VERSION = "1.4.2"
 PIN_COMMIT  = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
@@ -88,6 +93,80 @@ DESTINATIONS = [
     (("test", "gru\u0308\u00dfe", "\u65e5\u672c\u8a9e"), 4,
      "the same name decomposed (u+0075 u+0308); no normalisation, so the hash differs"),
 ]
+
+
+# Announce cases. Each is (key index, aspects, app_data, ratchet,
+# path_response, purpose).
+ANNOUNCES = [
+    (0, ("rns_unit_tests", "link", "establish"), None,  False, False,
+     "minimal announce: no ratchet, no app data"),
+    (1, ("lxmf", "delivery"), b"\x01example node", False, False,
+     "app data present, appended after the signature"),
+    (0, ("rns_unit_tests", "link", "establish"), None,  True,  False,
+     "ratchet present, context flag set"),
+    (1, ("lxmf", "delivery"), b"\x01example node", True,  False,
+     "ratchet and app data together"),
+    (2, ("example_utilities", "announce"), None, False, True,
+     "path response context"),
+]
+
+# The timestamp pinned into random_hash while generating. Any fixed
+# value inside the five-byte field will do; this one is a round number
+# well clear of both ends.
+PINNED_TIME = 1750000000
+
+
+class DetRandom:
+    """A deterministic byte stream, so that regenerating a vector
+    produces the same bytes. Consumers never see this: an announce
+    carries a timestamp and cannot be re-encoded from raw alone, so
+    announce vectors are decode class regardless."""
+
+    def __init__(self, tag):
+        self.seed    = tag.encode("utf-8")
+        self.counter = 0
+        self.buf     = b""
+
+    def bytes(self, n):
+        while len(self.buf) < n:
+            self.buf += hashlib.sha256(self.seed + self.counter.to_bytes(4, "big")).digest()
+            self.counter += 1
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+
+@contextlib.contextmanager
+def pinned(RNS, tag):
+    """Replace every source of randomness and the clock, so that the
+    generated announce is reproducible."""
+    rng = DetRandom(tag)
+
+    real_time    = time.time
+    real_urandom = os.urandom
+    real_rand    = RNS.Identity.get_random_hash
+
+    time.time = lambda: float(PINNED_TIME)
+    os.urandom = rng.bytes
+    RNS.Identity.get_random_hash = staticmethod(lambda: rng.bytes(16))
+    try:
+        yield
+    finally:
+        time.time = real_time
+        os.urandom = real_urandom
+        RNS.Identity.get_random_hash = real_rand
+
+
+class TransportStub:
+    """Destination registration and ratchet persistence reach into a
+    running Reticulum instance. Neither affects the bytes on the wire,
+    so both are stubbed rather than starting an instance."""
+    is_connected_to_shared_instance = False
+
+
+def stub_transport(RNS):
+    RNS.Transport.owner = TransportStub()
+    RNS.Transport.register_destination = staticmethod(lambda d: None)
+    RNS.Identity._remember_ratchet = staticmethod(lambda h, r: None)
 
 
 def load_rns(checkout):
@@ -235,6 +314,173 @@ def gen_destination(RNS, w):
             expect)
 
 
+DEST_TYPES   = ["single", "group", "plain", "link"]
+PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
+XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
+CONTEXTS     = {0x00: "none", 0x0b: "path_response"}
+
+KEYSIZE     = 64
+NAMEHASHLEN = 10
+RANDHASHLEN = 10
+SIGLEN      = 64
+RATCHETLEN  = 32
+ADDRLEN     = 16
+MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
+
+
+def describe_announce(raw):
+    """Decode an announce packet from its bytes alone.
+
+    This deliberately does not consult any RNS object. gen and dump are
+    then two independent decoders of the same bytes, and check compares
+    them. A misreading of the layout on one side shows up as a diff.
+    """
+    if len(raw) < 2:
+        return [field("invalid", "length")]
+
+    flags, hops = raw[0], raw[1]
+
+    header_type      = (flags & 0b01000000) >> 6
+    context_flag     = (flags & 0b00100000) >> 5
+    transport_type   = (flags & 0b00010000) >> 4
+    destination_type = (flags & 0b00001100) >> 2
+    packet_type      = (flags & 0b00000011)
+
+    if hops >= MAX_HOPS:
+        return [field("invalid", "hops")]
+
+    if header_type == 1:
+        need = 2 + 2*ADDRLEN + 1
+        if len(raw) < need:
+            return [field("invalid", "length")]
+        transport_id = raw[2:2+ADDRLEN]
+        dest_hash    = raw[2+ADDRLEN:2+2*ADDRLEN]
+        context      = raw[2+2*ADDRLEN]
+        payload      = raw[3+2*ADDRLEN:]
+    else:
+        need = 2 + ADDRLEN + 1
+        if len(raw) < need:
+            return [field("invalid", "length")]
+        transport_id = None
+        dest_hash    = raw[2:2+ADDRLEN]
+        context      = raw[2+ADDRLEN]
+        payload      = raw[3+ADDRLEN:]
+
+    minimum = KEYSIZE + NAMEHASHLEN + RANDHASHLEN + SIGLEN
+    if context_flag == 1:
+        minimum += RATCHETLEN
+    if len(payload) < minimum:
+        return [field("invalid", "length")]
+
+    at          = 0
+    public_key  = payload[at:at+KEYSIZE];      at += KEYSIZE
+    name_hash   = payload[at:at+NAMEHASHLEN];  at += NAMEHASHLEN
+    random_hash = payload[at:at+RANDHASHLEN];  at += RANDHASHLEN
+    if context_flag == 1:
+        ratchet = payload[at:at+RATCHETLEN];   at += RATCHETLEN
+    else:
+        ratchet = b""
+    signature   = payload[at:at+SIGLEN];       at += SIGLEN
+    app_data    = payload[at:]
+
+    identity_hash = hashlib.sha256(public_key).digest()[:ADDRLEN]
+    expected_hash = hashlib.sha256(name_hash + identity_hash).digest()[:ADDRLEN]
+
+    # app_data is transmitted after the signature but signed before it.
+    signed_data = dest_hash + public_key + name_hash + random_hash + ratchet + app_data
+
+    return [
+        field("flags",            "%02x" % flags),
+        field("header_type",      "%d" % (header_type + 1)),
+        field("context_flag",     "set" if context_flag else "unset"),
+        field("transport_type",   XPORT_TYPES[transport_type]),
+        field("destination_type", DEST_TYPES[destination_type]),
+        field("packet_type",      PACKET_TYPES[packet_type]),
+        field("hops",             "%d" % hops),
+        field("transport_id",     transport_id.hex() if transport_id else "-"),
+        field("destination_hash", dest_hash.hex()),
+        field("context",          CONTEXTS.get(context, "%02x" % context)),
+        field("payload_length",   "%d" % len(payload)),
+        field("public_key",       public_key.hex()),
+        field("name_hash",        name_hash.hex()),
+        field("random_hash",      random_hash.hex()),
+        field("ratchet",          ratchet.hex() if ratchet else "-"),
+        field("signature",        signature.hex()),
+        field("app_data",         app_data.hex() if app_data else "-"),
+        field("identity_hash",    identity_hash.hex()),
+        field("expected_hash",    expected_hash.hex()),
+        field("destination_match", "yes" if dest_hash == expected_hash else "no"),
+        field("signed_data",      signed_data.hex()),
+    ]
+
+
+def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag, tmpdir):
+    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
+
+    with pinned(RNS, tag):
+        destination = RNS.Destination(identity, RNS.Destination.IN,
+                                      RNS.Destination.SINGLE, aspects[0], *aspects[1:])
+        if ratchet:
+            destination.enable_ratchets(os.path.join(tmpdir, tag))
+
+        packet = destination.announce(app_data=app_data, path_response=path_response, send=False)
+        packet.pack()
+
+    # The reference implementation must accept what it produced.
+    assert RNS.Identity.validate_announce(packet)
+    return packet.raw
+
+
+def transport_insert(raw, hops, transport_id):
+    """Rewrite a header 1 packet as a header 2 packet in transport,
+    exactly as Transport.mangle_hops does at RNS/Transport.py:1369."""
+    flags = raw[0] | (0x01 << 6) | (0x01 << 4)
+    return bytes([flags, hops]) + transport_id + raw[2:]
+
+
+def gen_announce(RNS, w, tmpdir):
+    stub_transport(RNS)
+    raws = []
+
+    for n, (key_index, aspects, app_data, ratchet, path_response, purpose) in enumerate(ANNOUNCES):
+        raw = announce_raw(RNS, key_index, aspects, app_data, ratchet,
+                           path_response, "announce-%03d" % n, tmpdir)
+        raws.append(raw)
+        w.vector("announce", n,
+            meta_block("announce", "decode", purpose),
+            [raw.hex()],
+            describe_announce(raw))
+
+    base = len(ANNOUNCES)
+    transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
+
+    # Derived cases. Each states in its source how it was built, since
+    # none of them is something the reference implementation emitted.
+    derived = [
+        (transport_insert(raws[0], 1, transport_id),
+         "header 2, one hop, transport id inserted",
+         "constructed by tools/gen from announce/000, per RNS/Transport.py:1369"),
+
+        (raws[0][:2] + bytes(ADDRLEN) + raws[0][2+ADDRLEN:],
+         "destination hash replaced with zeroes; the announce decodes but does not match",
+         "constructed by tools/gen from announce/000"),
+
+        (raws[0][:-1],
+         "one byte short of the minimum payload",
+         "constructed by tools/gen from announce/000"),
+
+        (raws[0][:1] + bytes([MAX_HOPS]) + raws[0][2:],
+         "hop count at the limit, which the reference implementation rejects",
+         "constructed by tools/gen from announce/000"),
+    ]
+
+    for n, (raw, purpose, source) in enumerate(derived):
+        w.vector("announce", base + n,
+            meta_block("announce", "decode", purpose, source=source),
+            [raw.hex()],
+            describe_announce(raw))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkout", default=CHECKOUT)
@@ -244,8 +490,13 @@ def main():
     RNS = load_rns(args.checkout)
     w   = Writer(ROOT, args.force)
 
-    gen_identity(RNS, w)
-    gen_destination(RNS, w)
+    tmpdir = tempfile.mkdtemp(prefix="reticulum-vectors-")
+    try:
+        gen_identity(RNS, w)
+        gen_destination(RNS, w)
+        gen_announce(RNS, w, tmpdir)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
     print("%d files written" % w.written)
     if w.differs:

@@ -1,0 +1,101 @@
+Announce
+
+Payload layout and validation. For what announces are for and how they
+propagate, see upstream docs/source/understanding.rst, section "The
+Announce Mechanism in Detail".
+
+Vectors: test/announce/
+
+An announce is a packet of packet type announce. It is not encrypted.
+See doc/packet for the header.
+
+
+Payload
+
+    offset  size  field
+    0       64    public key
+    64      10    name hash
+    74      10    random hash
+    84      32    ratchet, only when the context flag is set
+    84/116  64    signature
+    148/180 -     app data, optional
+
+Without a ratchet the payload is at least 148 bytes, with one at least
+180. Anything beyond the signature is app data.
+
+    RNS/Destination.py:302, RNS/Identity.py:511
+
+
+Random hash
+
+Ten bytes, in two parts:
+
+    offset  size  field
+    0       5     random
+    5       5     unix seconds, big endian
+
+The timestamp is truncated to five bytes, not five bytes of a larger
+field. This is why announce vectors are decode class: the same
+destination announcing twice produces different bytes.
+
+    RNS/Destination.py:283
+
+
+Signed data
+
+    signed_data = destination_hash || public_key || name_hash
+                  || random_hash || ratchet || app_data
+
+Two things differ from the wire layout, and both are easy to get
+wrong.
+
+The destination hash is signed but is not part of the payload. It is
+taken from the packet header.
+
+App data is transmitted after the signature but signed before it. On
+the wire it follows the signature; in the signed data it precedes it.
+
+Every announce vector carries the assembled signed_data field, so an
+implementation that cannot verify a signature can compare its own
+assembly directly.
+
+    RNS/Destination.py:298 (sender), RNS/Identity.py:545 (receiver)
+
+
+Validation
+
+The reference implementation checks, in this order:
+
+    1  the signature over signed_data, using the announced public key
+    2  the destination hash
+
+The second check is
+
+    identity_hash = SHA-256(public_key)[0:16]
+    expected_hash = SHA-256(name_hash || identity_hash)[0:16]
+    expected_hash == destination_hash
+
+The announce carries the name hash but not the name. A receiver
+therefore learns which destination hash is claimed and can confirm it
+belongs to the announced key, but cannot recover the aspect names.
+
+    RNS/Identity.py:556, RNS/Identity.py:563
+
+
+Ratchet
+
+Thirty-two bytes, an X25519 public key, present when and only when the
+context flag in the header is set. A receiver that ignores the context
+flag will read the first 32 bytes of the ratchet as part of the
+signature and reject every ratchet announce.
+
+    RNS/Destination.py:287, RNS/Identity.py:525
+
+
+Reproducibility of the vectors
+
+The announces in this corpus were generated with the clock and every
+source of randomness pinned, so that regenerating produces identical
+bytes. That is a property of tools/gen, not of the protocol. Consumers
+still cannot re-encode an announce from raw alone, because raw does
+not contain the private key. The vectors are decode class.

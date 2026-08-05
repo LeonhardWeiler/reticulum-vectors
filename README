@@ -50,22 +50,22 @@ Vector format
 
     test/<kind>/<nnn>/
 
-        meta      provenance and Determinism class
+        meta      provenance and determinism class
         raw       input, hex, one blob per line
         expect    field decomposition, one field per line
 
-meta records:
+meta records these fields, spelled in lower case as shown:
 
     source        which implementation and version produced this
     generated     the date
     kind          which decoder applies
-    Determinism   decode or encode
+    determinism   decode or encode
     purpose       one line
 
-Determinism: encode means every input is pinned and re-encoding
-reproduces raw byte for byte. Determinism: decode means the object
-contains randomness or a timestamp and can only be decoded and
-validated. Most Reticulum objects are decode-class; see doc/.
+A vector of the encode class has every input pinned, so re-encoding
+reproduces raw byte for byte. A vector of the decode class describes an
+object containing randomness or a timestamp, and can only be decoded
+and validated. Most Reticulum objects are decode class; see doc/.
 
 The number of hex lines in raw depends on the kind and is documented
 in doc/.

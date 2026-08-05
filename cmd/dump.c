@@ -200,6 +200,157 @@ static void dump_destination(struct blob *b, int nblobs)
 	field_hex("destination_hash", dest_hash, IDENTITY_HASH_LEN);
 }
 
+/* announce: one blob, the whole packet. See ../doc/packet and
+ * ../doc/announce. */
+
+#define ADDRLEN      16
+#define KEYSIZE      64
+#define NAMEHASHLEN  10
+#define RANDHASHLEN  10
+#define SIGLEN       64
+#define RATCHETLEN   32
+#define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
+
+static const char *dest_types[]   = { "single", "group", "plain", "link" };
+static const char *packet_types[] = { "data", "announce", "linkrequest", "proof" };
+static const char *xport_types[]  = { "broadcast", "transport", "relay", "tunnel" };
+
+static void dump_announce(struct blob *b, int nblobs)
+{
+	const uint8_t *raw, *transport_id, *dest_hash, *payload;
+	const uint8_t *public_key, *name_hash, *random_hash, *ratchet, *signature, *app_data;
+	uint8_t identity_hash[ADDRLEN], expected_hash[ADDRLEN];
+	uint8_t material[NAMEHASHLEN + ADDRLEN];
+	uint8_t signed_data[MAXBLOB];
+	size_t  len, paylen, applen, at, sdlen, minimum;
+	unsigned flags, hops, header_type, context_flag, transport_type;
+	unsigned destination_type, packet_type, context;
+
+	if (nblobs != 1)
+		fatal("announce: expected 1 blob, got %d", nblobs);
+
+	raw = b[0].data;
+	len = b[0].len;
+
+	if (len < 2) {
+		field("invalid", "length");
+		return;
+	}
+
+	flags = raw[0];
+	hops  = raw[1];
+
+	header_type      = (flags & 0x40) >> 6;
+	context_flag     = (flags & 0x20) >> 5;
+	transport_type   = (flags & 0x10) >> 4;
+	destination_type = (flags & 0x0c) >> 2;
+	packet_type      = (flags & 0x03);
+
+	if (hops >= MAX_HOPS) {
+		field("invalid", "hops");
+		return;
+	}
+
+	if (header_type == 1) {
+		if (len < 2 + 2*ADDRLEN + 1) {
+			field("invalid", "length");
+			return;
+		}
+		transport_id = raw + 2;
+		dest_hash    = raw + 2 + ADDRLEN;
+		context      = raw[2 + 2*ADDRLEN];
+		payload      = raw + 3 + 2*ADDRLEN;
+	} else {
+		if (len < 2 + ADDRLEN + 1) {
+			field("invalid", "length");
+			return;
+		}
+		transport_id = NULL;
+		dest_hash    = raw + 2;
+		context      = raw[2 + ADDRLEN];
+		payload      = raw + 3 + ADDRLEN;
+	}
+	paylen = len - (size_t)(payload - raw);
+
+	minimum = KEYSIZE + NAMEHASHLEN + RANDHASHLEN + SIGLEN;
+	if (context_flag == 1)
+		minimum += RATCHETLEN;
+	if (paylen < minimum) {
+		field("invalid", "length");
+		return;
+	}
+
+	at = 0;
+	public_key  = payload + at; at += KEYSIZE;
+	name_hash   = payload + at; at += NAMEHASHLEN;
+	random_hash = payload + at; at += RANDHASHLEN;
+	if (context_flag == 1) {
+		ratchet = payload + at; at += RATCHETLEN;
+	} else {
+		ratchet = NULL;
+	}
+	signature = payload + at; at += SIGLEN;
+	app_data  = payload + at;
+	applen    = paylen - at;
+
+	truncated_hash(public_key, KEYSIZE, identity_hash, ADDRLEN);
+	memcpy(material, name_hash, NAMEHASHLEN);
+	memcpy(material + NAMEHASHLEN, identity_hash, ADDRLEN);
+	truncated_hash(material, sizeof material, expected_hash, ADDRLEN);
+
+	/* app_data is transmitted after the signature but signed before
+	 * it. Getting this wrong is the most likely reason for a valid
+	 * announce to be rejected. */
+	sdlen = 0;
+	memcpy(signed_data + sdlen, dest_hash,   ADDRLEN);     sdlen += ADDRLEN;
+	memcpy(signed_data + sdlen, public_key,  KEYSIZE);     sdlen += KEYSIZE;
+	memcpy(signed_data + sdlen, name_hash,   NAMEHASHLEN); sdlen += NAMEHASHLEN;
+	memcpy(signed_data + sdlen, random_hash, RANDHASHLEN); sdlen += RANDHASHLEN;
+	if (ratchet != NULL) {
+		memcpy(signed_data + sdlen, ratchet, RATCHETLEN);
+		sdlen += RATCHETLEN;
+	}
+	memcpy(signed_data + sdlen, app_data, applen);
+	sdlen += applen;
+
+	field("flags", "%02x", flags);
+	field("header_type", "%u", header_type + 1);
+	field("context_flag", "%s", context_flag ? "set" : "unset");
+	field("transport_type", "%s", xport_types[transport_type]);
+	field("destination_type", "%s", dest_types[destination_type]);
+	field("packet_type", "%s", packet_types[packet_type]);
+	field("hops", "%u", hops);
+	if (transport_id != NULL)
+		field_hex("transport_id", transport_id, ADDRLEN);
+	else
+		field("transport_id", "-");
+	field_hex("destination_hash", dest_hash, ADDRLEN);
+	if (context == 0x00)
+		field("context", "none");
+	else if (context == 0x0b)
+		field("context", "path_response");
+	else
+		field("context", "%02x", context);
+	field("payload_length", "%zu", paylen);
+	field_hex("public_key", public_key, KEYSIZE);
+	field_hex("name_hash", name_hash, NAMEHASHLEN);
+	field_hex("random_hash", random_hash, RANDHASHLEN);
+	if (ratchet != NULL)
+		field_hex("ratchet", ratchet, RATCHETLEN);
+	else
+		field("ratchet", "-");
+	field_hex("signature", signature, SIGLEN);
+	if (applen > 0)
+		field_hex("app_data", app_data, applen);
+	else
+		field("app_data", "-");
+	field_hex("identity_hash", identity_hash, ADDRLEN);
+	field_hex("expected_hash", expected_hash, ADDRLEN);
+	field("destination_match", "%s",
+	      memcmp(dest_hash, expected_hash, ADDRLEN) == 0 ? "yes" : "no");
+	field_hex("signed_data", signed_data, sdlen);
+}
+
 int main(int argc, char **argv)
 {
 	struct blob blobs[MAXBLOBS];
@@ -217,6 +368,8 @@ int main(int argc, char **argv)
 		dump_identity(blobs, n);
 	else if (strcmp(argv[1], "destination") == 0)
 		dump_destination(blobs, n);
+	else if (strcmp(argv[1], "announce") == 0)
+		dump_announce(blobs, n);
 	else
 		fatal("unknown kind %s", argv[1]);
 

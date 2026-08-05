@@ -1,0 +1,115 @@
+Packet
+
+Header layout and flag bits. For what packets are for and how they are
+routed, see upstream docs/source/understanding.rst, sections
+"Reticulum Transport" and "Binary Packet Format".
+
+Vectors: test/announce/ carries the only packets in the corpus so far.
+
+
+Constants
+
+    MTU                 500 bytes    RNS/Reticulum.py:93
+    HEADER_MAXSIZE       35 bytes    RNS/Reticulum.py:148
+    IFAC_MIN_SIZE         1 byte     RNS/Reticulum.py:149
+    MDU                 464 bytes    RNS/Reticulum.py:152
+    PATHFINDER_M        128 hops     RNS/Transport.py:63
+
+
+Header
+
+Header 1, the normal form:
+
+    offset  size  field
+    0       1     flags
+    1       1     hops
+    2       16    destination hash
+    18      1     context
+    19      -     payload
+
+Header 2, used while a packet is in transport:
+
+    offset  size  field
+    0       1     flags
+    1       1     hops
+    2       16    transport id
+    18      16    destination hash
+    34      1     context
+    35      -     payload
+
+The transport id is inserted before the destination hash, not after.
+
+    RNS/Packet.py:177, RNS/Packet.py:240
+
+
+Flags
+
+One byte at offset 0.
+
+    bit  width  field
+    7    1      reserved, zero
+    6    1      header type
+    5    1      context flag
+    4    1      transport type
+    3-2  2      destination type
+    1-0  2      packet type
+
+    header type        0  header 1        1  header 2
+    transport type     0  broadcast       1  transport
+                       2  relay           3  tunnel
+    destination type   0  single          1  group
+                       2  plain           3  link
+    packet type        0  data            1  announce
+                       2  linkrequest     3  proof
+
+The header type bit encodes header 1 as zero. Vectors print the
+human-facing numbering, so bit 6 clear appears as header_type 1.
+
+The context flag has no fixed meaning. Its interpretation depends on
+the packet type; for announces it signals the presence of a ratchet.
+
+    RNS/Packet.py:169, RNS/Packet.py:248
+
+
+Hops
+
+One byte at offset 1. A packet with hops greater than or equal to
+PATHFINDER_M, that is 128, is rejected before any further parsing.
+
+test/announce/008 carries a packet at exactly 128 hops.
+
+    RNS/Packet.py:247
+
+
+Entering transport
+
+A transport node rewriting a header 1 packet into a header 2 packet
+performs exactly this transformation:
+
+    flags = old_flags | (1 << 6) | (transport_type << 4)
+    out   = flags || hops || transport_id || old[2:]
+
+The flags byte is combined with a bitwise or, not replaced. The rest
+of the original packet from offset 2 onward, that is the destination
+hash, the context byte and the payload, is copied unchanged. The
+payload is not re-signed, and for an announce the signature therefore
+still validates.
+
+test/announce/005 is test/announce/000 after this transformation.
+
+    RNS/Transport.py:1369
+
+
+Vector format
+
+kind: announce, determinism: decode
+
+raw is one line:
+
+    line 1    the complete packet
+
+A packet that cannot be decoded produces a single field naming the
+reason and nothing else:
+
+    invalid            length
+    invalid            hops
