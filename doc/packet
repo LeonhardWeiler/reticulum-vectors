@@ -76,7 +76,7 @@ Hops
 One byte at offset 1. A packet with hops greater than or equal to
 PATHFINDER_M, that is 128, is rejected before any further parsing.
 
-test/announce/008 carries a packet at exactly 128 hops.
+test/announce/hop-limit carries a packet at exactly 128 hops.
 
     RNS/Packet.py:247
 
@@ -95,7 +95,7 @@ hash, the context byte and the payload, is copied unchanged. The
 payload is not re-signed, and for an announce the signature therefore
 still validates.
 
-test/announce/005 is test/announce/000 after this transformation.
+test/announce/in-transport is test/announce/minimal after this transformation.
 
     RNS/Transport.py:1369
 
@@ -108,8 +108,20 @@ raw is one line:
 
     line 1    the complete packet
 
-A packet that cannot be decoded produces a single field naming the
-reason and nothing else:
+A packet that cannot be decoded produces the rule it broke and the
+numbers behind it, and nothing else:
 
-    invalid            length
-    invalid            hops
+    invalid            short-header
+    length             18
+    minimum_length     19
+
+    invalid            hop-limit
+    hops               128
+    hop_limit          128
+
+    invalid            short-payload
+    payload_length     147
+    minimum_length     148
+
+Naming the rule rather than the stage keeps two decoders from agreeing
+by accident when they fail for different reasons.

@@ -1,0 +1,5 @@
+source             python-rns 1.4.2 tests/identity.py:7 (b48b96e6)
+generated          2026-08-05
+kind               signature
+determinism        decode
+purpose            adopted signature over the upstream message

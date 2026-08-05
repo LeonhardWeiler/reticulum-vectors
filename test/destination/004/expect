@@ -1,7 +1,0 @@
-name               rns_unit_tests.link.establish
-app_name           rns_unit_tests
-aspect             link
-aspect             establish
-name_hash          528b84ff9fa689c05795
-identity_hash      -
-destination_hash   a4c9bcd70a33209bb921727c126501af

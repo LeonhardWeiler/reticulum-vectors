@@ -55,14 +55,29 @@ make it print the same field format and substitute it for dump:
 
     DUMP=./my-implementation cmd/check
 
+A decoder that implements only the decode direction can skip the
+round trip described below:
+
+    DUMP=./my-implementation ENCODE=no cmd/check
+
+    make verify
+
+additionally regenerates every vector from the pinned reference
+implementation and fails if a single byte would change. That is the
+evidence behind the source line in every meta file. It needs Python and
+the checkout; cmd/check alone needs neither.
+
 
 Vector format
 
-    test/<kind>/<nnn>/
+    test/<kind>/<name>/
 
         meta      provenance and determinism class
         raw       input, hex, one blob per line
         expect    field decomposition, one field per line
+
+Vectors are named after what they record, not numbered. Inserting a
+case does not renumber the rest, and doc/ can refer to one by name.
 
 meta records these fields, spelled in lower case as shown:
 
@@ -72,13 +87,32 @@ meta records these fields, spelled in lower case as shown:
     determinism   decode or encode
     purpose       one line
 
-A vector of the encode class has every input pinned, so re-encoding
-reproduces raw byte for byte. A vector of the decode class describes an
-object containing randomness or a timestamp, and can only be decoded
-and validated. Most Reticulum objects are decode class; see doc/.
+cmd/check requires all five, rejects an unknown kind or determinism
+class, and rejects a vector filed under a directory that disagrees with
+its kind. A field nothing reads is a field that drifts.
+
+A vector of the encode class carries in expect everything raw contains,
+so raw can be rebuilt from it; cmd/check does exactly that and diffs
+the result against raw. A vector of the decode class describes an
+object containing randomness, a timestamp, or a field expect records
+only by digest, and can be decoded but not rebuilt. Most Reticulum
+objects are decode class; see doc/.
+
+Every value in expect is one of three things: hex, a decimal number, or
+a keyword from a fixed set. Byte strings are always hex, names
+included. A destination name is arbitrary bytes, and printed as text a
+newline in an aspect would end the line early and let a vector forge or
+hide a field.
 
 The number of hex lines in raw depends on the kind and is documented
 in doc/.
+
+An object that cannot be decoded yields the rule it broke and the
+numbers behind it, rather than a single word:
+
+    invalid            short-payload
+    payload_length     147
+    minimum_length     148
 
 
 Relationship to the upstream test suite

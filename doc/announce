@@ -59,9 +59,9 @@ Every announce vector carries the assembled signed_data field followed
 by the signature_valid verdict. An implementation whose verification
 fails can compare its assembly before suspecting its curve code.
 
-test/announce/009 is a valid announce with one signature byte altered.
+test/announce/altered-signature is a valid announce with one signature byte altered.
 It decodes cleanly and its destination hash matches; only the
-signature fails. test/announce/006 fails both checks, because the
+signature fails. test/announce/destination-mismatch fails both checks, because the
 destination hash is part of the signed data.
 
     RNS/Destination.py:298 (sender), RNS/Identity.py:545 (receiver)

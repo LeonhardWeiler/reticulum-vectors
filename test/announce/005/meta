@@ -1,5 +1,0 @@
-source             constructed by tools/gen from announce/000, per RNS/Transport.py:1369
-generated          2026-08-05
-kind               announce
-determinism        decode
-purpose            header 2, one hop, transport id inserted

@@ -1,5 +1,0 @@
-source             constructed by tools/gen from signature/000
-generated          2026-08-05
-kind               signature
-determinism        encode
-purpose            the same signature with the first byte altered

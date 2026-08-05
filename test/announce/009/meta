@@ -1,5 +1,0 @@
-source             constructed by tools/gen from announce/000
-generated          2026-08-05
-kind               announce
-determinism        decode
-purpose            first signature byte altered; the announce decodes and matches, but the signature does not verify

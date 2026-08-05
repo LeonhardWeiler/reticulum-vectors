@@ -1,9 +1,18 @@
 /* dump - decode one Reticulum object and print its fields.
  *
- *	dump kind rawfile
+ *	dump kind rawfile		decode raw, print fields
+ *	dump -e kind expectfile		rebuild raw from fields
  *
- * The output format is the format used by the expect file of every
- * vector, so that checking is a diff. See ../README.
+ * The output of the first form is the expect file of a vector, so
+ * checking is a diff. The second form exists for vectors of the encode
+ * class, whose expect file claims to carry everything raw contains;
+ * running it and diffing against raw is what turns that claim into a
+ * test. See ../README.
+ *
+ * Every value dump prints is hex, a decimal number, or one of a fixed
+ * set of keywords. Nothing else reaches a line. A destination name is
+ * arbitrary bytes and is printed as hex for that reason: printed as
+ * text, a newline in an aspect would forge or hide a field.
  *
  * dump is a second implementation of the wire format, independent of
  * python-rns. That is its purpose. It deliberately shares no code with
@@ -19,19 +28,21 @@
 
 #define MAXBLOB   8192
 #define MAXBLOBS  8
+#define MAXFIELDS 64
 #define FIELDW    18
 
-#define IDENTITY_KEY_HALF   32
-#define IDENTITY_HASH_LEN   16
-#define NAME_HASH_LEN       10
-
-struct blob {
-	uint8_t  data[MAXBLOB];
-	size_t   len;
-	int      absent;	/* the line was "-" */
-};
+#define ADDRLEN      16
+#define KEYHALF      32
+#define KEYSIZE      64
+#define NAMEHASHLEN  10
+#define RANDHASHLEN  10
+#define SIGLEN       64
+#define RATCHETLEN   32
+#define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
 
 static const char *argv0;
+
+/* ---------------------------------------------------------------- output */
 
 static void fatal(const char *fmt, ...)
 {
@@ -66,12 +77,13 @@ static void field_hex(const char *name, const uint8_t *p, size_t n)
 	putchar('\n');
 }
 
-static void field_bytes(const char *name, const uint8_t *p, size_t n)
-{
-	printf("%-*s ", FIELDW, name);
-	fwrite(p, 1, n, stdout);
-	putchar('\n');
-}
+/* ----------------------------------------------------------------- input */
+
+struct blob {
+	uint8_t  data[MAXBLOB];
+	size_t   len;
+	int      absent;	/* the line was "-" */
+};
 
 static int unhex(int c)
 {
@@ -81,7 +93,43 @@ static int unhex(int c)
 	return -1;
 }
 
-/* Read a raw file: one hex blob per line, or "-" for an absent blob. */
+static void decode_hex(struct blob *b, const char *s, size_t len, const char *where)
+{
+	size_t i;
+
+	if (len % 2 != 0)
+		fatal("%s: odd hex length", where);
+	if (len / 2 > MAXBLOB)
+		fatal("%s: %zu bytes exceeds %d", where, len / 2, MAXBLOB);
+
+	b->len = 0;
+	for (i = 0; i < len; i += 2) {
+		int hi = unhex(s[i]), lo = unhex(s[i+1]);
+		if (hi < 0 || lo < 0)
+			fatal("%s: bad hex", where);
+		b->data[b->len++] = (uint8_t)(hi << 4 | lo);
+	}
+}
+
+/* Read one line, rejecting any that did not fit. A silently split line
+ * would decode as two blobs and quietly change what is being tested. */
+static int readline(FILE *f, char *buf, size_t size, const char *path, int n)
+{
+	size_t len;
+
+	if (fgets(buf, (int)size, f) == NULL)
+		return 0;
+
+	len = strlen(buf);
+	if (len == size - 1 && buf[len-1] != '\n')
+		fatal("%s: line %d longer than %zu bytes", path, n, size - 2);
+
+	while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r'))
+		buf[--len] = '\0';
+	return 1;
+}
+
+/* raw: one hex blob per line, or "-" for an absent blob. */
 static int readraw(const char *path, struct blob *out, int max)
 {
 	FILE *f;
@@ -91,12 +139,10 @@ static int readraw(const char *path, struct blob *out, int max)
 	if ((f = fopen(path, "r")) == NULL)
 		fatal("cannot open %s", path);
 
-	while (fgets(line, sizeof line, f) != NULL) {
-		size_t len = strlen(line), i;
+	while (readline(f, line, sizeof line, path, n + 1)) {
 		struct blob *b;
+		size_t len = strlen(line);
 
-		while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
-			line[--len] = '\0';
 		if (len == 0)
 			continue;
 		if (n == max)
@@ -110,22 +156,72 @@ static int readraw(const char *path, struct blob *out, int max)
 			b->absent = 1;
 			continue;
 		}
-		if (len % 2 != 0)
-			fatal("%s: odd hex length on line %d", path, n);
-		if (len / 2 > MAXBLOB)
-			fatal("%s: line %d exceeds %d bytes", path, n, MAXBLOB);
-
-		for (i = 0; i < len; i += 2) {
-			int hi = unhex(line[i]), lo = unhex(line[i+1]);
-			if (hi < 0 || lo < 0)
-				fatal("%s: bad hex on line %d", path, n);
-			b->data[b->len++] = (uint8_t)(hi << 4 | lo);
-		}
+		decode_hex(b, line, len, path);
 	}
 
 	fclose(f);
 	return n;
 }
+
+/* expect: "name<padding>value" per line. Values never contain a space,
+ * so the split is exact. */
+struct kv {
+	char name[32];
+	char value[MAXBLOB*2 + 2];
+};
+
+static int readexpect(const char *path, struct kv *out, int max)
+{
+	FILE *f;
+	char line[MAXBLOB*2 + 64];
+	int n = 0;
+
+	if ((f = fopen(path, "r")) == NULL)
+		fatal("cannot open %s", path);
+
+	while (readline(f, line, sizeof line, path, n + 1)) {
+		char *value;
+		size_t namelen;
+
+		if (line[0] == '\0')
+			continue;
+		if (n == max)
+			fatal("%s: more than %d fields", path, max);
+
+		value = line;
+		while (*value != '\0' && *value != ' ')
+			value++;
+		namelen = (size_t)(value - line);
+		while (*value == ' ')
+			value++;
+
+		if (namelen == 0 || namelen >= sizeof out[n].name)
+			fatal("%s: unusable field name on line %d", path, n + 1);
+		if (strlen(value) >= sizeof out[n].value)
+			fatal("%s: value too long on line %d", path, n + 1);
+
+		memcpy(out[n].name, line, namelen);
+		out[n].name[namelen] = '\0';
+		strcpy(out[n].value, value);
+		n++;
+	}
+
+	fclose(f);
+	return n;
+}
+
+static const char *lookup(struct kv *fields, int n, const char *name)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (strcmp(fields[i].name, name) == 0)
+			return fields[i].value;
+	fatal("no field named %s", name);
+	return NULL;
+}
+
+/* --------------------------------------------------------------- crypto */
 
 /* tweetnacl declares randombytes and leaves it to the caller. dump has
  * no use for randomness; the one place tweetnacl reaches for it is
@@ -177,99 +273,97 @@ static void truncated_hash(const uint8_t *p, size_t n, uint8_t *out, size_t take
 	memcpy(out, full, take);
 }
 
+/* ------------------------------------------------------------ decoding */
+
 /* identity: one blob, the 64-byte public key. See ../doc/identity. */
 static void dump_identity(struct blob *b, int nblobs)
 {
-	uint8_t hash[IDENTITY_HASH_LEN];
+	uint8_t hash[ADDRLEN];
 
 	if (nblobs != 1)
 		fatal("identity: expected 1 blob, got %d", nblobs);
-	if (b[0].len != IDENTITY_KEY_HALF*2)
-		fatal("identity: public key is %zu bytes, expected %d",
-		      b[0].len, IDENTITY_KEY_HALF*2);
+	if (b[0].len != KEYSIZE)
+		fatal("identity: public key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 
-	truncated_hash(b[0].data, b[0].len, hash, IDENTITY_HASH_LEN);
+	truncated_hash(b[0].data, KEYSIZE, hash, ADDRLEN);
 
-	field_hex("public_key",     b[0].data, IDENTITY_KEY_HALF*2);
-	field_hex("x25519_public",  b[0].data, IDENTITY_KEY_HALF);
-	field_hex("ed25519_public", b[0].data + IDENTITY_KEY_HALF, IDENTITY_KEY_HALF);
-	field_hex("identity_hash",  hash, IDENTITY_HASH_LEN);
+	field_hex("public_key",     b[0].data, KEYSIZE);
+	field_hex("x25519_public",  b[0].data, KEYHALF);
+	field_hex("ed25519_public", b[0].data + KEYHALF, KEYHALF);
+	field_hex("identity_hash",  hash, ADDRLEN);
+}
+
+/* keyset: one blob, the 64-byte private key. See ../doc/identity. */
+static void dump_keyset(struct blob *b, int nblobs)
+{
+	uint8_t pub[KEYSIZE];
+	uint8_t hash[ADDRLEN];
+
+	if (nblobs != 1)
+		fatal("keyset: expected 1 blob, got %d", nblobs);
+	if (b[0].len != KEYSIZE)
+		fatal("keyset: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
+
+	crypto_scalarmult_base(pub, b[0].data);
+	ed25519_public(b[0].data + KEYHALF, pub + KEYHALF);
+	truncated_hash(pub, KEYSIZE, hash, ADDRLEN);
+
+	field_hex("private_key",     b[0].data, KEYSIZE);
+	field_hex("x25519_private",  b[0].data, KEYHALF);
+	field_hex("ed25519_private", b[0].data + KEYHALF, KEYHALF);
+	field_hex("public_key",      pub, KEYSIZE);
+	field_hex("x25519_public",   pub, KEYHALF);
+	field_hex("ed25519_public",  pub + KEYHALF, KEYHALF);
+	field_hex("identity_hash",   hash, ADDRLEN);
 }
 
 /* destination: two blobs, the utf-8 name and the identity hash.
  * See ../doc/destination. */
 static void dump_destination(struct blob *b, int nblobs)
 {
-	uint8_t name_hash[NAME_HASH_LEN];
-	uint8_t material[NAME_HASH_LEN + IDENTITY_HASH_LEN];
-	uint8_t dest_hash[IDENTITY_HASH_LEN];
+	uint8_t name_hash[NAMEHASHLEN];
+	uint8_t material[NAMEHASHLEN + ADDRLEN];
+	uint8_t dest_hash[ADDRLEN];
 	size_t  matlen, start, i;
 
 	if (nblobs != 2)
 		fatal("destination: expected 2 blobs, got %d", nblobs);
-	if (!b[1].absent && b[1].len != IDENTITY_HASH_LEN)
-		fatal("destination: identity hash is %zu bytes, expected %d",
-		      b[1].len, IDENTITY_HASH_LEN);
+	if (!b[1].absent && b[1].len != ADDRLEN)
+		fatal("destination: identity hash is %zu bytes, expected %d", b[1].len, ADDRLEN);
 
-	truncated_hash(b[0].data, b[0].len, name_hash, NAME_HASH_LEN);
+	truncated_hash(b[0].data, b[0].len, name_hash, NAMEHASHLEN);
 
-	memcpy(material, name_hash, NAME_HASH_LEN);
-	matlen = NAME_HASH_LEN;
+	memcpy(material, name_hash, NAMEHASHLEN);
+	matlen = NAMEHASHLEN;
 	if (!b[1].absent) {
-		memcpy(material + matlen, b[1].data, IDENTITY_HASH_LEN);
-		matlen += IDENTITY_HASH_LEN;
+		memcpy(material + matlen, b[1].data, ADDRLEN);
+		matlen += ADDRLEN;
 	}
-	truncated_hash(material, matlen, dest_hash, IDENTITY_HASH_LEN);
+	truncated_hash(material, matlen, dest_hash, ADDRLEN);
 
-	field_bytes("name", b[0].data, b[0].len);
+	field_hex("name", b[0].data, b[0].len);
 
-	/* Split on dots. The first component is the app name, the rest
-	 * are aspects. No component may contain a dot, so a plain scan
+	/* Split on dots. No component may contain a dot, so a plain scan
 	 * is exact. */
 	start = 0;
 	for (i = 0; i <= b[0].len; i++) {
 		if (i == b[0].len || b[0].data[i] == '.') {
-			field_bytes(start == 0 ? "app_name" : "aspect",
-			            b[0].data + start, i - start);
+			field_hex(start == 0 ? "app_name" : "aspect",
+			          b[0].data + start, i - start);
 			start = i + 1;
 		}
 	}
 
-	field_hex("name_hash", name_hash, NAME_HASH_LEN);
+	field_hex("name_hash", name_hash, NAMEHASHLEN);
 	if (b[1].absent)
 		field("identity_hash", "-");
 	else
-		field_hex("identity_hash", b[1].data, IDENTITY_HASH_LEN);
-	field_hex("destination_hash", dest_hash, IDENTITY_HASH_LEN);
+		field_hex("identity_hash", b[1].data, ADDRLEN);
+	field_hex("destination_hash", dest_hash, ADDRLEN);
 }
 
-/* keyset: one blob, the 64-byte private key. See ../doc/identity. */
-static void dump_keyset(struct blob *b, int nblobs)
-{
-	uint8_t pub[IDENTITY_KEY_HALF*2];
-	uint8_t hash[IDENTITY_HASH_LEN];
-
-	if (nblobs != 1)
-		fatal("keyset: expected 1 blob, got %d", nblobs);
-	if (b[0].len != IDENTITY_KEY_HALF*2)
-		fatal("keyset: private key is %zu bytes, expected %d",
-		      b[0].len, IDENTITY_KEY_HALF*2);
-
-	crypto_scalarmult_base(pub, b[0].data);
-	ed25519_public(b[0].data + IDENTITY_KEY_HALF, pub + IDENTITY_KEY_HALF);
-	truncated_hash(pub, sizeof pub, hash, IDENTITY_HASH_LEN);
-
-	field_hex("private_key",     b[0].data, IDENTITY_KEY_HALF*2);
-	field_hex("x25519_private",  b[0].data, IDENTITY_KEY_HALF);
-	field_hex("ed25519_private", b[0].data + IDENTITY_KEY_HALF, IDENTITY_KEY_HALF);
-	field_hex("public_key",      pub, IDENTITY_KEY_HALF*2);
-	field_hex("x25519_public",   pub, IDENTITY_KEY_HALF);
-	field_hex("ed25519_public",  pub + IDENTITY_KEY_HALF, IDENTITY_KEY_HALF);
-	field_hex("identity_hash",   hash, IDENTITY_HASH_LEN);
-}
-
-/* signature: three blobs, the 64-byte public key, the message and the
- * signature. See ../doc/identity. */
+/* signature: three blobs, public key, message, signature.
+ * See ../doc/identity. */
 static void dump_signature(struct blob *b, int nblobs)
 {
 	const uint8_t *ed_pub;
@@ -277,16 +371,15 @@ static void dump_signature(struct blob *b, int nblobs)
 
 	if (nblobs != 3)
 		fatal("signature: expected 3 blobs, got %d", nblobs);
-	if (b[0].len != IDENTITY_KEY_HALF*2)
-		fatal("signature: public key is %zu bytes, expected %d",
-		      b[0].len, IDENTITY_KEY_HALF*2);
-	if (b[2].len != 64)
-		fatal("signature: signature is %zu bytes, expected 64", b[2].len);
+	if (b[0].len != KEYSIZE)
+		fatal("signature: public key is %zu bytes, expected %d", b[0].len, KEYSIZE);
+	if (b[2].len != SIGLEN)
+		fatal("signature: signature is %zu bytes, expected %d", b[2].len, SIGLEN);
 
-	ed_pub = b[0].data + IDENTITY_KEY_HALF;
+	ed_pub = b[0].data + KEYHALF;
 	sha256(b[1].data, b[1].len, digest);
 
-	field_hex("ed25519_public", ed_pub, IDENTITY_KEY_HALF);
+	field_hex("ed25519_public", ed_pub, KEYHALF);
 	field("message_length", "%zu", b[1].len);
 	field_hex("message_sha256", digest, sizeof digest);
 	field_hex("signature", b[2].data, b[2].len);
@@ -297,181 +390,294 @@ static void dump_signature(struct blob *b, int nblobs)
 /* announce: one blob, the whole packet. See ../doc/packet and
  * ../doc/announce. */
 
-#define ADDRLEN      16
-#define KEYSIZE      64
-#define NAMEHASHLEN  10
-#define RANDHASHLEN  10
-#define SIGLEN       64
-#define RATCHETLEN   32
-#define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
-
 static const char *dest_types[]   = { "single", "group", "plain", "link" };
 static const char *packet_types[] = { "data", "announce", "linkrequest", "proof" };
 static const char *xport_types[]  = { "broadcast", "transport", "relay", "tunnel" };
 
-static void dump_announce(struct blob *b, int nblobs)
-{
-	const uint8_t *raw, *transport_id, *dest_hash, *payload;
-	const uint8_t *public_key, *name_hash, *random_hash, *ratchet, *signature, *app_data;
-	uint8_t identity_hash[ADDRLEN], expected_hash[ADDRLEN];
-	uint8_t material[NAMEHASHLEN + ADDRLEN];
-	uint8_t signed_data[MAXBLOB];
-	size_t  len, paylen, applen, at, sdlen, minimum;
-	unsigned flags, hops, header_type, context_flag, transport_type;
+enum reason { OK, SHORT_HEADER, HOP_LIMIT, SHORT_PAYLOAD };
+
+struct header {
+	unsigned flags, hops;
+	unsigned header_type, context_flag, transport_type;
 	unsigned destination_type, packet_type, context;
+	const uint8_t *transport_id;		/* NULL for header 1 */
+	const uint8_t *destination_hash;
+	const uint8_t *payload;
+	size_t payload_len;
+};
 
-	if (nblobs != 1)
-		fatal("announce: expected 1 blob, got %d", nblobs);
+struct announce {
+	const uint8_t *public_key, *name_hash, *random_hash;
+	const uint8_t *ratchet;			/* NULL when the flag is unset */
+	const uint8_t *signature, *app_data;
+	size_t app_data_len;
+};
 
-	raw = b[0].data;
-	len = b[0].len;
+static enum reason parse_header(const uint8_t *raw, size_t len,
+                                struct header *h, size_t *got, size_t *need)
+{
+	size_t header_len;
 
 	if (len < 2) {
-		field("invalid", "length");
-		return;
+		*got = len; *need = 2;
+		return SHORT_HEADER;
 	}
 
-	flags = raw[0];
-	hops  = raw[1];
+	h->flags = raw[0];
+	h->hops  = raw[1];
 
-	header_type      = (flags & 0x40) >> 6;
-	context_flag     = (flags & 0x20) >> 5;
-	transport_type   = (flags & 0x10) >> 4;
-	destination_type = (flags & 0x0c) >> 2;
-	packet_type      = (flags & 0x03);
+	h->header_type      = (h->flags & 0x40) >> 6;
+	h->context_flag     = (h->flags & 0x20) >> 5;
+	h->transport_type   = (h->flags & 0x10) >> 4;
+	h->destination_type = (h->flags & 0x0c) >> 2;
+	h->packet_type      = (h->flags & 0x03);
 
-	if (hops >= MAX_HOPS) {
-		field("invalid", "hops");
-		return;
+	if (h->hops >= MAX_HOPS) {
+		*got = h->hops; *need = MAX_HOPS;
+		return HOP_LIMIT;
 	}
 
-	if (header_type == 1) {
-		if (len < 2 + 2*ADDRLEN + 1) {
-			field("invalid", "length");
-			return;
-		}
-		transport_id = raw + 2;
-		dest_hash    = raw + 2 + ADDRLEN;
-		context      = raw[2 + 2*ADDRLEN];
-		payload      = raw + 3 + 2*ADDRLEN;
+	header_len = 3 + ADDRLEN * (h->header_type + 1);
+	if (len < header_len) {
+		*got = len; *need = header_len;
+		return SHORT_HEADER;
+	}
+
+	if (h->header_type == 1) {
+		h->transport_id     = raw + 2;
+		h->destination_hash = raw + 2 + ADDRLEN;
+		h->context          = raw[2 + 2*ADDRLEN];
 	} else {
-		if (len < 2 + ADDRLEN + 1) {
-			field("invalid", "length");
-			return;
-		}
-		transport_id = NULL;
-		dest_hash    = raw + 2;
-		context      = raw[2 + ADDRLEN];
-		payload      = raw + 3 + ADDRLEN;
+		h->transport_id     = NULL;
+		h->destination_hash = raw + 2;
+		h->context          = raw[2 + ADDRLEN];
 	}
-	paylen = len - (size_t)(payload - raw);
+	h->payload     = raw + header_len;
+	h->payload_len = len - header_len;
+
+	return OK;
+}
+
+static enum reason parse_announce(const struct header *h, struct announce *a,
+                                  size_t *got, size_t *need)
+{
+	size_t minimum, at;
 
 	minimum = KEYSIZE + NAMEHASHLEN + RANDHASHLEN + SIGLEN;
-	if (context_flag == 1)
+	if (h->context_flag == 1)
 		minimum += RATCHETLEN;
-	if (paylen < minimum) {
-		field("invalid", "length");
-		return;
+
+	if (h->payload_len < minimum) {
+		*got = h->payload_len; *need = minimum;
+		return SHORT_PAYLOAD;
 	}
 
 	at = 0;
-	public_key  = payload + at; at += KEYSIZE;
-	name_hash   = payload + at; at += NAMEHASHLEN;
-	random_hash = payload + at; at += RANDHASHLEN;
-	if (context_flag == 1) {
-		ratchet = payload + at; at += RATCHETLEN;
+	a->public_key  = h->payload + at; at += KEYSIZE;
+	a->name_hash   = h->payload + at; at += NAMEHASHLEN;
+	a->random_hash = h->payload + at; at += RANDHASHLEN;
+	if (h->context_flag == 1) {
+		a->ratchet = h->payload + at; at += RATCHETLEN;
 	} else {
-		ratchet = NULL;
+		a->ratchet = NULL;
 	}
-	signature = payload + at; at += SIGLEN;
-	app_data  = payload + at;
-	applen    = paylen - at;
+	a->signature    = h->payload + at; at += SIGLEN;
+	a->app_data     = h->payload + at;
+	a->app_data_len = h->payload_len - at;
 
-	truncated_hash(public_key, KEYSIZE, identity_hash, ADDRLEN);
-	memcpy(material, name_hash, NAMEHASHLEN);
+	return OK;
+}
+
+/* app_data is transmitted after the signature but signed before it.
+ * Getting this wrong is the most likely reason for a valid announce to
+ * be rejected, so the assembled bytes are printed. */
+static size_t assemble_signed(const struct header *h, const struct announce *a,
+                              uint8_t *out)
+{
+	size_t n = 0;
+
+	memcpy(out + n, h->destination_hash, ADDRLEN);   n += ADDRLEN;
+	memcpy(out + n, a->public_key,       KEYSIZE);   n += KEYSIZE;
+	memcpy(out + n, a->name_hash,    NAMEHASHLEN);   n += NAMEHASHLEN;
+	memcpy(out + n, a->random_hash,  RANDHASHLEN);   n += RANDHASHLEN;
+	if (a->ratchet != NULL) {
+		memcpy(out + n, a->ratchet, RATCHETLEN); n += RATCHETLEN;
+	}
+	memcpy(out + n, a->app_data, a->app_data_len);   n += a->app_data_len;
+
+	return n;
+}
+
+static void print_invalid(enum reason r, size_t got, size_t need)
+{
+	switch (r) {
+	case SHORT_HEADER:
+		field("invalid", "short-header");
+		field("length", "%zu", got);
+		field("minimum_length", "%zu", need);
+		break;
+	case HOP_LIMIT:
+		field("invalid", "hop-limit");
+		field("hops", "%zu", got);
+		field("hop_limit", "%zu", need);
+		break;
+	case SHORT_PAYLOAD:
+		field("invalid", "short-payload");
+		field("payload_length", "%zu", got);
+		field("minimum_length", "%zu", need);
+		break;
+	case OK:
+		break;
+	}
+}
+
+static void print_announce(const struct header *h, const struct announce *a)
+{
+	uint8_t identity_hash[ADDRLEN], expected_hash[ADDRLEN];
+	uint8_t material[NAMEHASHLEN + ADDRLEN];
+	uint8_t signed_data[MAXBLOB];
+	size_t  sdlen;
+
+	truncated_hash(a->public_key, KEYSIZE, identity_hash, ADDRLEN);
+	memcpy(material, a->name_hash, NAMEHASHLEN);
 	memcpy(material + NAMEHASHLEN, identity_hash, ADDRLEN);
 	truncated_hash(material, sizeof material, expected_hash, ADDRLEN);
 
-	/* app_data is transmitted after the signature but signed before
-	 * it. Getting this wrong is the most likely reason for a valid
-	 * announce to be rejected. */
-	sdlen = 0;
-	memcpy(signed_data + sdlen, dest_hash,   ADDRLEN);     sdlen += ADDRLEN;
-	memcpy(signed_data + sdlen, public_key,  KEYSIZE);     sdlen += KEYSIZE;
-	memcpy(signed_data + sdlen, name_hash,   NAMEHASHLEN); sdlen += NAMEHASHLEN;
-	memcpy(signed_data + sdlen, random_hash, RANDHASHLEN); sdlen += RANDHASHLEN;
-	if (ratchet != NULL) {
-		memcpy(signed_data + sdlen, ratchet, RATCHETLEN);
-		sdlen += RATCHETLEN;
-	}
-	memcpy(signed_data + sdlen, app_data, applen);
-	sdlen += applen;
+	sdlen = assemble_signed(h, a, signed_data);
 
-	field("flags", "%02x", flags);
-	field("header_type", "%u", header_type + 1);
-	field("context_flag", "%s", context_flag ? "set" : "unset");
-	field("transport_type", "%s", xport_types[transport_type]);
-	field("destination_type", "%s", dest_types[destination_type]);
-	field("packet_type", "%s", packet_types[packet_type]);
-	field("hops", "%u", hops);
-	if (transport_id != NULL)
-		field_hex("transport_id", transport_id, ADDRLEN);
+	field("flags", "%02x", h->flags);
+	field("header_type", "%u", h->header_type + 1);
+	field("context_flag", "%s", h->context_flag ? "set" : "unset");
+	field("transport_type", "%s", xport_types[h->transport_type]);
+	field("destination_type", "%s", dest_types[h->destination_type]);
+	field("packet_type", "%s", packet_types[h->packet_type]);
+	field("hops", "%u", h->hops);
+	if (h->transport_id != NULL)
+		field_hex("transport_id", h->transport_id, ADDRLEN);
 	else
 		field("transport_id", "-");
-	field_hex("destination_hash", dest_hash, ADDRLEN);
-	if (context == 0x00)
+	field_hex("destination_hash", h->destination_hash, ADDRLEN);
+	if (h->context == 0x00)
 		field("context", "none");
-	else if (context == 0x0b)
+	else if (h->context == 0x0b)
 		field("context", "path_response");
 	else
-		field("context", "%02x", context);
-	field("payload_length", "%zu", paylen);
-	field_hex("public_key", public_key, KEYSIZE);
-	field_hex("name_hash", name_hash, NAMEHASHLEN);
-	field_hex("random_hash", random_hash, RANDHASHLEN);
-	if (ratchet != NULL)
-		field_hex("ratchet", ratchet, RATCHETLEN);
+		field("context", "%02x", h->context);
+	field("payload_length", "%zu", h->payload_len);
+	field_hex("public_key", a->public_key, KEYSIZE);
+	field_hex("name_hash", a->name_hash, NAMEHASHLEN);
+	field_hex("random_hash", a->random_hash, RANDHASHLEN);
+	if (a->ratchet != NULL)
+		field_hex("ratchet", a->ratchet, RATCHETLEN);
 	else
 		field("ratchet", "-");
-	field_hex("signature", signature, SIGLEN);
-	if (applen > 0)
-		field_hex("app_data", app_data, applen);
+	field_hex("signature", a->signature, SIGLEN);
+	if (a->app_data_len > 0)
+		field_hex("app_data", a->app_data, a->app_data_len);
 	else
 		field("app_data", "-");
 	field_hex("identity_hash", identity_hash, ADDRLEN);
 	field_hex("expected_hash", expected_hash, ADDRLEN);
 	field("destination_match", "%s",
-	      memcmp(dest_hash, expected_hash, ADDRLEN) == 0 ? "yes" : "no");
+	      memcmp(h->destination_hash, expected_hash, ADDRLEN) == 0 ? "yes" : "no");
 	field_hex("signed_data", signed_data, sdlen);
 	field("signature_valid", "%s",
-	      ed25519_verify(public_key + 32, signature, signed_data, sdlen) ? "yes" : "no");
+	      ed25519_verify(a->public_key + KEYHALF, a->signature,
+	                     signed_data, sdlen) ? "yes" : "no");
 }
+
+static void dump_announce(struct blob *b, int nblobs)
+{
+	struct header h;
+	struct announce a;
+	enum reason r;
+	size_t got = 0, need = 0;
+
+	if (nblobs != 1)
+		fatal("announce: expected 1 blob, got %d", nblobs);
+
+	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK ||
+	    (r = parse_announce(&h, &a, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	print_announce(&h, &a);
+}
+
+/* ------------------------------------------------------------ encoding */
+
+static void print_hex_field(const char *value)
+{
+	printf("%s\n", value);
+}
+
+static void encode_identity(struct kv *f, int n)
+{
+	print_hex_field(lookup(f, n, "public_key"));
+}
+
+static void encode_keyset(struct kv *f, int n)
+{
+	print_hex_field(lookup(f, n, "private_key"));
+}
+
+static void encode_destination(struct kv *f, int n)
+{
+	print_hex_field(lookup(f, n, "name"));
+	print_hex_field(lookup(f, n, "identity_hash"));
+}
+
+/* ------------------------------------------------------------------ main */
 
 int main(int argc, char **argv)
 {
 	struct blob blobs[MAXBLOBS];
-	int n;
+	struct kv fields[MAXFIELDS];
+	const char *kind, *path;
+	int n, encode = 0;
 
 	argv0 = argv[0];
-	if (argc != 3) {
+	if (argc == 4 && strcmp(argv[1], "-e") == 0) {
+		encode = 1;
+		kind = argv[2];
+		path = argv[3];
+	} else if (argc == 3) {
+		kind = argv[1];
+		path = argv[2];
+	} else {
 		fprintf(stderr, "usage: %s kind rawfile\n", argv0);
+		fprintf(stderr, "       %s -e kind expectfile\n", argv0);
 		return 2;
 	}
 
-	n = readraw(argv[2], blobs, MAXBLOBS);
+	if (encode) {
+		n = readexpect(path, fields, MAXFIELDS);
+		if (strcmp(kind, "identity") == 0)
+			encode_identity(fields, n);
+		else if (strcmp(kind, "keyset") == 0)
+			encode_keyset(fields, n);
+		else if (strcmp(kind, "destination") == 0)
+			encode_destination(fields, n);
+		else
+			fatal("kind %s is not of the encode class", kind);
+		return 0;
+	}
 
-	if (strcmp(argv[1], "identity") == 0)
+	n = readraw(path, blobs, MAXBLOBS);
+
+	if (strcmp(kind, "identity") == 0)
 		dump_identity(blobs, n);
-	else if (strcmp(argv[1], "destination") == 0)
-		dump_destination(blobs, n);
-	else if (strcmp(argv[1], "keyset") == 0)
+	else if (strcmp(kind, "keyset") == 0)
 		dump_keyset(blobs, n);
-	else if (strcmp(argv[1], "signature") == 0)
+	else if (strcmp(kind, "destination") == 0)
+		dump_destination(blobs, n);
+	else if (strcmp(kind, "signature") == 0)
 		dump_signature(blobs, n);
-	else if (strcmp(argv[1], "announce") == 0)
+	else if (strcmp(kind, "announce") == 0)
 		dump_announce(blobs, n);
 	else
-		fatal("unknown kind %s", argv[1]);
+		fatal("unknown kind %s", kind);
 
 	return 0;
 }

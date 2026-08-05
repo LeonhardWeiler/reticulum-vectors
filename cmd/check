@@ -1,16 +1,36 @@
 #!/bin/sh
 #
-# check - decode every vector and compare the result with its expect file.
+# check - run every vector against a decoder and report disagreements.
+#
+# For each vector:
+#
+#	meta is complete and its fields hold known values
+#	dump kind raw            matches expect
+#	dump -e kind expect      matches raw, for the encode class
+#
+# The second check is the corpus proper. The first stops a vector from
+# describing itself with a field nothing reads. The third turns
+# "determinism: encode" from a claim in a text file into a test: it
+# says expect carries everything raw does, so rebuilding raw from it
+# must reproduce raw exactly.
 #
 # Uses cmd/dump. To check a different implementation, point DUMP at a
-# program taking the same two arguments and printing the same format:
+# program taking the same arguments and printing the same format:
 #
 #	DUMP=./my-decoder cmd/check
+#
+# A decoder that implements only the decode direction can skip the
+# round trip:
+#
+#	ENCODE=no cmd/check
 #
 # Exits non-zero if any vector fails.
 
 root=$(dirname "$0")/..
 DUMP=${DUMP:-$root/cmd/dump}
+ENCODE=${ENCODE:-yes}
+
+KINDS="identity keyset destination signature announce"
 
 if [ ! -x "$DUMP" ]; then
 	echo "no dump program at $DUMP; run make" >&2
@@ -20,32 +40,77 @@ fi
 pass=0
 fail=0
 
+fail_with() {
+	echo "FAIL $1"
+	shift
+	printf '%s\n' "$@" | sed 's/^/    /'
+	fail=$((fail + 1))
+}
+
+meta_field() {
+	sed -n "s/^$2  *//p" "$1/meta"
+}
+
 for dir in "$root"/test/*/*/; do
+	dir=${dir%/}
 	[ -f "$dir/meta" ] || continue
 
-	kind=$(sed -n 's/^kind  *//p' "$dir/meta")
-	if [ -z "$kind" ]; then
-		echo "FAIL $dir"
-		echo "    meta has no kind field"
-		fail=$((fail + 1))
+	# meta must be complete before anything is read from it.
+	missing=
+	for f in source generated kind determinism purpose; do
+		[ -n "$(meta_field "$dir" "$f")" ] || missing="$missing $f"
+	done
+	if [ -n "$missing" ]; then
+		fail_with "$dir" "meta has no$missing"
 		continue
 	fi
 
-	out=$("$DUMP" "$kind" "$dir/raw" 2>&1)
-	if [ $? -ne 0 ]; then
-		echo "FAIL $dir"
-		printf '%s\n' "$out" | sed 's/^/    /'
-		fail=$((fail + 1))
+	kind=$(meta_field "$dir" kind)
+	determinism=$(meta_field "$dir" determinism)
+
+	case " $KINDS " in
+		*" $kind "*) ;;
+		*) fail_with "$dir" "meta names an unknown kind: $kind"; continue ;;
+	esac
+
+	case "$determinism" in
+		decode|encode) ;;
+		*) fail_with "$dir" "meta names an unknown determinism class: $determinism"; continue ;;
+	esac
+
+	# The directory a vector lives in must agree with its meta.
+	if [ "$(basename "$(dirname "$dir")")" != "$kind" ]; then
+		fail_with "$dir" "kind $kind does not match the directory it is filed under"
 		continue
 	fi
 
-	if printf '%s\n' "$out" | diff -u "$dir/expect" - > /dev/null; then
-		pass=$((pass + 1))
-	else
-		echo "FAIL $dir"
-		printf '%s\n' "$out" | diff -u "$dir/expect" - | tail -n +3 | sed 's/^/    /'
-		fail=$((fail + 1))
+	if ! out=$("$DUMP" "$kind" "$dir/raw" 2>&1); then
+		fail_with "$dir" "$out"
+		continue
 	fi
+
+	# The exit status of a pipeline is the status of its last command,
+	# so diff's verdict must be read from its output, not from the
+	# status of anything downstream of it.
+	changed=$(printf '%s\n' "$out" | diff -u "$dir/expect" - | tail -n +3)
+	if [ -n "$changed" ]; then
+		fail_with "$dir" "$changed"
+		continue
+	fi
+
+	if [ "$determinism" = encode ] && [ "$ENCODE" = yes ]; then
+		if ! back=$("$DUMP" -e "$kind" "$dir/expect" 2>&1); then
+			fail_with "$dir" "round trip: $back"
+			continue
+		fi
+		changed=$(printf '%s\n' "$back" | diff -u "$dir/raw" - | tail -n +3)
+		if [ -n "$changed" ]; then
+			fail_with "$dir" "round trip does not reproduce raw" "$changed"
+			continue
+		fi
+	fi
+
+	pass=$((pass + 1))
 done
 
 echo "$pass passed, $fail failed"

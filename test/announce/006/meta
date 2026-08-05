@@ -1,5 +1,0 @@
-source             constructed by tools/gen from announce/000
-generated          2026-08-05
-kind               announce
-determinism        decode
-purpose            destination hash replaced with zeroes; the announce decodes but does not match

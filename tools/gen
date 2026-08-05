@@ -6,12 +6,12 @@
 # produced, not how they are consumed. Consumers read test/ and need
 # neither this program nor Python.
 #
-# Usage:
-#
 #     tools/gen [--checkout PATH] [--force]
 #
 # Without --force, gen refuses to change a vector that already exists
-# with different content, and reports the difference instead.
+# with different content, and exits non-zero. Running gen and getting a
+# clean exit is the evidence behind every source line in every meta
+# file; make verify does exactly that.
 
 import argparse
 import contextlib
@@ -79,53 +79,51 @@ GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
 # Constructed here, not upstream. The pair pins the clamping rule: the
 # X25519 scalar is stored as given and clamped only when used, so the
 # two keys differ while their public keys and identity hashes agree.
-CLAMP_UNCLAMPED = "ff" * 32 + "01" * 32
-CLAMP_CLAMPED   = "f8" + "ff" * 30 + "7f" + "01" * 32
-
-EXTRA_KEYS = [
-    (CLAMP_UNCLAMPED, "unclamped x25519 scalar, stored and returned verbatim"),
-    (CLAMP_CLAMPED,   "the same scalar clamped; same public key and identity hash, different private key"),
+CLAMP_KEYS = [
+    ("unclamped", "ff" * 32 + "01" * 32,
+     "unclamped x25519 scalar, stored and returned verbatim"),
+    ("clamped", "f8" + "ff" * 30 + "7f" + "01" * 32,
+     "the same scalar clamped; same public key and identity hash, different private key"),
 ]
 
-# Destination cases. Each is (aspects tuple, key index or None, purpose).
+# Destination cases: (name, aspects tuple, key index or None, purpose).
 #
-# Case 0 is the only destination hash asserted anywhere upstream, at
+# The first is the only destination hash asserted anywhere upstream, at
 # tests/link.py:113. It is reproduced here to anchor the derivation.
 #
 DESTINATIONS = [
-    (("rns_unit_tests", "link", "establish"), 0,
+    ("upstream-link-establish", ("rns_unit_tests", "link", "establish"), 0,
      "the destination hash asserted at upstream tests/link.py:113"),
-    (("lxmf", "delivery"), 1,
+    ("two-components", ("lxmf", "delivery"), 1,
      "two components, the common real-world shape"),
-    (("example_utilities",), 2,
-     "app name only, no aspects"),
-    (("a", "b", "c", "d", "e"), 3,
+    ("app-name-only", ("example_utilities",), 2,
+     "app name only, no aspects, so no separator is joined"),
+    ("five-components", ("a", "b", "c", "d", "e"), 3,
      "five components, to pin the joining rule"),
-    (("rns_unit_tests", "link", "establish"), None,
+    ("no-identity", ("rns_unit_tests", "link", "establish"), None,
      "same name without an identity, as used by plain destinations"),
     # Written with explicit escapes so that no editor can silently
     # normalise them. The pair pins that RNS hashes the utf-8 bytes as
     # given and applies no unicode normalisation: the two names look
     # identical and hash differently.
-    (("test", "gr\u00fc\u00dfe", "\u65e5\u672c\u8a9e"), 4,
+    ("utf8-precomposed", ("test", "grüße", "日本語"), 4,
      "non-ascii aspects, precomposed (u+00fc)"),
-    (("test", "gru\u0308\u00dfe", "\u65e5\u672c\u8a9e"), 4,
+    ("utf8-decomposed", ("test", "grüße", "日本語"), 4,
      "the same name decomposed (u+0075 u+0308); no normalisation, so the hash differs"),
 ]
 
-
-# Announce cases. Each is (key index, aspects, app_data, ratchet,
+# Announce cases: (name, key index, aspects, app_data, ratchet,
 # path_response, purpose).
 ANNOUNCES = [
-    (0, ("rns_unit_tests", "link", "establish"), None,  False, False,
+    ("minimal", 0, ("rns_unit_tests", "link", "establish"), None, False, False,
      "minimal announce: no ratchet, no app data"),
-    (1, ("lxmf", "delivery"), b"\x01example node", False, False,
+    ("app-data", 1, ("lxmf", "delivery"), b"\x01example node", False, False,
      "app data present, appended after the signature"),
-    (0, ("rns_unit_tests", "link", "establish"), None,  True,  False,
+    ("ratchet", 0, ("rns_unit_tests", "link", "establish"), None, True, False,
      "ratchet present, context flag set"),
-    (1, ("lxmf", "delivery"), b"\x01example node", True,  False,
+    ("ratchet-and-app-data", 1, ("lxmf", "delivery"), b"\x01example node", True, False,
      "ratchet and app data together"),
-    (2, ("example_utilities", "announce"), None, False, True,
+    ("path-response", 2, ("example_utilities", "announce"), None, False, True,
      "path response context"),
 ]
 
@@ -156,23 +154,30 @@ class DetRandom:
 
 @contextlib.contextmanager
 def pinned(RNS, tag):
-    """Replace every source of randomness and the clock, so that the
-    generated announce is reproducible."""
+    """Replace the clock and the two randomness sources an announce
+    reaches for, so that regenerating produces identical bytes.
+
+    Both are patched on RNS rather than on os.urandom. Patching
+    os.urandom is not enough: under the openssl backend
+    _generate_ratchet reaches X25519PrivateKey.generate in PyCA
+    (RNS/Cryptography/Proxies.py:43), which draws from OpenSSL's own
+    generator and never touches os.urandom.
+    """
     rng = DetRandom(tag)
 
     real_time    = time.time
-    real_urandom = os.urandom
     real_rand    = RNS.Identity.get_random_hash
+    real_ratchet = RNS.Identity._generate_ratchet
 
     time.time = lambda: float(PINNED_TIME)
-    os.urandom = rng.bytes
-    RNS.Identity.get_random_hash = staticmethod(lambda: rng.bytes(16))
+    RNS.Identity.get_random_hash  = staticmethod(lambda: rng.bytes(16))
+    RNS.Identity._generate_ratchet = staticmethod(lambda: rng.bytes(32))
     try:
         yield
     finally:
         time.time = real_time
-        os.urandom = real_urandom
-        RNS.Identity.get_random_hash = real_rand
+        RNS.Identity.get_random_hash  = real_rand
+        RNS.Identity._generate_ratchet = real_ratchet
 
 
 class TransportStub:
@@ -230,8 +235,8 @@ class Writer:
         self.written = 0
         self.differs = []
 
-    def vector(self, kind, index, meta, raw, expect):
-        path = os.path.join(self.root, "test", kind, "%03d" % index)
+    def vector(self, kind, name, meta, raw, expect):
+        path = os.path.join(self.root, "test", kind, name)
         os.makedirs(path, exist_ok=True)
         self.file(os.path.join(path, "meta"), meta)
         self.file(os.path.join(path, "raw"), raw)
@@ -247,104 +252,6 @@ class Writer:
         with open(path, "w") as f:
             f.write(body)
         self.written += 1
-
-
-def identity_vector(RNS, w, index, private_hex, purpose, source):
-    """One identity vector.
-
-    raw is the public key, not the private key. Deriving a public key
-    from a private one is X25519 and Ed25519, standard primitives with
-    their own published vectors; this corpus does not restate them.
-    What is specific to Reticulum is the concatenation order and the
-    hash, and those are what the vector pins.
-
-    The private-to-public derivation is covered separately by the
-    keyset vectors, which are generated once dump can verify them.
-    """
-    identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
-
-    public = identity.get_public_key()
-    half   = RNS.Identity.KEYSIZE // 8 // 2
-
-    w.vector("identity", index,
-        meta_block("identity", "encode", purpose, source=source),
-        [public.hex()],
-        [
-            field("public_key",     public.hex()),
-            field("x25519_public",  public[:half].hex()),
-            field("ed25519_public", public[half:].hex()),
-            field("identity_hash",  identity.hash.hex()),
-        ])
-
-    return identity
-
-
-def gen_identity(RNS, w):
-    for n, (private_hex, hash_hex) in enumerate(UPSTREAM_KEYS):
-        identity = identity_vector(RNS, w, n, private_hex,
-            "public key of upstream key %d" % n,
-            UPSTREAM_KEY_SOURCE)
-
-        # The upstream table is the source of truth for these two values.
-        # Everything else is derived here and must agree with it.
-        assert identity.get_private_key() == bytes.fromhex(private_hex)
-        assert identity.hash == bytes.fromhex(hash_hex)
-
-    # The clamping pair belongs to the keyset vectors, which record the
-    # private-to-public derivation. As identity vectors the two would be
-    # byte-identical, since that is exactly the property they record.
-    # The assertion is kept here so the property is checked on every
-    # run, and the vectors follow when dump can verify them.
-    a = RNS.Identity.from_bytes(bytes.fromhex(EXTRA_KEYS[0][0]))
-    b = RNS.Identity.from_bytes(bytes.fromhex(EXTRA_KEYS[1][0]))
-    assert a.get_private_key() != b.get_private_key()
-    assert a.get_public_key()  == b.get_public_key()
-    assert a.hash              == b.hash
-
-
-def gen_destination(RNS, w):
-    for n, (aspects, key_index, purpose) in enumerate(DESTINATIONS):
-        app_name = aspects[0]
-        rest     = aspects[1:]
-
-        name       = RNS.Destination.expand_name(None, app_name, *rest)
-        name_bytes = name.encode("utf-8")
-        name_hash  = RNS.Identity.full_hash(name_bytes)[:RNS.Identity.NAME_HASH_LENGTH // 8]
-
-        if key_index is None:
-            identity      = None
-            identity_hash = None
-        else:
-            identity      = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
-            identity_hash = identity.hash
-
-        destination_hash = RNS.Destination.hash(identity, app_name, *rest)
-
-        expect = [field("name", name), field("app_name", app_name)]
-        for aspect in rest:
-            expect.append(field("aspect", aspect))
-        expect.append(field("name_hash", name_hash.hex()))
-        expect.append(field("identity_hash", identity_hash.hex() if identity_hash else "-"))
-        expect.append(field("destination_hash", destination_hash.hex()))
-
-        w.vector("destination", n,
-            meta_block("destination", "encode", purpose),
-            [name_bytes.hex(), identity_hash.hex() if identity_hash else "-"],
-            expect)
-
-
-DEST_TYPES   = ["single", "group", "plain", "link"]
-PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
-XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
-CONTEXTS     = {0x00: "none", 0x0b: "path_response"}
-
-KEYSIZE     = 64
-NAMEHASHLEN = 10
-RANDHASHLEN = 10
-SIGLEN      = 64
-RATCHETLEN  = 32
-ADDRLEN     = 16
-MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 
 
 def make_verifier(RNS):
@@ -366,6 +273,166 @@ def make_verifier(RNS):
     return verify
 
 
+def gen_identity(RNS, w):
+    """Public key to identity hash.
+
+    raw is the public key, not the private key. Deriving one from the
+    other is X25519 and Ed25519, standard primitives with their own
+    published vectors; the keyset vectors cover that separately.
+    """
+    for n, (private_hex, hash_hex) in enumerate(UPSTREAM_KEYS):
+        identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
+        public   = identity.get_public_key()
+        half     = RNS.Identity.KEYSIZE // 8 // 2
+
+        # The upstream table is the source of truth for these two values.
+        # Everything else is derived here and must agree with it.
+        assert identity.get_private_key() == bytes.fromhex(private_hex)
+        assert identity.hash == bytes.fromhex(hash_hex)
+
+        w.vector("identity", "upstream-%d" % n,
+            meta_block("identity", "encode", "public key of upstream key %d" % n,
+                       source=UPSTREAM_KEY_SOURCE),
+            [public.hex()],
+            [
+                field("public_key",     public.hex()),
+                field("x25519_public",  public[:half].hex()),
+                field("ed25519_public", public[half:].hex()),
+                field("identity_hash",  identity.hash.hex()),
+            ])
+
+
+def gen_keyset(RNS, w):
+    """The private-to-public derivation the identity vectors omit."""
+    cases  = [("upstream-%d" % n, k, "upstream key %d" % n)
+              for n, (k, _) in enumerate(UPSTREAM_KEYS)]
+    cases += CLAMP_KEYS
+
+    made = {}
+    for name, private_hex, purpose in cases:
+        identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
+        private  = identity.get_private_key()
+        public   = identity.get_public_key()
+        half     = RNS.Identity.KEYSIZE // 8 // 2
+        made[name] = identity
+
+        source = UPSTREAM_KEY_SOURCE if name.startswith("upstream-") else GENERATED_SOURCE
+
+        w.vector("keyset", name,
+            meta_block("keyset", "encode", purpose, source=source),
+            [private.hex()],
+            [
+                field("private_key",     private.hex()),
+                field("x25519_private",  private[:half].hex()),
+                field("ed25519_private", private[half:].hex()),
+                field("public_key",      public.hex()),
+                field("x25519_public",   public[:half].hex()),
+                field("ed25519_public",  public[half:].hex()),
+                field("identity_hash",   identity.hash.hex()),
+            ])
+
+    # The property the clamping pair exists to record.
+    assert made["unclamped"].get_private_key() != made["clamped"].get_private_key()
+    assert made["unclamped"].get_public_key()  == made["clamped"].get_public_key()
+    assert made["unclamped"].hash              == made["clamped"].hash
+
+
+def gen_destination(RNS, w):
+    for name, aspects, key_index, purpose in DESTINATIONS:
+        app_name = aspects[0]
+        rest     = aspects[1:]
+
+        full       = RNS.Destination.expand_name(None, app_name, *rest)
+        name_bytes = full.encode("utf-8")
+        name_hash  = RNS.Identity.full_hash(name_bytes)[:RNS.Identity.NAME_HASH_LENGTH // 8]
+
+        if key_index is None:
+            identity      = None
+            identity_hash = None
+        else:
+            identity      = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
+            identity_hash = identity.hash
+
+        destination_hash = RNS.Destination.hash(identity, app_name, *rest)
+
+        # Every byte string in the format is hex, names included. A name
+        # is arbitrary bytes; printing it as text would let a newline in
+        # an aspect forge or hide a field.
+        expect = [field("name", name_bytes.hex()),
+                  field("app_name", app_name.encode("utf-8").hex())]
+        for aspect in rest:
+            expect.append(field("aspect", aspect.encode("utf-8").hex()))
+        expect.append(field("name_hash", name_hash.hex()))
+        expect.append(field("identity_hash", identity_hash.hex() if identity_hash else "-"))
+        expect.append(field("destination_hash", destination_hash.hex()))
+
+        w.vector("destination", name,
+            meta_block("destination", "encode", purpose),
+            [name_bytes.hex(), identity_hash.hex() if identity_hash else "-"],
+            expect)
+
+
+def gen_signature(RNS, w, verify):
+    """One adopted signature and one negative counterpart.
+
+    Ed25519 itself has published vectors and is not restated here. What
+    this pins is that Identity.sign is plain Ed25519 over the message,
+    with no prefix, domain separator or prior hashing.
+
+    Decode class: expect records the message by length and digest, not
+    by content, so raw cannot be rebuilt from it.
+    """
+    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
+    public   = identity.get_public_key()
+    message  = UPSTREAM_SIGNED_MESSAGE.encode("utf-8")
+    good     = bytes.fromhex(UPSTREAM_SIGNATURE)
+
+    # The reference implementation must reproduce the adopted value.
+    assert identity.sign(message) == good
+
+    bad = bytearray(good)
+    bad[0] ^= 0x01
+    bad = bytes(bad)
+
+    cases = [
+        ("upstream", good, "adopted signature over the upstream message", UPSTREAM_SIG_SOURCE),
+        ("altered", bad, "the same signature with the first byte altered",
+         "constructed by tools/gen from signature/upstream"),
+    ]
+
+    for name, signature, purpose, source in cases:
+        w.vector("signature", name,
+            meta_block("signature", "decode", purpose, source=source),
+            [public.hex(), message.hex(), signature.hex()],
+            [
+                field("ed25519_public", public[32:].hex()),
+                field("message_length", "%d" % len(message)),
+                field("message_sha256", hashlib.sha256(message).hexdigest()),
+                field("signature",      signature.hex()),
+                field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
+            ])
+
+
+DEST_TYPES   = ["single", "group", "plain", "link"]
+PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
+XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
+CONTEXTS     = {0x00: "none", 0x0b: "path_response"}
+
+KEYSIZE     = 64
+NAMEHASHLEN = 10
+RANDHASHLEN = 10
+SIGLEN      = 64
+RATCHETLEN  = 32
+ADDRLEN     = 16
+MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
+
+
+def invalid(reason, *evidence):
+    """A packet that cannot be decoded yields the reason and the numbers
+    behind it, so a disagreement names the rule rather than the stage."""
+    return [field("invalid", reason)] + [field(k, "%d" % v) for k, v in evidence]
+
+
 def describe_announce(raw, verify):
     """Decode an announce packet from its bytes alone.
 
@@ -375,7 +442,7 @@ def describe_announce(raw, verify):
     up as a diff.
     """
     if len(raw) < 2:
-        return [field("invalid", "length")]
+        return invalid("short-header", ("length", len(raw)), ("minimum_length", 2))
 
     flags, hops = raw[0], raw[1]
 
@@ -386,30 +453,28 @@ def describe_announce(raw, verify):
     packet_type      = (flags & 0b00000011)
 
     if hops >= MAX_HOPS:
-        return [field("invalid", "hops")]
+        return invalid("hop-limit", ("hops", hops), ("hop_limit", MAX_HOPS))
+
+    header_len = 3 + ADDRLEN * (header_type + 1)
+    if len(raw) < header_len:
+        return invalid("short-header", ("length", len(raw)), ("minimum_length", header_len))
 
     if header_type == 1:
-        need = 2 + 2*ADDRLEN + 1
-        if len(raw) < need:
-            return [field("invalid", "length")]
         transport_id = raw[2:2+ADDRLEN]
         dest_hash    = raw[2+ADDRLEN:2+2*ADDRLEN]
         context      = raw[2+2*ADDRLEN]
-        payload      = raw[3+2*ADDRLEN:]
     else:
-        need = 2 + ADDRLEN + 1
-        if len(raw) < need:
-            return [field("invalid", "length")]
         transport_id = None
         dest_hash    = raw[2:2+ADDRLEN]
         context      = raw[2+ADDRLEN]
-        payload      = raw[3+ADDRLEN:]
+    payload = raw[header_len:]
 
     minimum = KEYSIZE + NAMEHASHLEN + RANDHASHLEN + SIGLEN
     if context_flag == 1:
         minimum += RATCHETLEN
     if len(payload) < minimum:
-        return [field("invalid", "length")]
+        return invalid("short-payload",
+                       ("payload_length", len(payload)), ("minimum_length", minimum))
 
     at          = 0
     public_key  = payload[at:at+KEYSIZE];      at += KEYSIZE
@@ -478,114 +543,49 @@ def transport_insert(raw, hops, transport_id):
     return bytes([flags, hops]) + transport_id + raw[2:]
 
 
-def gen_keyset(RNS, w):
-    """The private-to-public derivation, which the identity vectors
-    deliberately leave out. See doc/identity."""
-    cases = [(k, "upstream key %d" % n) for n, (k, _) in enumerate(UPSTREAM_KEYS)]
-    cases += EXTRA_KEYS
-
-    for n, (private_hex, purpose) in enumerate(cases):
-        identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
-        private  = identity.get_private_key()
-        public   = identity.get_public_key()
-        half     = RNS.Identity.KEYSIZE // 8 // 2
-
-        source = UPSTREAM_KEY_SOURCE if n < len(UPSTREAM_KEYS) else GENERATED_SOURCE
-
-        w.vector("keyset", n,
-            meta_block("keyset", "encode", purpose, source=source),
-            [private.hex()],
-            [
-                field("private_key",     private.hex()),
-                field("x25519_private",  private[:half].hex()),
-                field("ed25519_private", private[half:].hex()),
-                field("public_key",      public.hex()),
-                field("x25519_public",   public[:half].hex()),
-                field("ed25519_public",  public[half:].hex()),
-                field("identity_hash",   identity.hash.hex()),
-            ])
-
-
-def gen_signature(RNS, w, verify):
-    """One adopted signature and one negative counterpart.
-
-    Ed25519 itself has published vectors and is not restated here. What
-    this pins is that Identity.sign is plain Ed25519 over the message,
-    with no prefix, domain separator or prior hashing.
-    """
-    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
-    public   = identity.get_public_key()
-    message  = UPSTREAM_SIGNED_MESSAGE.encode("utf-8")
-    good     = bytes.fromhex(UPSTREAM_SIGNATURE)
-
-    # The reference implementation must reproduce the adopted value.
-    assert identity.sign(message) == good
-
-    bad = bytearray(good)
-    bad[0] ^= 0x01
-    bad = bytes(bad)
-
-    cases = [
-        (good, "adopted signature over the upstream message", UPSTREAM_SIG_SOURCE),
-        (bad,  "the same signature with the first byte altered",
-         "constructed by tools/gen from signature/000"),
-    ]
-
-    for n, (signature, purpose, source) in enumerate(cases):
-        w.vector("signature", n,
-            meta_block("signature", "encode", purpose, source=source),
-            [public.hex(), message.hex(), signature.hex()],
-            [
-                field("ed25519_public", public[32:].hex()),
-                field("message_length", "%d" % len(message)),
-                field("message_sha256", hashlib.sha256(message).hexdigest()),
-                field("signature",      signature.hex()),
-                field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
-            ])
-
-
 def gen_announce(RNS, w, tmpdir, verify):
     stub_transport(RNS)
-    raws = []
+    raws = {}
 
-    for n, (key_index, aspects, app_data, ratchet, path_response, purpose) in enumerate(ANNOUNCES):
+    for name, key_index, aspects, app_data, ratchet, path_response, purpose in ANNOUNCES:
         raw = announce_raw(RNS, key_index, aspects, app_data, ratchet,
-                           path_response, "announce-%03d" % n, tmpdir)
-        raws.append(raw)
-        w.vector("announce", n,
+                           path_response, "announce-" + name, tmpdir)
+        raws[name] = raw
+        w.vector("announce", name,
             meta_block("announce", "decode", purpose),
             [raw.hex()],
             describe_announce(raw, verify))
 
-    base = len(ANNOUNCES)
+    base         = raws["minimal"]
     transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
 
     # Derived cases. Each states in its source how it was built, since
     # none of them is something the reference implementation emitted.
     derived = [
-        (transport_insert(raws[0], 1, transport_id),
+        ("in-transport", transport_insert(base, 1, transport_id),
          "header 2, one hop, transport id inserted",
-         "constructed by tools/gen from announce/000, per RNS/Transport.py:1369"),
+         "constructed by tools/gen from announce/minimal, per RNS/Transport.py:1369"),
 
-        (raws[0][:2] + bytes(ADDRLEN) + raws[0][2+ADDRLEN:],
+        ("destination-mismatch", base[:2] + bytes(ADDRLEN) + base[2+ADDRLEN:],
          "destination hash replaced with zeroes; the announce decodes but does not match",
-         "constructed by tools/gen from announce/000"),
+         "constructed by tools/gen from announce/minimal"),
 
-        (raws[0][:-1],
+        ("short-payload", base[:-1],
          "one byte short of the minimum payload",
-         "constructed by tools/gen from announce/000"),
+         "constructed by tools/gen from announce/minimal"),
 
-        (raws[0][:1] + bytes([MAX_HOPS]) + raws[0][2:],
+        ("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],
          "hop count at the limit, which the reference implementation rejects",
-         "constructed by tools/gen from announce/000"),
+         "constructed by tools/gen from announce/minimal"),
 
-        (raws[0][:-SIGLEN] + bytes([raws[0][-SIGLEN] ^ 0x01]) + raws[0][-SIGLEN+1:],
+        ("altered-signature",
+         base[:-SIGLEN] + bytes([base[-SIGLEN] ^ 0x01]) + base[-SIGLEN+1:],
          "first signature byte altered; the announce decodes and matches, but the signature does not verify",
-         "constructed by tools/gen from announce/000"),
+         "constructed by tools/gen from announce/minimal"),
     ]
 
-    for n, (raw, purpose, source) in enumerate(derived):
-        w.vector("announce", base + n,
+    for name, raw, purpose, source in derived:
+        w.vector("announce", name,
             meta_block("announce", "decode", purpose, source=source),
             [raw.hex()],
             describe_announce(raw, verify))
@@ -597,10 +597,10 @@ def main():
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
 
-    RNS = load_rns(args.checkout)
-    w   = Writer(ROOT, args.force)
-
+    RNS    = load_rns(args.checkout)
+    w      = Writer(ROOT, args.force)
     verify = make_verifier(RNS)
+
     tmpdir = tempfile.mkdtemp(prefix="reticulum-vectors-")
     try:
         gen_identity(RNS, w)

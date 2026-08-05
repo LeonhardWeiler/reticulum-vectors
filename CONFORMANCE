@@ -28,7 +28,7 @@ traffic every day.
 
 Finding 1: the hop limit is not applied at parse time
 
-Affects every implementation tested. Vector test/announce/008.
+Affects every implementation tested. Vector test/announce/hop-limit.
 
 python-rns rejects a packet whose hop count is at or above
 PATHFINDER_M, that is 128, inside Packet.unpack, before any other
@@ -55,7 +55,7 @@ doc/packet, section Hops.
 
 Finding 2: ratchet announces are rejected
 
-Affects Reticulum-rs. Vectors test/announce/002 and test/announce/003.
+Affects Reticulum-rs. Vectors test/announce/ratchet and test/announce/ratchet-and-app-data.
 
 DestinationAnnounce::validate (destination.rs:115) never reads the
 context flag and never parses a ratchet. The 32 ratchet bytes are read
@@ -70,7 +70,7 @@ announces rather than reporting an error.
 
 Finding 3: an app name with no aspects gets a trailing dot
 
-Affects Reticulum-rs and microReticulum. Vector test/destination/002.
+Affects Reticulum-rs and microReticulum. Vector test/destination/app-name-only.
 
 The reference joins app name and aspects with a dot between each pair,
 so a destination with no aspects hashes the app name alone. Both
@@ -92,7 +92,7 @@ between these implementations and the reference.
 
 Finding 4: non-canonical X25519 scalars
 
-Affects rns.js and microReticulum. Vectors test/keyset/005 and 006.
+Affects rns.js and microReticulum. Vectors test/keyset/unclamped and test/keyset/clamped.
 
 The reference stores the X25519 private scalar exactly as supplied and
 clamps only when the scalar is used, so an unclamped scalar

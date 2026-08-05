@@ -1,0 +1,5 @@
+source             constructed by tools/gen from signature/upstream
+generated          2026-08-05
+kind               signature
+determinism        decode
+purpose            the same signature with the first byte altered

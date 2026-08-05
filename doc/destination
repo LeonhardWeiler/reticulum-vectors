@@ -27,7 +27,7 @@ Name hash
 10 bytes, that is 80 bits, not 128. The name is hashed as its utf-8
 bytes exactly as given. No unicode normalisation is applied.
 
-test/destination/005 and test/destination/006 carry the same name in
+test/destination/utf8-precomposed and test/destination/utf8-decomposed carry the same name in
 precomposed and decomposed form. They look identical and produce
 different hashes. An implementation that normalises will not
 interoperate.
@@ -77,6 +77,8 @@ raw is two lines:
     line 1    the name, utf-8 bytes, hex
     line 2    identity hash, 16 bytes, or "-" when there is no identity
 
-The name is stored as hex rather than as text so that the byte
-sequence is unambiguous. Two names that render identically can differ
-in bytes; see above.
+The name, app name and aspect fields in expect are hex as well. A name
+is arbitrary bytes: printed as text, a newline in an aspect would end
+the line early and let a vector forge or hide a field. Hex also keeps
+the utf-8 pair above legible, since the two names are identical as
+text and differ only in their bytes.

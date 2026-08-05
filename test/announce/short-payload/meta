@@ -1,0 +1,5 @@
+source             constructed by tools/gen from announce/minimal
+generated          2026-08-05
+kind               announce
+determinism        decode
+purpose            one byte short of the minimum payload

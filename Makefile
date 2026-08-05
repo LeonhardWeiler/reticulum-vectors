@@ -23,7 +23,13 @@ check: cmd/dump
 gen:
 	tools/gen
 
+# Every meta file claims a source. verify is the evidence: gen exits
+# non-zero if regenerating against the pinned checkout would change any
+# committed byte. Needs Python and the checkout; check alone does not.
+verify: check
+	tools/gen
+
 clean:
 	rm -f cmd/dump $(OBJ)
 
-.PHONY: check gen clean
+.PHONY: check gen verify clean
