@@ -127,6 +127,19 @@ ANNOUNCES = [
      "path response context"),
 ]
 
+# Encrypted packet cases: (name, key index, aspects, plaintext, ratchet,
+# purpose).
+ENCRYPTED = [
+    ("minimal", 0, ("rns_unit_tests", "link", "establish"), b"reticulum", False,
+     "nine bytes of plaintext, one cipher block after padding"),
+    ("empty", 0, ("rns_unit_tests", "link", "establish"), b"", False,
+     "empty plaintext; PKCS7 still adds a full block"),
+    ("block-aligned", 1, ("lxmf", "delivery"), b"0123456789abcdef", False,
+     "plaintext exactly one block, so padding adds a second"),
+    ("ratchet", 0, ("rns_unit_tests", "link", "establish"), b"reticulum", True,
+     "encrypted to a ratchet public key rather than the identity key"),
+]
+
 # The timestamp pinned into random_hash while generating. Any fixed
 # value inside the five-byte field will do; this one is a round number
 # well clear of both ends.
@@ -166,18 +179,34 @@ def pinned(RNS, tag):
     rng = DetRandom(tag)
 
     real_time    = time.time
+    real_urandom = os.urandom
     real_rand    = RNS.Identity.get_random_hash
     real_ratchet = RNS.Identity._generate_ratchet
+    identity_mod = sys.modules["RNS.Identity"]
+    real_x25519  = identity_mod.X25519PrivateKey
 
-    time.time = lambda: float(PINNED_TIME)
-    RNS.Identity.get_random_hash  = staticmethod(lambda: rng.bytes(16))
+    time.time  = lambda: float(PINNED_TIME)
+    os.urandom = rng.bytes
+    RNS.Identity.get_random_hash   = staticmethod(lambda: rng.bytes(16))
     RNS.Identity._generate_ratchet = staticmethod(lambda: rng.bytes(32))
+
+    # Identity.encrypt resolves X25519PrivateKey as a global of the
+    # RNS.Identity module, so the shim is installed on the module
+    # rather than on the class of the same name.
+    # os.urandom is pinned as well because Token.encrypt takes its
+    # initialisation vector from it directly.
+    identity_mod.X25519PrivateKey = type("PinnedX25519", (), {
+        "generate": staticmethod(lambda: real_x25519.from_private_bytes(rng.bytes(32))),
+        "from_private_bytes": staticmethod(real_x25519.from_private_bytes),
+    })
     try:
         yield
     finally:
-        time.time = real_time
-        RNS.Identity.get_random_hash  = real_rand
+        time.time  = real_time
+        os.urandom = real_urandom
+        RNS.Identity.get_random_hash   = real_rand
         RNS.Identity._generate_ratchet = real_ratchet
+        identity_mod.X25519PrivateKey  = real_x25519
 
 
 class TransportStub:
@@ -187,10 +216,14 @@ class TransportStub:
     is_connected_to_shared_instance = False
 
 
-def stub_transport(RNS):
+def stub_transport(RNS, tmpdir):
     RNS.Transport.owner = TransportStub()
     RNS.Transport.register_destination = staticmethod(lambda d: None)
     RNS.Identity._remember_ratchet = staticmethod(lambda h, r: None)
+    # Identity.get_ratchet falls back to the storage path when a
+    # destination has no remembered ratchet. Pointing it at an empty
+    # directory keeps that lookup from reaching a real instance.
+    RNS.Reticulum.storagepath = tmpdir
 
 
 def load_rns(checkout):
@@ -424,6 +457,8 @@ RANDHASHLEN = 10
 SIGLEN      = 64
 RATCHETLEN  = 32
 ADDRLEN     = 16
+KEYHALF     = 32
+TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:51, iv plus hmac
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 
 
@@ -433,16 +468,14 @@ def invalid(reason, *evidence):
     return [field("invalid", reason)] + [field(k, "%d" % v) for k, v in evidence]
 
 
-def describe_announce(raw, verify):
-    """Decode an announce packet from its bytes alone.
+def describe_header(raw):
+    """Decode a packet header, shared by every packet kind.
 
-    The layout is parsed here without consulting any RNS object. gen
-    and dump are then two independent decoders of the same bytes, and
-    check compares them. A misreading of the layout on one side shows
-    up as a diff.
+    Returns the header field lines and the payload, or, when the packet
+    cannot be decoded that far, only the lines of an invalid block.
     """
     if len(raw) < 2:
-        return invalid("short-header", ("length", len(raw)), ("minimum_length", 2))
+        return invalid("short-header", ("length", len(raw)), ("minimum_length", 2)), None
 
     flags, hops = raw[0], raw[1]
 
@@ -453,11 +486,11 @@ def describe_announce(raw, verify):
     packet_type      = (flags & 0b00000011)
 
     if hops >= MAX_HOPS:
-        return invalid("hop-limit", ("hops", hops), ("hop_limit", MAX_HOPS))
+        return invalid("hop-limit", ("hops", hops), ("hop_limit", MAX_HOPS)), None
 
     header_len = 3 + ADDRLEN * (header_type + 1)
     if len(raw) < header_len:
-        return invalid("short-header", ("length", len(raw)), ("minimum_length", header_len))
+        return invalid("short-header", ("length", len(raw)), ("minimum_length", header_len)), None
 
     if header_type == 1:
         transport_id = raw[2:2+ADDRLEN]
@@ -468,6 +501,38 @@ def describe_announce(raw, verify):
         dest_hash    = raw[2:2+ADDRLEN]
         context      = raw[2+ADDRLEN]
     payload = raw[header_len:]
+
+    lines = [
+        field("flags",            "%02x" % flags),
+        field("header_type",      "%d" % (header_type + 1)),
+        field("context_flag",     "set" if context_flag else "unset"),
+        field("transport_type",   XPORT_TYPES[transport_type]),
+        field("destination_type", DEST_TYPES[destination_type]),
+        field("packet_type",      PACKET_TYPES[packet_type]),
+        field("hops",             "%d" % hops),
+        field("transport_id",     transport_id.hex() if transport_id else "-"),
+        field("destination_hash", dest_hash.hex()),
+        field("context",          CONTEXTS.get(context, "%02x" % context)),
+        field("payload_length",   "%d" % len(payload)),
+    ]
+    return lines, {"payload": payload, "context_flag": context_flag, "dest_hash": dest_hash}
+
+
+def describe_announce(raw, verify):
+    """Decode an announce packet from its bytes alone.
+
+    The layout is parsed here without consulting any RNS object. gen
+    and dump are then two independent decoders of the same bytes, and
+    check compares them. A misreading of the layout on one side shows
+    up as a diff.
+    """
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+
+    payload      = h["payload"]
+    context_flag = h["context_flag"]
+    dest_hash    = h["dest_hash"]
 
     minimum = KEYSIZE + NAMEHASHLEN + RANDHASHLEN + SIGLEN
     if context_flag == 1:
@@ -493,18 +558,7 @@ def describe_announce(raw, verify):
     # app_data is transmitted after the signature but signed before it.
     signed_data = dest_hash + public_key + name_hash + random_hash + ratchet + app_data
 
-    return [
-        field("flags",            "%02x" % flags),
-        field("header_type",      "%d" % (header_type + 1)),
-        field("context_flag",     "set" if context_flag else "unset"),
-        field("transport_type",   XPORT_TYPES[transport_type]),
-        field("destination_type", DEST_TYPES[destination_type]),
-        field("packet_type",      PACKET_TYPES[packet_type]),
-        field("hops",             "%d" % hops),
-        field("transport_id",     transport_id.hex() if transport_id else "-"),
-        field("destination_hash", dest_hash.hex()),
-        field("context",          CONTEXTS.get(context, "%02x" % context)),
-        field("payload_length",   "%d" % len(payload)),
+    return lines + [
         field("public_key",       public_key.hex()),
         field("name_hash",        name_hash.hex()),
         field("random_hash",      random_hash.hex()),
@@ -544,7 +598,6 @@ def transport_insert(raw, hops, transport_id):
 
 
 def gen_announce(RNS, w, tmpdir, verify):
-    stub_transport(RNS)
     raws = {}
 
     for name, key_index, aspects, app_data, ratchet, path_response, purpose in ANNOUNCES:
@@ -591,6 +644,151 @@ def gen_announce(RNS, w, tmpdir, verify):
             describe_announce(raw, verify))
 
 
+def hkdf_sha256(length, ikm, salt, context=b""):
+    """RFC 5869, which is what RNS/Cryptography/HKDF.py:34 implements."""
+    import hmac as _hmac
+
+    def mac(key, data):
+        return _hmac.new(key, data, hashlib.sha256).digest()
+
+    prk = mac(salt if salt else bytes(32), ikm)
+    block, derived = b"", b""
+    for i in range((length + 31) // 32):
+        block = mac(prk, block + context + bytes([(i + 1) % 256]))
+        derived += block
+    return derived[:length]
+
+
+def describe_encrypted(raw, private, ratchet_private):
+    """Decode an encrypted packet from its bytes and the recipient's key.
+
+    As with announces, the layout and the cryptography are done here
+    without consulting any RNS object, so gen and dump remain two
+    independent decoders.
+    """
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    import hmac as _hmac
+
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) < KEYHALF + TOKEN_OVERHEAD:
+        return invalid("short-payload",
+                       ("payload_length", len(payload)),
+                       ("minimum_length", KEYHALF + TOKEN_OVERHEAD))
+
+    ephemeral  = payload[:KEYHALF]
+    token      = payload[KEYHALF:]
+    iv         = token[:16]
+    ciphertext = token[16:-32]
+    mac        = token[-32:]
+
+    public_key    = private_to_public(private)
+    identity_hash = hashlib.sha256(public_key).digest()[:ADDRLEN]
+
+    # The salt is always the recipient's identity hash, including when
+    # the shared secret came from a ratchet. RNS/Identity.py:836.
+    if ratchet_private is not None:
+        agree_with = ratchet_private
+        ratchet_public = X25519PrivateKey.from_private_bytes(ratchet_private) \
+            .public_key().public_bytes_raw()
+    else:
+        agree_with = private[:KEYHALF]
+        ratchet_public = None
+
+    shared = X25519PrivateKey.from_private_bytes(agree_with).exchange(
+        X25519PublicKey.from_public_bytes(ephemeral))
+    derived = hkdf_sha256(64, shared, identity_hash)
+    signing_key, encryption_key = derived[:32], derived[32:]
+
+    mac_ok = _hmac.compare_digest(
+        mac, _hmac.new(signing_key, iv + ciphertext, hashlib.sha256).digest())
+
+    plaintext = None
+    if mac_ok and len(ciphertext) > 0 and len(ciphertext) % 16 == 0:
+        dec = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
+        padded = dec.update(ciphertext) + dec.finalize()
+        n = padded[-1]
+        if 0 < n <= 16 and n <= len(padded):
+            plaintext = padded[:len(padded) - n]
+
+    lines += [
+        field("ephemeral_public", ephemeral.hex()),
+        field("iv",              iv.hex()),
+        field("ciphertext",      ciphertext.hex()),
+        field("hmac",            mac.hex()),
+        field("identity_hash",   identity_hash.hex()),
+        field("ratchet_public",  ratchet_public.hex() if ratchet_public else "-"),
+        field("shared_key",      shared.hex()),
+        field("signing_key",     signing_key.hex()),
+        field("encryption_key",  encryption_key.hex()),
+        field("hmac_valid",      "yes" if mac_ok else "no"),
+        field("plaintext_length", "-" if plaintext is None else "%d" % len(plaintext)),
+        field("plaintext",        plaintext.hex() if plaintext else "-"),
+    ]
+    return lines
+
+
+def private_to_public(private):
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    x = X25519PrivateKey.from_private_bytes(private[:KEYHALF]).public_key().public_bytes_raw()
+    e = Ed25519PrivateKey.from_private_bytes(private[KEYHALF:]).public_key().public_bytes_raw()
+    return x + e
+
+
+def encrypted_raw(RNS, key_index, aspects, plaintext, use_ratchet, tag):
+    private   = bytes.fromhex(UPSTREAM_KEYS[key_index][0])
+    recipient = RNS.Identity.from_bytes(private)
+
+    # An outbound destination holds only the public key, as a sender does.
+    public_only = RNS.Identity(create_keys=False)
+    public_only.load_public_key(recipient.get_public_key())
+
+    ratchet_private = None
+    with pinned(RNS, tag):
+        destination = RNS.Destination(public_only, RNS.Destination.OUT,
+                                      RNS.Destination.SINGLE, aspects[0], *aspects[1:])
+        RNS.Identity.known_ratchets.pop(destination.hash, None)
+        if use_ratchet:
+            ratchet_private = RNS.Identity._generate_ratchet()
+            RNS.Identity.known_ratchets[destination.hash] = \
+                RNS.Identity._ratchet_public_bytes(ratchet_private)
+
+        packet = RNS.Packet(destination, plaintext)
+        packet.pack()
+
+    # The reference implementation must recover what it encrypted.
+    ratchets = [ratchet_private] if ratchet_private else None
+    assert recipient.decrypt(packet.ciphertext, ratchets=ratchets) == plaintext
+
+    return private, ratchet_private, packet.raw
+
+
+def gen_encrypted(RNS, w):
+    made = {}
+    for name, key_index, aspects, plaintext, use_ratchet, purpose in ENCRYPTED:
+        private, ratchet, raw = encrypted_raw(RNS, key_index, aspects, plaintext,
+                                              use_ratchet, "encrypted-" + name)
+        made[name] = (private, ratchet, raw)
+        w.vector("encrypted", name,
+            meta_block("encrypted", "decode", purpose),
+            [private.hex(), ratchet.hex() if ratchet else "-", raw.hex()],
+            describe_encrypted(raw, private, ratchet))
+
+    private, ratchet, raw = made["minimal"]
+    altered = raw[:-1] + bytes([raw[-1] ^ 0x01])
+    w.vector("encrypted", "altered-hmac",
+        meta_block("encrypted", "decode",
+                   "last byte of the token hmac altered; nothing is decrypted",
+                   source="constructed by tools/gen from encrypted/minimal"),
+        [private.hex(), "-", altered.hex()],
+        describe_encrypted(altered, private, None))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkout", default=CHECKOUT)
@@ -602,12 +800,14 @@ def main():
     verify = make_verifier(RNS)
 
     tmpdir = tempfile.mkdtemp(prefix="reticulum-vectors-")
+    stub_transport(RNS, tmpdir)
     try:
         gen_identity(RNS, w)
         gen_keyset(RNS, w)
         gen_destination(RNS, w)
         gen_signature(RNS, w, verify)
         gen_announce(RNS, w, tmpdir, verify)
+        gen_encrypted(RNS, w)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

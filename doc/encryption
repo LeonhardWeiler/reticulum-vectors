@@ -1,0 +1,131 @@
+Encryption
+
+Byte layouts and derivations for packets addressed to a single
+destination. For what the layers are for, see upstream
+docs/source/understanding.rst, section "Reaching the Destination".
+
+Vectors: test/encrypted/
+
+See doc/packet for the header. Only the payload is described here.
+
+
+Constants
+
+    TOKEN_OVERHEAD          48 bytes   RNS/Cryptography/Token.py:51
+    DERIVED_KEY_LENGTH      64 bytes   RNS/Identity.py:90
+    PKCS7 blocksize         16 bytes   RNS/Cryptography/PKCS7.py:32
+
+
+Payload
+
+    offset  size  field
+    0       32    ephemeral X25519 public key
+    32      16    initialisation vector
+    48      -     ciphertext, a multiple of 16 bytes
+    -32     32    HMAC-SHA256
+
+Everything from offset 32 onward is a token in the sense below. The
+minimum payload is therefore 32 + 48 = 80 bytes, and the ciphertext is
+never empty: PKCS7 adds a full block to a plaintext that is already
+block aligned, and adds a whole block to an empty one.
+
+    RNS/Identity.py:803
+
+
+Key agreement
+
+The sender draws a fresh X25519 key for every packet and transmits its
+public half. The shared secret is
+
+    shared = X25519(ephemeral_private, recipient_public)
+
+where recipient_public is the X25519 half of the destination identity,
+or a ratchet public key when one is known for that destination.
+
+    RNS/Identity.py:804, RNS/Destination.py:607
+
+
+Key derivation
+
+    derived = HKDF-SHA256(shared, salt, context, 64)
+
+    salt      the recipient's identity hash, 16 bytes
+    context   empty
+    length    64 bytes
+
+HKDF is RFC 5869 with SHA-256. The salt is the identity hash of the
+recipient, derived from its own public key as in doc/identity. It stays
+the identity hash even when the shared secret came from a ratchet: the
+ratchet changes the agreement, not the salt.
+
+    RNS/Identity.py:822, RNS/Identity.py:797, RNS/Cryptography/HKDF.py:34
+
+
+Token
+
+The 64 derived bytes are split, signing key first:
+
+    offset  size  field
+    0       32    HMAC key
+    32      32    AES key
+
+A 64-byte key selects AES-256-CBC. Token also accepts a 32-byte key,
+which selects AES-128-CBC and halves both parts; identity encryption
+never produces one, and no vector here covers it.
+
+    RNS/Cryptography/Token.py:64
+
+Verification comes before decryption. The HMAC covers the
+initialisation vector and the ciphertext, not the ephemeral key:
+
+    hmac = HMAC-SHA256(signing_key, iv || ciphertext)
+
+A token whose HMAC does not match is rejected without decrypting.
+
+    RNS/Cryptography/Token.py:76, RNS/Cryptography/Token.py:99
+
+Reticulum calls this construction a token because it is Fernet with the
+version byte and the eight-byte timestamp removed. An implementation
+reaching for a Fernet library will produce nine bytes too many at the
+front.
+
+    RNS/Cryptography/Token.py:39
+
+
+Padding
+
+PKCS7 with a block size of 16. The final byte gives the padding length;
+a value above the block size is invalid.
+
+    RNS/Cryptography/PKCS7.py:34
+
+
+Vector format
+
+kind: encrypted, determinism: decode
+
+raw is three lines:
+
+    line 1    the recipient private key, 64 bytes
+    line 2    the ratchet private key, 32 bytes, or "-"
+    line 3    the complete packet
+
+The private keys are in the vector because a packet cannot be decoded
+without them. They are the upstream test keys and a ratchet generated
+for the purpose; neither guards anything.
+
+expect carries the header fields, the payload decomposition, and every
+intermediate value down to the plaintext: shared_key, signing_key and
+encryption_key are all printed. An implementation whose decryption
+fails can find the step where it diverged rather than guessing.
+
+    plaintext_length   the length in bytes, or "-" if nothing was
+                       decrypted
+    plaintext          the bytes as hex, or "-" when empty or absent
+
+The two together are unambiguous: length 0 with plaintext "-" is an
+empty plaintext, length "-" is a failure.
+
+Decode class. The ephemeral key and the initialisation vector are drawn
+at random and are not recoverable from the plaintext, so no
+implementation can reproduce raw from expect.

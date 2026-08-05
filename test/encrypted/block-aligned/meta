@@ -1,0 +1,5 @@
+source             python-rns 1.4.2 (b48b96e6)
+generated          2026-08-05
+kind               encrypted
+determinism        decode
+purpose            plaintext exactly one block, so padding adds a second

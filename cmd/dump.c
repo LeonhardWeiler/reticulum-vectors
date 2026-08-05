@@ -18,6 +18,8 @@
  * python-rns. That is its purpose. It deliberately shares no code with
  * the generator. */
 
+#include "aes256.h"
+#include "hmac.h"
 #include "sha256.h"
 #include "tweetnacl.h"
 
@@ -38,6 +40,10 @@
 #define RANDHASHLEN  10
 #define SIGLEN       64
 #define RATCHETLEN   32
+#define IVLEN        16
+#define MACLEN       32
+#define TOKEN_OVERHEAD (IVLEN + MACLEN)   /* RNS/Cryptography/Token.py:51 */
+#define DERIVEDLEN   64
 #define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
 
 static const char *argv0;
@@ -531,20 +537,9 @@ static void print_invalid(enum reason r, size_t got, size_t need)
 	}
 }
 
-static void print_announce(const struct header *h, const struct announce *a)
+/* The header fields, shared by every packet kind. */
+static void print_header(const struct header *h)
 {
-	uint8_t identity_hash[ADDRLEN], expected_hash[ADDRLEN];
-	uint8_t material[NAMEHASHLEN + ADDRLEN];
-	uint8_t signed_data[MAXBLOB];
-	size_t  sdlen;
-
-	truncated_hash(a->public_key, KEYSIZE, identity_hash, ADDRLEN);
-	memcpy(material, a->name_hash, NAMEHASHLEN);
-	memcpy(material + NAMEHASHLEN, identity_hash, ADDRLEN);
-	truncated_hash(material, sizeof material, expected_hash, ADDRLEN);
-
-	sdlen = assemble_signed(h, a, signed_data);
-
 	field("flags", "%02x", h->flags);
 	field("header_type", "%u", h->header_type + 1);
 	field("context_flag", "%s", h->context_flag ? "set" : "unset");
@@ -564,6 +559,23 @@ static void print_announce(const struct header *h, const struct announce *a)
 	else
 		field("context", "%02x", h->context);
 	field("payload_length", "%zu", h->payload_len);
+}
+
+static void print_announce(const struct header *h, const struct announce *a)
+{
+	uint8_t identity_hash[ADDRLEN], expected_hash[ADDRLEN];
+	uint8_t material[NAMEHASHLEN + ADDRLEN];
+	uint8_t signed_data[MAXBLOB];
+	size_t  sdlen;
+
+	truncated_hash(a->public_key, KEYSIZE, identity_hash, ADDRLEN);
+	memcpy(material, a->name_hash, NAMEHASHLEN);
+	memcpy(material + NAMEHASHLEN, identity_hash, ADDRLEN);
+	truncated_hash(material, sizeof material, expected_hash, ADDRLEN);
+
+	sdlen = assemble_signed(h, a, signed_data);
+
+	print_header(h);
 	field_hex("public_key", a->public_key, KEYSIZE);
 	field_hex("name_hash", a->name_hash, NAMEHASHLEN);
 	field_hex("random_hash", a->random_hash, RANDHASHLEN);
@@ -584,6 +596,96 @@ static void print_announce(const struct header *h, const struct announce *a)
 	field("signature_valid", "%s",
 	      ed25519_verify(a->public_key + KEYHALF, a->signature,
 	                     signed_data, sdlen) ? "yes" : "no");
+}
+
+/* encrypted: three blobs, the recipient private key, the ratchet
+ * private key or "-", and the packet. See ../doc/encryption. */
+static void dump_encrypted(struct blob *b, int nblobs)
+{
+	struct header h;
+	enum reason r;
+	size_t got = 0, need = 0, ctlen, ptlen = 0;
+	const uint8_t *ephemeral, *iv, *ciphertext, *mac;
+	uint8_t pub[KEYSIZE], identity_hash[ADDRLEN];
+	uint8_t agree[KEYHALF], shared[KEYHALF], derived[DERIVEDLEN];
+	uint8_t expected[MACLEN], plain[MAXBLOB], ratchet_pub[KEYHALF];
+	uint8_t signed_part[MAXBLOB];
+	int mac_ok, decrypted = 0;
+
+	if (nblobs != 3)
+		fatal("encrypted: expected 3 blobs, got %d", nblobs);
+	if (b[0].len != KEYSIZE)
+		fatal("encrypted: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
+	if (!b[1].absent && b[1].len != KEYHALF)
+		fatal("encrypted: ratchet key is %zu bytes, expected %d", b[1].len, KEYHALF);
+
+	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	if (h.payload_len < KEYHALF + TOKEN_OVERHEAD) {
+		print_invalid(SHORT_PAYLOAD, h.payload_len, KEYHALF + TOKEN_OVERHEAD);
+		return;
+	}
+
+	ephemeral  = h.payload;
+	iv         = h.payload + KEYHALF;
+	ciphertext = h.payload + KEYHALF + IVLEN;
+	ctlen      = h.payload_len - KEYHALF - TOKEN_OVERHEAD;
+	mac        = h.payload + h.payload_len - MACLEN;
+
+	/* The salt is the recipient's identity hash, derived from its own
+	 * public key, even when the shared secret came from a ratchet.
+	 * RNS/Identity.py:836. */
+	crypto_scalarmult_base(pub, b[0].data);
+	ed25519_public(b[0].data + KEYHALF, pub + KEYHALF);
+	truncated_hash(pub, KEYSIZE, identity_hash, ADDRLEN);
+
+	if (b[1].absent) {
+		memcpy(agree, b[0].data, KEYHALF);
+	} else {
+		memcpy(agree, b[1].data, KEYHALF);
+		crypto_scalarmult_base(ratchet_pub, b[1].data);
+	}
+
+	crypto_scalarmult(shared, agree, ephemeral);
+	hkdf_sha256(shared, KEYHALF, identity_hash, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
+
+	memcpy(signed_part, iv, IVLEN);
+	memcpy(signed_part + IVLEN, ciphertext, ctlen);
+	hmac_sha256(derived, MACLEN, signed_part, IVLEN + ctlen, expected);
+	mac_ok = memcmp(mac, expected, MACLEN) == 0;
+
+	if (mac_ok && ctlen > 0 && ctlen % 16 == 0 &&
+	    aes256_cbc_decrypt(derived + MACLEN, iv, ciphertext, ctlen, plain) == 0 &&
+	    pkcs7_unpad(plain, ctlen, &ptlen) == 0)
+		decrypted = 1;
+
+	print_header(&h);
+	field_hex("ephemeral_public", ephemeral, KEYHALF);
+	field_hex("iv", iv, IVLEN);
+	field_hex("ciphertext", ciphertext, ctlen);
+	field_hex("hmac", mac, MACLEN);
+	field_hex("identity_hash", identity_hash, ADDRLEN);
+	if (b[1].absent)
+		field("ratchet_public", "-");
+	else
+		field_hex("ratchet_public", ratchet_pub, KEYHALF);
+	field_hex("shared_key", shared, KEYHALF);
+	field_hex("signing_key", derived, MACLEN);
+	field_hex("encryption_key", derived + MACLEN, MACLEN);
+	field("hmac_valid", "%s", mac_ok ? "yes" : "no");
+	if (!decrypted) {
+		field("plaintext_length", "-");
+		field("plaintext", "-");
+	} else {
+		field("plaintext_length", "%zu", ptlen);
+		if (ptlen > 0)
+			field_hex("plaintext", plain, ptlen);
+		else
+			field("plaintext", "-");
+	}
 }
 
 static void dump_announce(struct blob *b, int nblobs)
@@ -676,6 +778,8 @@ int main(int argc, char **argv)
 		dump_signature(blobs, n);
 	else if (strcmp(kind, "announce") == 0)
 		dump_announce(blobs, n);
+	else if (strcmp(kind, "encrypted") == 0)
+		dump_encrypted(blobs, n);
 	else
 		fatal("unknown kind %s", kind);
 

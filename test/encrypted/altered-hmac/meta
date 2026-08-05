@@ -1,0 +1,5 @@
+source             constructed by tools/gen from encrypted/minimal
+generated          2026-08-05
+kind               encrypted
+determinism        decode
+purpose            last byte of the token hmac altered; nothing is decrypted
