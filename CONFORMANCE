@@ -1,0 +1,156 @@
+Conformance of independent implementations
+
+Run on 2026-08-05 against the 31 vectors in test/, using a harness per
+implementation that calls that implementation's own derivations and
+parsers and prints the corpus field format. Harnesses add no logic of
+their own; where an implementation lacks a check, the harness does not
+supply one, so the vector fails and the divergence is visible.
+
+    implementation      commit    date        result
+    -----------------------------------------------------
+    go-reticulum        06621cc   2026-04-28  30 / 31
+    rsReticulum         07ca721   2026-08-02  30 / 31
+    rns.js              d4602ca   2025-02-10  28 / 31
+    microReticulum      40fa628   2026-07-20  28 / 31
+    Reticulum-rs        be7a7fc   2026-07-31  27 / 31
+    sgiath/reticulum    0c4904e   2026-07-09  not run
+
+sgiath/reticulum was read, not executed: no Erlang runtime was
+available. Its findings below are from source and are marked as such.
+They carry less weight than the measured ones.
+
+All six agree on the identity hash, the destination hash for names with
+at least one aspect, the announce payload layout, the assembly of
+signed data including the position of app data, and Ed25519
+verification. The corpus found no disagreement in the parts that carry
+traffic every day.
+
+
+Finding 1: the hop limit is not applied at parse time
+
+Affects every implementation tested. Vector test/announce/008.
+
+python-rns rejects a packet whose hop count is at or above
+PATHFINDER_M, that is 128, inside Packet.unpack, before any other
+field is examined (RNS/Packet.py:247). None of the implementations do
+this. All decode the packet fully and report it as a valid announce.
+
+Where a limit exists at all, it sits further in and reads differently:
+
+    go-reticulum      transport.go:4400   hops >= 128 + 1
+    rsReticulum       ingress.rs:372      hops >= 128 - 1, announces only
+    sgiath            transport.ex:36     routing_max_hops, source only
+    rns.js            none found
+    Reticulum-rs      none found
+    microReticulum    none checked at parse
+
+go-reticulum's threshold is one higher than the reference. A packet at
+exactly 128 hops is dropped by python-rns and forwarded by
+go-reticulum.
+
+This is the one finding shared by every implementation, which suggests
+the rule is not obvious from reading the reference. It is now
+doc/packet, section Hops.
+
+
+Finding 2: ratchet announces are rejected
+
+Affects Reticulum-rs. Vectors test/announce/002 and test/announce/003.
+
+DestinationAnnounce::validate (destination.rs:115) never reads the
+context flag and never parses a ratchet. The 32 ratchet bytes are read
+as the first half of the signature, so every announce carrying a
+ratchet fails signature verification and is dropped.
+
+This is the trap described in doc/announce, section Ratchet. It is the
+most consequential finding here: ratchets are enabled per destination
+in current python-rns, and an affected node silently loses those
+announces rather than reporting an error.
+
+
+Finding 3: an app name with no aspects gets a trailing dot
+
+Affects Reticulum-rs and microReticulum. Vector test/destination/002.
+
+The reference joins app name and aspects with a dot between each pair,
+so a destination with no aspects hashes the app name alone. Both
+implementations append a separator unconditionally:
+
+    Reticulum-rs      destination.rs:70    app_name || "." || aspects
+    microReticulum    Destination.cpp:180  if (aspects != nullptr)
+
+microReticulum's guard tests for a null pointer, but the empty-aspect
+call path passes "" rather than nullptr (Destination.cpp:164), so the
+dot is appended.
+
+    reference       example_utilities     8f28004423519cc633ca
+    both            example_utilities.    ada8ea63426e6118c006
+
+Every destination whose name is an app name alone is unreachable
+between these implementations and the reference.
+
+
+Finding 4: non-canonical X25519 scalars
+
+Affects rns.js and microReticulum. Vectors test/keyset/005 and 006.
+
+The reference stores the X25519 private scalar exactly as supplied and
+clamps only when the scalar is used, so an unclamped scalar
+round-trips unchanged and yields the same public key as its clamped
+form. See doc/identity.
+
+    rns.js            rejects the key outright. @noble/curves clamps
+                      first and then requires the result to be below
+                      2^255 - 19, which excludes two of the 2^251
+                      reachable clamped values.
+
+    microReticulum    accepts the key and derives a different public
+                      key, and therefore a different identity hash. It
+                      does not clamp before the scalar multiplication.
+
+Both are edge cases in practice. All five upstream keys are already
+clamped, and both python-rns backends clamp when generating, so a key
+produced by the reference never reaches this path. The vectors exist
+to pin the rule, not because random keys hit it.
+
+microReticulum's case is the more serious of the two: it fails
+silently, with a wrong identity hash, rather than refusing the key.
+
+
+sgiath/reticulum, from source only
+
+Read against the same facts. Nothing contradicting the corpus was
+found:
+
+    identity hash     sha256(enc_pub || sig_pub)[:16]   identity.ex:14
+    name hash         join(".") over app name and aspects, no spurious
+                      separator                          destination.ex:124
+    announce layout   context flag drives the ratchet field
+                                                         announce.ex:100
+    signed data       destination hash first, app data last
+                                                         announce.ex:158
+    binding check     name hash and identity hash, as the reference
+                                                         announce.ex:148
+
+Its flag decoding splits the byte differently, reading bits 5 and 4 as
+one two-bit field and recovering the context flag and transport type
+from it (packet.ex:66, packet.ex:151). That is equivalent to the
+reference for every value the corpus contains.
+
+It reads bit 7 as an IFAC flag where python-rns 1.4.2 treats that bit
+as reserved. No vector sets bit 7, so this was not exercised.
+
+These observations are worth what source reading is worth. Running the
+corpus against it would settle them.
+
+
+Reproducing
+
+Each harness takes the same two arguments as cmd/dump and prints the
+same format:
+
+    DUMP=<harness> cmd/check
+
+The harnesses are not part of this repository. They are small and
+follow directly from each implementation's public API; the diff output
+of cmd/check names the exact vector and field for every claim above.
