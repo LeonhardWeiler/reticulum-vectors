@@ -267,6 +267,48 @@ defmodule Dump do
     end
   end
 
+  # The fourth packet type. Packet.hash/1 is called for the packet hash.
+  # lib/reticulum/packet.ex:113.
+  def run("proof", [proved_raw, signer_public, raw]) do
+    f("proved_packet", hx(proved_raw))
+    f("signer_public", hx(signer_public))
+
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      payload = p.data
+      {:ok, packet_hash} = Packet.hash(proved_raw)
+
+      explicit = byte_size(payload) == 96
+      signature = if explicit, do: binary_part(payload, 32, 64), else: payload
+      signer_ed = binary_part(signer_public, 32, 32)
+      {:ok, signer} = Identity.from_public_key(signer_public)
+
+      header(p, raw)
+      f("form", if(explicit, do: "explicit", else: "implicit"))
+      f("packet_hash", hx(packet_hash))
+      f("proof_hash", if(explicit, do: hx(binary_part(payload, 0, 32)), else: "-"))
+
+      f("hash_match",
+        if(not explicit or binary_part(payload, 0, 32) == packet_hash,
+          do: "yes",
+          else: "no"
+        ))
+
+      f("proof_destination", hx(binary_part(packet_hash, 0, 16)))
+
+      f("destination_match",
+        if(List.last(p.addresses) == binary_part(packet_hash, 0, 16), do: "yes", else: "no"))
+
+      f("signature", hx(signature))
+      f("signer_ed25519", hx(signer_ed))
+
+      f("signature_valid",
+        if(Identity.validate(signer, packet_hash, signature), do: "yes", else: "no"))
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
   def run("linkrequest", [raw]) do
     with true <- byte_size(raw) >= 2,
          {:ok, p} <- decode(raw) do

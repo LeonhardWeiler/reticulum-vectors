@@ -362,6 +362,43 @@ static void kind_linkrequest(std::vector<RNS::Bytes> &b) {
 	f("link_id", hexs(RNS::Link::link_id_from_lr_packet(p)));
 }
 
+// The fourth packet type. Packet::get_hash is called for the packet
+// hash. src/microReticulum/Packet.h:288.
+static void kind_proof(std::vector<RNS::Bytes> &b) {
+	const RNS::Bytes &proved_raw = b[0];
+	const RNS::Bytes &signer_public = b[1];
+	const RNS::Bytes &raw = b[2];
+	char buf[32];
+
+	f("proved_packet", hexs(proved_raw));
+	f("signer_public", hexs(signer_public));
+
+	RNS::Packet proved(proved_raw);
+	if (!proved.unpack()) { invalid("short-header", "length", proved_raw.size(), "minimum_length", 19); return; }
+	RNS::Packet p(raw);
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	print_header(p, raw);
+
+	RNS::Bytes packet_hash = proved.get_hash();
+	RNS::Bytes payload = p.data();
+	bool explicit_form = payload.size() == 96;
+	RNS::Bytes signature = explicit_form ? payload.mid(32) : payload;
+
+	RNS::Identity signer(false);
+	signer.load_public_key(signer_public);
+
+	f("form", explicit_form ? "explicit" : "implicit");
+	f("packet_hash", hexs(packet_hash));
+	f("proof_hash", explicit_form ? hexs(payload.left(32)) : "-");
+	f("hash_match", (!explicit_form || payload.left(32) == packet_hash) ? "yes" : "no");
+	f("proof_destination", hexs(packet_hash.left(16)));
+	f("destination_match", p.destination_hash() == packet_hash.left(16) ? "yes" : "no");
+	f("signature", hexs(signature));
+	f("signer_ed25519", hexs(signer_public.mid(32)));
+	f("signature_valid", signer.validate(signature, packet_hash) ? "yes" : "no");
+	(void)buf;
+}
+
 static void kind_linkproof(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &request_raw = b[0];
 	const RNS::Bytes &identity_public = b[1];
@@ -514,6 +551,7 @@ int main(int argc, char **argv) {
 		else if (kind == "linkrequest") kind_linkrequest(blobs);
 		else if (kind == "linkproof") kind_linkproof(blobs);
 		else if (kind == "linkdata") kind_linkdata(blobs);
+		else if (kind == "proof") kind_proof(blobs);
 		// 77 says the kind is not implemented here. cmd/check counts it
 		// as skipped rather than failed; see ../README.
 		else { fprintf(stderr, "kind not implemented: %s\n", argv[1]); return 77; }

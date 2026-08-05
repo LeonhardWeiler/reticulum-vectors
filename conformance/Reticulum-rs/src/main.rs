@@ -419,6 +419,50 @@ fn link_id_of(raw: &[u8]) -> Option<Vec<u8>> {
     Some(LinkId::from(&packet).as_slice().to_vec())
 }
 
+// The fourth packet type. Packet::hash is called for the packet hash;
+// Reticulum-rs has no proof path of its own, so the signature goes to
+// its own verifier over that hash. reticulum-core/src/packet.rs:250.
+fn proof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    let proved_raw = b[0].as_ref().unwrap();
+    let signer_public = b[1].as_ref().unwrap();
+    let raw = b[2].as_ref().unwrap();
+
+    f(out, "proved_packet", &hexs(proved_raw));
+    f(out, "signer_public", &hexs(signer_public));
+
+    if raw.len() < 19 {
+        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 19)]);
+    }
+    print_header(out, raw);
+
+    let mut buffer = InputBuffer::new(proved_raw);
+    let proved = Packet::deserialize(&mut buffer).expect("the proved packet does not decode");
+    let packet_hash = proved.hash();
+    let packet_hash = packet_hash.as_slice();
+
+    let payload = &raw[19..];
+    let explicit = payload.len() == 96;
+    let signature = if explicit { &payload[32..] } else { &payload[..] };
+    let id = Identity::new_from_slices(&signer_public[..32], &signer_public[32..]);
+
+    f(out, "form", if explicit { "explicit" } else { "implicit" });
+    f(out, "packet_hash", &hexs(packet_hash));
+    f(out, "proof_hash", &(if explicit { hexs(&payload[..32]) } else { "-".to_string() }));
+    f(out, "hash_match",
+      if !explicit || &payload[..32] == packet_hash { "yes" } else { "no" });
+    f(out, "proof_destination", &hexs(&packet_hash[..16]));
+    f(out, "destination_match",
+      if &raw[2..18] == &packet_hash[..16] { "yes" } else { "no" });
+    f(out, "signature", &hexs(signature));
+    f(out, "signer_ed25519", &hexs(&signer_public[32..]));
+
+    let ok = match ed25519_dalek::Signature::from_slice(signature) {
+        Ok(s) => id.verify(packet_hash, &s).is_ok(),
+        Err(_) => false,
+    };
+    f(out, "signature_valid", if ok { "yes" } else { "no" });
+}
+
 fn linkrequest(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let raw = b[0].as_ref().unwrap();
     if raw.len() < 19 {
@@ -623,6 +667,7 @@ fn main() {
         "linkrequest" => linkrequest(&mut out, &blobs),
         "linkproof" => linkproof(&mut out, &blobs),
         "linkdata" => linkdata(&mut out, &blobs),
+        "proof" => proof(&mut out, &blobs),
         k => {
             // 77 says the kind is not implemented here. cmd/check
             // counts it as skipped rather than failed; see ../README.

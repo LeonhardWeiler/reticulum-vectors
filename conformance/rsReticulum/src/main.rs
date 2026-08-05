@@ -406,6 +406,51 @@ fn link_id_of(raw: &[u8], p: &Packet) -> [u8; 16] {
     rns_wire::hash::link_id_from_raw(raw, p.header.flags.header_type)
 }
 
+// The fourth packet type. rns-wire has the packet hash as its own
+// function, so it is called rather than assembled here.
+// crates/rns-wire/src/hash.rs:44.
+fn proof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    let proved_raw = b[0].as_ref().unwrap();
+    let signer_public = b[1].as_ref().unwrap();
+    let raw = b[2].as_ref().unwrap();
+
+    f(out, "proved_packet", &hexs(proved_raw));
+    f(out, "signer_public", &hexs(signer_public));
+
+    let proved = match Packet::from_raw(proved_raw) {
+        Ok(p) => p,
+        Err(_) => panic!("the proved packet does not decode"),
+    };
+    let p = match Packet::from_raw(raw) {
+        Ok(p) => p,
+        Err(_) => return invalid(out, "short-header",
+                                 &[("length", raw.len()), ("minimum_length", 19)]),
+    };
+    print_header(out, &p, raw);
+
+    let packet_hash = rns_wire::hash::packet_hash(proved_raw, proved.header.flags.header_type);
+    let payload = p.data();
+    let explicit = payload.len() == 96;
+    let signature = if explicit { &payload[32..] } else { &payload[..] };
+    let signer_ed = &signer_public[32..];
+
+    let id = Identity::from_public_key(signer_public).unwrap();
+    let mut sig = [0u8; 64];
+    sig.copy_from_slice(signature);
+
+    f(out, "form", if explicit { "explicit" } else { "implicit" });
+    f(out, "packet_hash", &hexs(&packet_hash));
+    f(out, "proof_hash", &(if explicit { hexs(&payload[..32]) } else { "-".to_string() }));
+    f(out, "hash_match",
+      if !explicit || payload[..32] == packet_hash[..] { "yes" } else { "no" });
+    f(out, "proof_destination", &hexs(&packet_hash[..16]));
+    f(out, "destination_match",
+      if p.header.destination_hash == packet_hash[..16] { "yes" } else { "no" });
+    f(out, "signature", &hexs(signature));
+    f(out, "signer_ed25519", &hexs(signer_ed));
+    f(out, "signature_valid", if id.verify(&packet_hash, &sig) { "yes" } else { "no" });
+}
+
 fn linkrequest(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     use rns_link::handshake::LinkRequestData;
 
@@ -624,6 +669,7 @@ fn main() {
         "linkrequest" => linkrequest(&mut out, &blobs),
         "linkproof" => linkproof(&mut out, &blobs),
         "linkdata" => linkdata(&mut out, &blobs),
+        "proof" => proof(&mut out, &blobs),
         k => {
             // 77 says the kind is not implemented here. cmd/check
             // counts it as skipped rather than failed; see ../README.

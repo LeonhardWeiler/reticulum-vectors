@@ -164,6 +164,60 @@ func sign(b [][]byte) {
 	f("signature", hex.EncodeToString(sig))
 }
 
+// The fourth packet type. go-reticulum has a proof validator with
+// exported fields, so signature_valid is its own accept or reject over
+// the whole proof rather than a bare signature check.
+// rns/packet.go:743.
+func proof(b [][]byte) {
+	provedRaw, signerPublic, raw := b[0], b[1], b[2]
+
+	f("proved_packet", hex.EncodeToString(provedRaw))
+	f("signer_public", hex.EncodeToString(signerPublic))
+
+	proved := &rns.Packet{Raw: provedRaw}
+	if !proved.Unpack() {
+		panic("the proved packet does not decode")
+	}
+	p := &rns.Packet{Raw: raw}
+	if !p.Unpack() {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		return
+	}
+	printHeader(p, raw)
+
+	id := &rns.Identity{}
+	if err := id.LoadPublicKey(signerPublic); err != nil {
+		panic(err)
+	}
+
+	payload := p.Data
+	explicit := len(payload) == 32+sigLen
+	packetHash := proved.GetHash()
+	signature := payload
+	if explicit {
+		signature = payload[32:]
+	}
+
+	receipt := &rns.PacketReceipt{
+		Hash:        packetHash,
+		Destination: &rns.Destination{Identity: id},
+	}
+
+	f("form", map[bool]string{true: "explicit", false: "implicit"}[explicit])
+	f("packet_hash", hex.EncodeToString(packetHash))
+	if explicit {
+		f("proof_hash", hex.EncodeToString(payload[:32]))
+	} else {
+		f("proof_hash", "-")
+	}
+	f("hash_match", yesNo(!explicit || bytes.Equal(payload[:32], packetHash)))
+	f("proof_destination", hex.EncodeToString(packetHash[:addrLen]))
+	f("destination_match", yesNo(bytes.Equal(p.DestinationHash, packetHash[:addrLen])))
+	f("signature", hex.EncodeToString(signature))
+	f("signer_ed25519", hex.EncodeToString(signerPublic[32:]))
+	f("signature_valid", yesNo(receipt.ValidateProof(payload, p)))
+}
+
 func invalid(reason string, pairs ...[2]interface{}) {
 	f("invalid", reason)
 	for _, kv := range pairs {
@@ -756,6 +810,8 @@ func main() {
 		linkproof(blobs)
 	case "linkdata":
 		linkdata(blobs)
+	case "proof":
+		proof(blobs)
 	default:
 		// 77 says the kind is not implemented here. cmd/check counts
 		// it as skipped rather than failed; see ../README.

@@ -71,11 +71,12 @@ Those fields test the transcription as much as the implementation, and
 ../CONFORMANCE says per implementation which fields were obtained
 which way. Read the numbers with that in mind.
 
-Three kinds open their expect with the input lines echoed back:
+Four kinds open their expect with the input lines echoed back:
 recipient_private and ratchet_private for encrypted, link_request with
-signer_public or responder_private for the two link kinds. Those are
-not transcription and are not a third case. They are lines the harness
-was handed, printed back so that expect holds every byte of raw; no
+signer_public or responder_private for the two link kinds, and
+proved_packet with signer_public for proof. Those are not transcription
+and are not a third case. They are lines the harness was handed,
+printed back so that expect holds every byte of raw; no
 implementation code produces them and none is credited with them. They
 exist for the encode direction, which no harness runs.
 

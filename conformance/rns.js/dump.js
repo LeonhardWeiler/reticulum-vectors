@@ -248,6 +248,35 @@ function encrypted(blobs) {
 // machine and returns a boolean. The steps below are its own, in its own
 // order, using its own primitives, and are marked where they are.
 
+// The fourth packet type. getHashablePart is the same function that
+// makes the link id wrong in finding 9, and here it is right: a packet
+// hash takes no trimming. src/packet.js:230.
+function proof(blobs) {
+    const [provedRaw, signerPublic, raw] = blobs;
+    f("proved_packet", hex(provedRaw));
+    f("signer_public", hex(signerPublic));
+
+    const proved = Packet.fromBytes(provedRaw);
+    const p = Packet.fromBytes(raw);
+    header(p, raw);
+
+    const payload = p.data;
+    const explicit = payload.length === 32 + Identity.SIGLENGTH_IN_BYTES;
+    const packetHash = proved.getHash();
+    const signature = explicit ? payload.slice(32) : payload;
+    const id = Identity.fromPublicKey(signerPublic);
+
+    f("form", explicit ? "explicit" : "implicit");
+    f("packet_hash", hex(packetHash));
+    f("proof_hash", explicit ? hex(payload.slice(0, 32)) : "-");
+    f("hash_match", !explicit || payload.slice(0, 32).equals(packetHash) ? "yes" : "no");
+    f("proof_destination", hex(packetHash.slice(0, 16)));
+    f("destination_match", p.destinationHash.equals(packetHash.slice(0, 16)) ? "yes" : "no");
+    f("signature", hex(signature));
+    f("signer_ed25519", hex(id.signaturePublicKeyBytes));
+    f("signature_valid", id.validate(signature, packetHash) ? "yes" : "no");
+}
+
 function linkOf(packet) {
     const link = new Link();
     link.setLinkId(packet);
@@ -406,7 +435,7 @@ function linkdata(blobs) {
 const [kind, path] = process.argv.slice(2);
 const blobs = readRaw(path);
 const kinds = { identity, keyset, destination, signature, sign, announce, encrypted,
-                linkrequest, linkproof, linkdata };
+                linkrequest, linkproof, linkdata, proof };
 // 77 says the kind is not implemented here. cmd/check counts it as
 // skipped rather than failed; see ../README.
 if (!(kind in kinds)) {
