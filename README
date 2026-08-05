@@ -22,10 +22,11 @@ regenerated and the differences are examined.
 
 Every private key here is public
 
-Eighteen vectors carry a private key: all of test/keyset/, the
-recipient key in test/encrypted/, and the responder's link key in
-test/linkdata/. Five of them are lifted from the upstream test suite
-and the rest are generated from a fixed seed. They are published, in
+Twenty-six vectors carry a private key: all of test/keyset/ and
+test/sign/, the recipient key in test/encrypted/, the responder's link
+key in test/linkdata/, and the interface key in test/ifac/. Six of them
+are lifted from the upstream test suite and the rest are generated from
+a fixed seed or derived from a published passphrase. They are published, in
 this repository, on purpose, because a decryption vector cannot be
 checked without one.
 
@@ -54,8 +55,8 @@ Layout
 
 dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
 and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies
-Ed25519 verification, SHA-512 and X25519 and is vendored unmodified,
-see cmd/VENDOR.
+Ed25519 signing and verification, SHA-512 and X25519 and is vendored
+unmodified, see cmd/VENDOR.
 
 gen needs Python and a checkout of the pinned reference implementation.
 Consumers of the corpus need neither.
@@ -122,7 +123,7 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Forty-three of the forty-nine are of that
+the result against raw. Forty-four of the fifty are of that
 class. The six that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message

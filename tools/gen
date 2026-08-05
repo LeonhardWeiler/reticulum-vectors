@@ -281,7 +281,7 @@ def field(name, value):
 # its raw carries a 950-byte message that expect records only by its
 # digest, so the vector can be decoded and not rebuilt.
 ENCODABLE = ("identity", "keyset", "destination", "announce", "encrypted",
-             "linkrequest", "linkproof", "linkdata")
+             "linkrequest", "linkproof", "linkdata", "ifac")
 
 
 def determinism(kind, expect):
@@ -543,6 +543,68 @@ def gen_sign(RNS, w):
         source="python-rns %s tests/identity.py:31 (%s)" % (PIN_VERSION, PIN_COMMIT[:8]))
 
 
+def gen_ifac(RNS, w, announce_raw_bytes):
+    """The one transformation of the header that happens below Packet.
+
+    Packet.unpack never reads bit 7 (RNS/Packet.py:243). Transport does,
+    on the way out and on the way in, and a frame on an interface with a
+    named network or a passphrase does not look like a packet at all
+    until it is unmasked.
+
+    The interface identity is derived here rather than called, because
+    RNS/Reticulum.py:958-971 does it inline in the constructor of a
+    running instance. Every step of it is an RNS function called with
+    RNS constants. The masking itself is not transcribed: the frame is
+    what RNS/Transport.py:1069 produced, through Transport.transmit.
+    """
+    ifac_netname = "reticulum-vectors"
+    ifac_size    = 16
+
+    # RNS/Reticulum.py:958-969, with no netkey configured.
+    origin      = RNS.Identity.full_hash(ifac_netname.encode("utf-8"))
+    origin_hash = RNS.Identity.full_hash(origin)
+    ifac_key    = RNS.Cryptography.hkdf(length=64, derive_from=origin_hash,
+                                        salt=RNS.Reticulum.IFAC_SALT, context=None)
+    ifac_identity = RNS.Identity.from_bytes(ifac_key)
+
+    class Interface:
+        pass
+
+    iface = Interface()
+    iface.ifac_identity = ifac_identity
+    iface.ifac_size     = ifac_size
+    iface.ifac_key      = ifac_key
+
+    frames = []
+    iface.process_outgoing = frames.append
+
+    # transmit logs and swallows exceptions, so the capture is the only
+    # evidence that it ran.
+    RNS.Transport.transmit(iface, announce_raw_bytes)
+    assert len(frames) == 1, "Transport.transmit produced no frame"
+    masked = frames[0]
+
+    assert masked[0] & 0x80 == 0x80
+    assert len(masked) == len(announce_raw_bytes) + ifac_size
+
+    ifac = masked[2:2+ifac_size]
+    expected_ifac = ifac_identity.sign(announce_raw_bytes)[-ifac_size:]
+    assert ifac == expected_ifac
+
+    w.vector("ifac", "announce",
+        "announce/minimal on an interface with a named network",
+        [ifac_key.hex(), "%02x" % ifac_size, masked.hex()],
+        [
+            field("ifac_key",      ifac_key.hex()),
+            field("ifac_size",     "%d" % ifac_size),
+            field("frame_length",  "%d" % len(masked)),
+            field("ifac",          ifac.hex()),
+            field("packet",        announce_raw_bytes.hex()),
+            field("expected_ifac", expected_ifac.hex()),
+            field("ifac_valid",    "yes"),
+        ])
+
+
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
@@ -742,6 +804,8 @@ def gen_announce(RNS, w, tmpdir, verify):
             [raw.hex()],
             describe_announce(raw, verify),
             source=source)
+
+    return base
 
 
 def hashable_part(raw, payload_len):
@@ -1352,7 +1416,8 @@ def main():
         gen_destination(RNS, w)
         gen_signature(RNS, w, verify)
         gen_sign(RNS, w)
-        gen_announce(RNS, w, tmpdir, verify)
+        announce_minimal = gen_announce(RNS, w, tmpdir, verify)
+        gen_ifac(RNS, w, announce_minimal)
         gen_encrypted(RNS, w)
 
         session = link_session(RNS, "link")

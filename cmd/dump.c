@@ -1056,6 +1056,72 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	}
 }
 
+/* The mask covers the whole frame except the access code itself, which
+ * has to be readable before the mask it keys can be generated. Both
+ * header bytes are masked; the IFAC flag is put back afterwards.
+ * RNS/Transport.py:1094, RNS/Transport.py:1456. */
+static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
+                      const uint8_t key[KEYSIZE],
+                      const uint8_t *in, size_t len, uint8_t *out)
+{
+	static uint8_t mask[MAXBLOB];
+	size_t i;
+
+	hkdf_sha256(ifac, ifac_size, key, KEYSIZE, NULL, 0, mask, len);
+
+	for (i = 0; i < len; i++) {
+		if (i <= 1 || i > ifac_size + 1)
+			out[i] = in[i] ^ mask[i];
+		else
+			out[i] = in[i];
+	}
+}
+
+/* Packet.unpack never reads bit 7 (RNS/Packet.py:243). Transport does,
+ * and a frame on an interface with a named network or a passphrase is
+ * not a packet until it has been unmasked. See doc/packet. */
+static void dump_ifac(struct blob *b, int nblobs)
+{
+	static uint8_t unmasked[MAXBLOB], packet[MAXBLOB];
+	const uint8_t *ifac;
+	uint8_t expected[SIGLEN];
+	size_t ifac_size, plen;
+
+	if (nblobs != 3)
+		fatal("ifac: expected 3 blobs, got %d", nblobs);
+	if (b[0].len != KEYSIZE)
+		fatal("ifac: interface key is %zu bytes, expected %d", b[0].len, KEYSIZE);
+	if (b[1].len != 1)
+		fatal("ifac: access code size is %zu bytes, expected 1", b[1].len);
+
+	ifac_size = b[1].data[0];
+	if (ifac_size > SIGLEN)
+		fatal("ifac: access code of %zu bytes exceeds the signature", ifac_size);
+	if (b[2].len <= 2 + ifac_size)
+		fatal("ifac: frame of %zu bytes holds no packet", b[2].len);
+
+	ifac = b[2].data + 2;
+	ifac_mask(ifac, ifac_size, b[0].data, b[2].data, b[2].len, unmasked);
+
+	/* The access code is not part of the packet, and the flag that
+	 * announced it is cleared before the signature is checked. */
+	plen = b[2].len - ifac_size;
+	packet[0] = unmasked[0] & 0x7f;
+	packet[1] = unmasked[1];
+	memcpy(packet + 2, unmasked + 2 + ifac_size, plen - 2);
+
+	ed25519_sign(b[0].data + KEYHALF, packet, plen, expected);
+
+	field_hex("ifac_key", b[0].data, KEYSIZE);
+	field("ifac_size", "%zu", ifac_size);
+	field("frame_length", "%zu", b[2].len);
+	field_hex("ifac", ifac, ifac_size);
+	field_hex("packet", packet, plen);
+	field_hex("expected_ifac", expected + SIGLEN - ifac_size, ifac_size);
+	field("ifac_valid", "%s",
+	      memcmp(ifac, expected + SIGLEN - ifac_size, ifac_size) == 0 ? "yes" : "no");
+}
+
 /* Rebuilding raw from expect. The layout below is the one the decoders
  * above read, written out a second time and in the other direction: a
  * vector of the encode class is one whose expect holds every byte of
@@ -1091,6 +1157,14 @@ static void put_byte(struct out *o, unsigned v)
 
 	snprintf(b, sizeof b, "%02x", v & 0xff);
 	put(o, b);
+}
+
+static void put_bytes(struct out *o, const uint8_t *p, size_t n)
+{
+	size_t i;
+
+	for (i = 0; i < n; i++)
+		put_byte(o, p[i]);
 }
 
 /* Absent fields carry no bytes, so an optional one needs no separate
@@ -1222,6 +1296,44 @@ static void encode_linkproof(struct kv *f, int n)
 	emit(&o);
 }
 
+/* The one encoder that is not a concatenation. Going out, the flag is
+ * set, the access code is inserted after the two header bytes, and the
+ * same mask is applied. RNS/Transport.py:1081. */
+static void encode_ifac(struct kv *f, int n)
+{
+	static uint8_t packet[MAXBLOB], frame[MAXBLOB], masked[MAXBLOB];
+	struct blob key, code, pkt;
+	struct out o = { "", 0 };
+	size_t len;
+
+	decode_hex(&key, lookup(f, n, "ifac_key"), strlen(lookup(f, n, "ifac_key")), "ifac_key");
+	decode_hex(&code, lookup(f, n, "ifac"), strlen(lookup(f, n, "ifac")), "ifac");
+	decode_hex(&pkt, lookup(f, n, "packet"), strlen(lookup(f, n, "packet")), "packet");
+
+	if (key.len != KEYSIZE)
+		fatal("ifac: interface key is %zu bytes, expected %d", key.len, KEYSIZE);
+	if (pkt.len < 2)
+		fatal("ifac: packet of %zu bytes has no header", pkt.len);
+
+	memcpy(packet, pkt.data, pkt.len);
+	len = pkt.len + code.len;
+
+	frame[0] = packet[0] | 0x80;
+	frame[1] = packet[1];
+	memcpy(frame + 2, code.data, code.len);
+	memcpy(frame + 2 + code.len, packet + 2, pkt.len - 2);
+
+	ifac_mask(code.data, code.len, key.data, frame, len, masked);
+	masked[0] |= 0x80;
+
+	emit_field(f, n, "ifac_key");
+	put_byte(&o, (unsigned)code.len);
+	emit(&o);
+
+	put_bytes(&o, masked, len);
+	emit(&o);
+}
+
 /* A keepalive is the one link packet the reference does not encrypt, so
  * its payload is the plaintext and there is no token to write out. */
 static void encode_linkdata(struct kv *f, int n)
@@ -1260,6 +1372,7 @@ static const struct {
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },
 	{ "linkdata",    dump_linkdata,    encode_linkdata    },
+	{ "ifac",        dump_ifac,        encode_ifac        },
 };
 
 int main(int argc, char **argv)

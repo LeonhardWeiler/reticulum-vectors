@@ -25,6 +25,7 @@ identity/upstream-1
 identity/upstream-2
 identity/upstream-3
 identity/upstream-4
+ifac/announce
 keyset/clamped
 keyset/unclamped
 keyset/upstream-0

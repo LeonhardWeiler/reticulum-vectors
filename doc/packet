@@ -49,7 +49,7 @@ Flags
 One byte at offset 0.
 
     bit  width  field
-    7    1      reserved, zero
+    7    1      interface access code present
     6    1      header type
     5    1      context flag
     4    1      transport type
@@ -69,6 +69,11 @@ human-facing numbering, so bit 6 clear appears as header_type 1.
 
 The context flag has no fixed meaning. Its interpretation depends on
 the packet type; for announces it signals the presence of a ratchet.
+
+Bit 7 is not read by Packet.unpack, which is why every other field
+above is described from RNS/Packet.py:243 and this one is not. It is
+set and cleared a layer below, and a frame that carries it is not a
+packet until it has been unmasked. See the section below.
 
 The destination type is read from the destination the packet is
 addressed to, with one exception: a link request proof writes it as
@@ -106,6 +111,56 @@ test/announce/in-transport is test/announce/minimal after this transformation.
     RNS/Transport.py:1369
 
 
+Interface access codes
+
+For what these are for, see upstream docs/source/understanding.rst,
+section "Interface Access Codes". What follows is where the bytes go.
+
+An interface configured with a named network or a passphrase carries
+every packet inside a frame:
+
+    offset  size  field
+    0       1     flags, bit 7 set, masked
+    1       1     hops, masked
+    2       N     access code, not masked
+    2+N     -     the packet from offset 2 onward, masked
+
+N is configuration, not a field. It is not on the wire and both ends
+must already agree on it. The default is 16 for the TCP interfaces
+(RNS/Interfaces/TCPInterface.py:77) and a configuration may set any
+size at or above IFAC_MIN_SIZE.
+
+The access code is the last N bytes of an Ed25519 signature over the
+unframed packet, made with an identity both ends derive from the
+network name and passphrase:
+
+    origin      full_hash(netname) || full_hash(netkey)
+    key         hkdf(64, origin_hash, salt = IFAC_SALT)
+    identity    Identity.from_bytes(key)
+    code        identity.sign(packet)[-N:]
+
+Either half of origin is omitted when that half is not configured.
+IFAC_SALT is a constant, RNS/Reticulum.py:150.
+
+The mask is hkdf over the frame length, keyed by the access code and
+salted with the interface key:
+
+    mask        hkdf(len(frame), derive_from = code, salt = key)
+
+Every byte is xored with it except the access code itself, which has
+to be readable before the mask it keys can be generated. Both header
+bytes are masked, and the sender puts bit 7 back afterwards, so the
+flag survives a mask that would have cleared it.
+
+    RNS/Transport.py:1073, RNS/Transport.py:1094, RNS/Transport.py:1456
+
+A decoder that treats bit 7 as reserved reads a masked frame as a
+packet: random flags, a random hop count, and a destination hash that
+matches nothing.
+
+test/ifac/announce is test/announce/minimal inside such a frame.
+
+
 Vector format
 
 kind: announce, determinism: encode
@@ -137,3 +192,26 @@ numbers behind it, and nothing else:
 
 Naming the rule rather than the stage keeps two decoders from agreeing
 by accident when they fail for different reasons.
+
+
+Vector format: ifac
+
+kind: ifac, determinism: encode
+
+raw is three lines:
+
+    line 1    the interface key, 64 bytes
+    line 2    the access code size, one byte
+    line 3    the frame as it appears on the wire
+
+The size is a line of raw rather than a field of the packet because it
+is configuration. A receiver is told it; nothing on the wire says it.
+
+expect names the key, the size, the frame length, the access code the
+frame carries, the packet recovered from it, the access code that
+packet should have produced, and whether the two agree.
+
+Encode class: cmd/check masks the packet again and diffs the frame.
+The corpus therefore checks both directions of the mask, which is the
+one place it does so with the sender's code path rather than the
+receiver's.
