@@ -30,7 +30,7 @@ root=$(dirname "$0")/..
 DUMP=${DUMP:-$root/cmd/dump}
 ENCODE=${ENCODE:-yes}
 
-KINDS="identity keyset destination signature announce encrypted"
+KINDS="identity keyset destination signature announce encrypted linkrequest"
 
 if [ ! -x "$DUMP" ]; then
 	echo "no dump program at $DUMP; run make" >&2

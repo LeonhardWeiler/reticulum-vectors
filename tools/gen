@@ -140,6 +140,11 @@ ENCRYPTED = [
      "encrypted to a ratchet public key rather than the identity key"),
 ]
 
+# The destination a link is established to. One is enough: the link
+# vectors record the link, not the naming of its endpoint, which
+# test/destination/ already covers.
+LINK_DESTINATION = (0, ("rns_unit_tests", "link", "establish"))
+
 # The timestamp pinned into random_hash while generating. Any fixed
 # value inside the five-byte field will do; this one is a round number
 # well clear of both ends.
@@ -165,6 +170,13 @@ class DetRandom:
         return out
 
 
+def pinned_keyclass(real, rng):
+    return type("Pinned", (), {
+        "generate": staticmethod(lambda: real.from_private_bytes(rng.bytes(32))),
+        "from_private_bytes": staticmethod(real.from_private_bytes),
+    })
+
+
 @contextlib.contextmanager
 def pinned(RNS, tag):
     """Replace the clock and the two randomness sources an announce
@@ -183,7 +195,10 @@ def pinned(RNS, tag):
     real_rand    = RNS.Identity.get_random_hash
     real_ratchet = RNS.Identity._generate_ratchet
     identity_mod = sys.modules["RNS.Identity"]
+    link_mod     = sys.modules["RNS.Link"]
     real_x25519  = identity_mod.X25519PrivateKey
+    real_lx25519 = link_mod.X25519PrivateKey
+    real_led     = link_mod.Ed25519PrivateKey
 
     time.time  = lambda: float(PINNED_TIME)
     os.urandom = rng.bytes
@@ -195,10 +210,13 @@ def pinned(RNS, tag):
     # rather than on the class of the same name.
     # os.urandom is pinned as well because Token.encrypt takes its
     # initialisation vector from it directly.
-    identity_mod.X25519PrivateKey = type("PinnedX25519", (), {
-        "generate": staticmethod(lambda: real_x25519.from_private_bytes(rng.bytes(32))),
-        "from_private_bytes": staticmethod(real_x25519.from_private_bytes),
-    })
+    identity_mod.X25519PrivateKey = pinned_keyclass(real_x25519, rng)
+
+    # RNS.Link imports both key classes for itself (RNS/Link.py:31) and
+    # draws a fresh pair for every link end (RNS/Link.py:276, :284), so
+    # the same shim is installed there.
+    link_mod.X25519PrivateKey  = pinned_keyclass(real_lx25519, rng)
+    link_mod.Ed25519PrivateKey = pinned_keyclass(real_led, rng)
     try:
         yield
     finally:
@@ -207,6 +225,8 @@ def pinned(RNS, tag):
         RNS.Identity.get_random_hash   = real_rand
         RNS.Identity._generate_ratchet = real_ratchet
         identity_mod.X25519PrivateKey  = real_x25519
+        link_mod.X25519PrivateKey      = real_lx25519
+        link_mod.Ed25519PrivateKey     = real_led
 
 
 class TransportStub:
@@ -449,7 +469,12 @@ def gen_signature(RNS, w, verify):
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
-CONTEXTS     = {0x00: "none", 0x0b: "path_response"}
+CONTEXTS     = {0x00: "none", 0x0b: "path_response", 0xfa: "keepalive",
+                0xfb: "link_identify", 0xfc: "link_close", 0xfd: "link_proof",
+                0xfe: "link_rtt", 0xff: "link_request_proof"}
+
+# Only MODE_AES256_CBC is enabled at the pin, RNS/Link.py:133.
+LINK_MODES   = {0x01: "aes256_cbc"}
 
 KEYSIZE     = 64
 NAMEHASHLEN = 10
@@ -460,6 +485,11 @@ ADDRLEN     = 16
 KEYHALF     = 32
 TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:51, iv plus hmac
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
+ECPUBSIZE   = 64        # RNS/Link.py:70, the two public keys together
+SIGNALLEN   = 3         # RNS/Link.py:80, LINK_MTU_SIZE
+MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144
+MODE_DEFAULT = 0x01     # RNS/Link.py:134
+RETICULUM_MTU = 500     # RNS/Reticulum.py:93
 
 
 def invalid(reason, *evidence):
@@ -644,6 +674,137 @@ def gen_announce(RNS, w, tmpdir, verify):
             describe_announce(raw, verify))
 
 
+def hashable_part(raw, payload_len):
+    """The bytes a link id is taken over, RNS/Packet.py:348 as
+    RNS/Link.py:336 trims it.
+
+    The low four flag bits and the hop count are excluded so that a
+    packet keeps its link id while it travels, and any signalling bytes
+    are chopped off the end so that signalling the MTU does not change
+    the identity of the link.
+    """
+    header_type = (raw[0] & 0b01000000) >> 6
+    part = bytes([raw[0] & 0x0f]) + (raw[2+ADDRLEN:] if header_type else raw[2:])
+    excess = payload_len - ECPUBSIZE
+    return part[:len(part)-excess] if excess > 0 else part
+
+
+def describe_linkrequest(raw):
+    """Decode a link request from its bytes alone.
+
+    As with the other packet kinds, the layout is read here without
+    consulting any RNS object, so gen and dump stay two independent
+    decoders of the same bytes.
+    """
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) not in (ECPUBSIZE, ECPUBSIZE + SIGNALLEN):
+        return invalid("invalid-length",
+                       ("payload_length", len(payload)),
+                       ("accepted_length", ECPUBSIZE),
+                       ("signalled_length", ECPUBSIZE + SIGNALLEN))
+
+    signalled = len(payload) == ECPUBSIZE + SIGNALLEN
+    if signalled:
+        value = int.from_bytes(payload[ECPUBSIZE:], "big")
+        mode  = (value >> 21) & 0x07
+        mtu   = value & MTU_BYTEMASK
+    else:
+        mode, mtu = MODE_DEFAULT, None
+
+    link_id = hashlib.sha256(hashable_part(raw, len(payload))).digest()[:ADDRLEN]
+
+    return lines + [
+        field("x25519_public",  payload[:KEYHALF].hex()),
+        field("ed25519_public", payload[KEYHALF:ECPUBSIZE].hex()),
+        field("signalling",     payload[ECPUBSIZE:].hex() if signalled else "-"),
+        field("mode",           LINK_MODES.get(mode, "%02x" % mode)),
+        field("mtu",            "%d" % mtu if signalled else "-"),
+        field("link_id",        link_id.hex()),
+    ]
+
+
+def link_request_raw(RNS, tag):
+    """Assemble a link request as Link.__init__ does at RNS/Link.py:304.
+
+    The initiator half of that constructor reaches for a running
+    instance three lines earlier, so the four lines that produce bytes
+    are run here instead. Everything they call is the reference's own:
+    the key classes Link resolves, its signalling encoder, and Packet.
+    """
+    key_index, aspects = LINK_DESTINATION
+    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
+
+    public_only = RNS.Identity(create_keys=False)
+    public_only.load_public_key(identity.get_public_key())
+
+    link_mod = sys.modules["RNS.Link"]
+    with pinned(RNS, tag):
+        destination = RNS.Destination(public_only, RNS.Destination.OUT,
+                                      RNS.Destination.SINGLE, aspects[0], *aspects[1:])
+        prv     = link_mod.X25519PrivateKey.generate()
+        sig_prv = link_mod.Ed25519PrivateKey.generate()
+
+        signalling   = RNS.Link.signalling_bytes(RNS.Reticulum.MTU, RNS.Link.MODE_DEFAULT)
+        request_data = prv.public_key().public_bytes() + \
+                       sig_prv.public_key().public_bytes() + signalling
+
+        packet = RNS.Packet(destination, request_data, packet_type=RNS.Packet.LINKREQUEST)
+        packet.pack()
+
+    return prv, sig_prv, packet
+
+
+def gen_linkrequest(RNS, w):
+    prv, sig_prv, packet = link_request_raw(RNS, "linkrequest")
+    raw = packet.raw
+
+    # The reference must agree with the decoder above about which link
+    # this request opens, and about what it signalled.
+    link_id = bytes.fromhex(
+        lookup_field(describe_linkrequest(raw), "link_id"))
+    assert link_id == RNS.Link.link_id_from_lr_packet(packet)
+    assert RNS.Link.mtu_from_lr_packet(packet) == RNS.Reticulum.MTU
+    assert RNS.Link.mode_from_lr_packet(packet) == RNS.Link.MODE_DEFAULT
+
+    w.vector("linkrequest", "signalling",
+        meta_block("linkrequest", "decode",
+                   "link request as the reference emits it, mode and mtu signalled"),
+        [raw.hex()],
+        describe_linkrequest(raw))
+
+    # Without signalling is the shorter form validate_request still
+    # accepts at RNS/Link.py:187. It opens the same link: the signalling
+    # bytes are excluded from the link id.
+    unsignalled = raw[:-SIGNALLEN]
+    w.vector("linkrequest", "no-signalling",
+        meta_block("linkrequest", "decode",
+                   "the 64-byte form; same link id, mode falls back to the default",
+                   source="constructed by tools/gen from linkrequest/signalling"),
+        [unsignalled.hex()],
+        describe_linkrequest(unsignalled))
+
+    short = raw[:-1]
+    w.vector("linkrequest", "invalid-length",
+        meta_block("linkrequest", "decode",
+                   "66-byte payload, neither of the two accepted lengths",
+                   source="constructed by tools/gen from linkrequest/signalling"),
+        [short.hex()],
+        describe_linkrequest(short))
+
+    return prv, sig_prv, packet
+
+
+def lookup_field(lines, name):
+    for line in lines:
+        if line.startswith(name + " "):
+            return line.split(None, 1)[1]
+    raise KeyError(name)
+
+
 def hkdf_sha256(length, ikm, salt, context=b""):
     """RFC 5869, which is what RNS/Cryptography/HKDF.py:34 implements."""
     import hmac as _hmac
@@ -808,6 +969,7 @@ def main():
         gen_signature(RNS, w, verify)
         gen_announce(RNS, w, tmpdir, verify)
         gen_encrypted(RNS, w)
+        gen_linkrequest(RNS, w)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

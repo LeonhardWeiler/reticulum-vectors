@@ -45,6 +45,10 @@
 #define TOKEN_OVERHEAD (IVLEN + MACLEN)   /* RNS/Cryptography/Token.py:51 */
 #define DERIVEDLEN   64
 #define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
+#define ECPUBSIZE    64		/* RNS/Link.py:70 */
+#define SIGNALLEN    3		/* RNS/Link.py:80 */
+#define MTU_BYTEMASK 0x1fffff	/* RNS/Link.py:144 */
+#define MODE_DEFAULT 0x01	/* RNS/Link.py:134 */
 
 static const char *argv0;
 
@@ -537,6 +541,21 @@ static void print_invalid(enum reason r, size_t got, size_t need)
 	}
 }
 
+static const char *context_name(unsigned c)
+{
+	switch (c) {
+	case 0x00: return "none";
+	case 0x0b: return "path_response";
+	case 0xfa: return "keepalive";
+	case 0xfb: return "link_identify";
+	case 0xfc: return "link_close";
+	case 0xfd: return "link_proof";
+	case 0xfe: return "link_rtt";
+	case 0xff: return "link_request_proof";
+	default:   return NULL;
+	}
+}
+
 /* The header fields, shared by every packet kind. */
 static void print_header(const struct header *h)
 {
@@ -552,10 +571,8 @@ static void print_header(const struct header *h)
 	else
 		field("transport_id", "-");
 	field_hex("destination_hash", h->destination_hash, ADDRLEN);
-	if (h->context == 0x00)
-		field("context", "none");
-	else if (h->context == 0x0b)
-		field("context", "path_response");
+	if (context_name(h->context) != NULL)
+		field("context", "%s", context_name(h->context));
 	else
 		field("context", "%02x", h->context);
 	field("payload_length", "%zu", h->payload_len);
@@ -707,6 +724,89 @@ static void dump_announce(struct blob *b, int nblobs)
 	print_announce(&h, &a);
 }
 
+/* The link id is a truncated hash of the packet with the low four flag
+ * bits and the hop count excluded, so that it survives a hop, and with
+ * any signalling bytes chopped off the end, so that signalling the MTU
+ * does not change the identity of the link. RNS/Link.py:336. */
+static void link_id_of(const uint8_t *raw, size_t len,
+                       const struct header *h, uint8_t *out)
+{
+	uint8_t part[MAXBLOB];
+	size_t n, from;
+
+	part[0] = raw[0] & 0x0f;
+	from = h->header_type ? 2 + ADDRLEN : 2;
+	memcpy(part + 1, raw + from, len - from);
+	n = 1 + len - from;
+
+	if (h->payload_len > ECPUBSIZE)
+		n -= h->payload_len - ECPUBSIZE;
+
+	truncated_hash(part, n, out, ADDRLEN);
+}
+
+static void print_mode(unsigned mode)
+{
+	if (mode == 0x01)
+		field("mode", "aes256_cbc");
+	else
+		field("mode", "%02x", mode);
+}
+
+/* linkrequest: one blob, the whole packet. See ../doc/link. */
+static void dump_linkrequest(struct blob *b, int nblobs)
+{
+	struct header h;
+	enum reason r;
+	size_t got = 0, need = 0;
+	uint8_t link_id[ADDRLEN];
+	unsigned mode, mtu = 0, value;
+	int signalled;
+
+	if (nblobs != 1)
+		fatal("linkrequest: expected 1 blob, got %d", nblobs);
+
+	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	signalled = h.payload_len == ECPUBSIZE + SIGNALLEN;
+	if (!signalled && h.payload_len != ECPUBSIZE) {
+		field("invalid", "invalid-length");
+		field("payload_length", "%zu", h.payload_len);
+		field("accepted_length", "%d", ECPUBSIZE);
+		field("signalled_length", "%d", ECPUBSIZE + SIGNALLEN);
+		return;
+	}
+
+	if (signalled) {
+		value = ((unsigned)h.payload[ECPUBSIZE] << 16) |
+		        ((unsigned)h.payload[ECPUBSIZE + 1] << 8) |
+		        h.payload[ECPUBSIZE + 2];
+		mode = (value >> 21) & 0x07;
+		mtu  = value & MTU_BYTEMASK;
+	} else {
+		mode = MODE_DEFAULT;
+	}
+
+	link_id_of(b[0].data, b[0].len, &h, link_id);
+
+	print_header(&h);
+	field_hex("x25519_public", h.payload, KEYHALF);
+	field_hex("ed25519_public", h.payload + KEYHALF, KEYHALF);
+	if (signalled)
+		field_hex("signalling", h.payload + ECPUBSIZE, SIGNALLEN);
+	else
+		field("signalling", "-");
+	print_mode(mode);
+	if (signalled)
+		field("mtu", "%u", mtu);
+	else
+		field("mtu", "-");
+	field_hex("link_id", link_id, ADDRLEN);
+}
+
 /* ------------------------------------------------------------ encoding */
 
 static void print_hex_field(const char *value)
@@ -780,6 +880,8 @@ int main(int argc, char **argv)
 		dump_announce(blobs, n);
 	else if (strcmp(kind, "encrypted") == 0)
 		dump_encrypted(blobs, n);
+	else if (strcmp(kind, "linkrequest") == 0)
+		dump_linkrequest(blobs, n);
 	else
 		fatal("unknown kind %s", kind);
 

@@ -1,0 +1,97 @@
+Link
+
+Byte layouts and derivations for link establishment. For what a link
+is and why it exists, see upstream docs/source/understanding.rst,
+section "Reticulum Link Establishment".
+
+Vectors: test/linkrequest/
+
+See doc/packet for the header. Only the payload and the derivations
+are described here.
+
+
+Constants
+
+    ECPUBSIZE            64 bytes   RNS/Link.py:70, the two public keys
+    LINK_MTU_SIZE         3 bytes   RNS/Link.py:80
+    MTU_BYTEMASK       0x1fffff     RNS/Link.py:144
+    MODE_BYTEMASK          0xe0     RNS/Link.py:145
+    MODE_DEFAULT           0x01     RNS/Link.py:134, AES-256-CBC
+
+Only MODE_AES256_CBC is enabled at this pin. ENABLED_MODES holds that
+one value, and signalling_bytes raises on any other, so no packet the
+reference emits carries a different mode.
+
+    RNS/Link.py:133, RNS/Link.py:148
+
+
+Link request
+
+Packet type 2, destination type single, context 0x00. The destination
+hash is the hash of the destination being linked to. The payload is
+not encrypted.
+
+    RNS/Packet.py:193
+
+    offset  size  field
+    0       32    initiator X25519 public key
+    32      32    initiator Ed25519 public key
+    64      3     signalling, optional
+
+Both keys are drawn fresh for every link. The Ed25519 key is not the
+initiator's identity key: a link is anonymous until the initiator
+identifies over it.
+
+    RNS/Link.py:284
+
+Exactly two payload lengths are accepted, 64 and 67. Anything else is
+dropped without further examination.
+
+    RNS/Link.py:187
+
+
+Signalling
+
+Three bytes, big endian, present only in the 67-byte form. The
+reference always sends them.
+
+    bit    width  field
+    23-21  3      mode
+    20-0   21     mtu
+
+    RNS/Link.py:148
+
+Absent, the mode decodes as MODE_DEFAULT, because mode_from_lr_packet
+returns that value rather than nothing. The MTU has no such fallback
+in the decoder: mtu_from_lr_packet returns nothing, and the receiver
+keeps the MTU its own Link was constructed with, 500 bytes.
+
+    RNS/Link.py:172, RNS/Link.py:154, RNS/Link.py:234
+
+
+Link id
+
+The link id addresses every later packet on the link. It is a
+SHA-256 truncated to 16 bytes, taken over
+
+    (flags & 0x0f) || hops-less remainder of the packet
+
+that is, the packet with the four high flag bits cleared and the hop
+count removed, so that the id survives a hop; and, for a packet in
+transport, with the transport id removed as well.
+
+    RNS/Packet.py:348
+
+Any signalling bytes are then chopped off the end. The initiator and
+the responder therefore agree on the link id whether or not the MTU
+was signalled, and a request that signals nothing opens the same link
+as the same request that signals 500 bytes. The vectors
+test/linkrequest/signalling and test/linkrequest/no-signalling carry
+the same link id for exactly this reason.
+
+    RNS/Link.py:336
+
+The link id is not a hash of the public keys, and it is not derived
+from the destination hash alone. Two requests to the same destination
+with the same keys but a different hop count produce the same id;
+two requests with different keys do not.
