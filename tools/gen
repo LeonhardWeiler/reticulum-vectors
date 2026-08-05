@@ -306,6 +306,7 @@ class Writer:
         self.force   = force
         self.written = 0
         self.differs = []
+        self.names   = []
 
     def vector(self, kind, name, purpose, raw, expect, source=GENERATED_SOURCE):
         meta = [
@@ -320,6 +321,15 @@ class Writer:
         self.file(os.path.join(path, "meta"), meta)
         self.file(os.path.join(path, "raw"), raw)
         self.file(os.path.join(path, "expect"), expect)
+        self.names.append(kind + "/" + name)
+
+    # test/INDEX is what makes a count an assertion. cmd/check refuses to
+    # run against a test/ that does not hold exactly these vectors, so a
+    # copy with some of them removed reports nothing rather than passing
+    # the ones it kept.
+    def index(self):
+        self.file(os.path.join(self.root, "test", "INDEX"),
+                  sorted(self.names))
 
     @staticmethod
     def body(lines):
@@ -1312,6 +1322,8 @@ def main():
         gen_linkdata(RNS, w, verify, session)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+    w.index()
 
     print("%d files written" % w.written)
     if w.differs:

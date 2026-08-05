@@ -35,6 +35,24 @@ seen=0
 err=$(mktemp) || exit 2
 trap 'rm -f "$err"' EXIT INT TERM
 
+# The corpus is what test/INDEX says it is. Counting what is present
+# and reporting it as a total is not a check: a copy of test/ with
+# forty vectors removed passes every one of the eight it kept.
+index="$root/test/INDEX"
+if [ ! -f "$index" ]; then
+	echo "no test/INDEX; the corpus cannot say what it is missing" >&2
+	exit 2
+fi
+
+present=$(cd "$root/test" && find . -mindepth 2 -maxdepth 2 -type d |
+          sed 's,^\./,,' | LC_ALL=C sort)
+differs=$(printf '%s\n' "$present" | diff "$index" - | sed -n 's/^[<>]/&/p')
+if [ -n "$differs" ]; then
+	echo "test/ and test/INDEX disagree:"
+	printf '%s\n' "$differs" | sed 's/^</    missing:/; s/^>/    unlisted:/'
+	exit 2
+fi
+
 fail_with() {
 	echo "FAIL $1"
 	shift

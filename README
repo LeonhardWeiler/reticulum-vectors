@@ -91,6 +91,8 @@ It needs Python and the checkout; cmd/check alone needs neither.
 
 Vector format
 
+    test/INDEX          every vector in the corpus, one per line
+
     test/<kind>/<name>/
 
         meta      provenance and determinism class
@@ -99,6 +101,11 @@ Vector format
 
 Vectors are named after what they record, not numbered. Inserting a
 case does not renumber the rest, and doc/ can refer to one by name.
+
+cmd/check refuses to run against a test/ that does not hold exactly
+what INDEX lists, and names what is missing. Without that, a corpus
+with forty vectors removed reports "8 passed, 0 failed" and exits
+zero, and a count is not a claim about anything.
 
 meta records these fields, spelled in lower case as shown:
 
