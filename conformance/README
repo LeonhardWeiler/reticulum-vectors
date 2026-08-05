@@ -13,16 +13,23 @@ part of the wire format, only of the corpus.
 
 Where to put the implementations
 
-Clone each next to its harness:
+Clone each next to its harness, under the directory name given:
+
+    rns.js           github.com/liamcottle/rns.js
+    go-reticulum     github.com/svanichkin/go-reticulum
+    Reticulum-rs     github.com/BeechatNetworkSystemsLtd/Reticulum-rs
+    rsReticulum      github.com/ratspeak/rsReticulum
+    microReticulum   github.com/attermann/microReticulum
+    reticulum        github.com/sgiath/reticulum
+
+so that the result is
 
     conformance/src/rns.js/
     conformance/src/go-reticulum/
-    conformance/src/Reticulum-rs/
-    conformance/src/rsReticulum/
-    conformance/src/microReticulum/
-    conformance/src/reticulum/          sgiath's Elixir implementation
+    ...
 
-The commit each result was measured at is recorded in ../CONFORMANCE.
+The commit each result was measured at is recorded in ../CONFORMANCE,
+and the row is only reproducible at that commit.
 
 
 What a harness may and may not do
@@ -67,3 +74,17 @@ Building
                       src/microReticulum/Utilities/Memory.h uses uint8_t
                       and uint32_t without including <cstdint>, which
                       older compilers supplied transitively.
+
+                      cmake -S . -B build -DRNS_BUILD_TESTS=OFF \
+                          -DRNS_BUILD_EXAMPLES=OFF -DRNS_BUILD_INTEROP=OFF \
+                          -DCMAKE_CXX_FLAGS="-include cstdint"
+
+                      The harness needs the include paths of the
+                      dependencies cmake fetched, under
+                      build/_deps/*-src/{src,include}.
+
+Two of the three link kinds need more than the packet they describe.
+linkproof and linkdata carry the link request as their first blob,
+because the link id, and with it the salt of the key derivation, is in
+no packet on the link. A harness that ignores that blob cannot produce
+a correct field for either kind.
