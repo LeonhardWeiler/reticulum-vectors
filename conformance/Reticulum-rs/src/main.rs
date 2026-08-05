@@ -1,6 +1,8 @@
 // Conformance harness for BeechatNetworkSystemsLtd/Reticulum-rs.
 //
 //	rsret kind rawfile
+//
+// See ../README for what a harness may and may not do.
 
 use std::env;
 use std::fs;

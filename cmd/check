@@ -10,19 +10,10 @@
 #
 # The second check is the corpus proper. The first stops a vector from
 # describing itself with a field nothing reads. The third turns
-# "determinism: encode" from a claim in a text file into a test: it
-# says expect carries everything raw does, so rebuilding raw from it
-# must reproduce raw exactly.
+# "determinism: encode" from a claim in a text file into a test.
 #
-# Uses cmd/dump. To check a different implementation, point DUMP at a
-# program taking the same arguments and printing the same format:
-#
-#	DUMP=./my-decoder cmd/check
-#
-# A decoder that implements only the decode direction can skip the
-# round trip:
-#
-#	ENCODE=no cmd/check
+#	DUMP=./my-decoder cmd/check	check another implementation
+#	ENCODE=no cmd/check		skip the round trip
 #
 # Exits non-zero if any vector fails.
 
@@ -78,7 +69,6 @@ for dir in "$root"/test/*/*/; do
 		*) fail_with "$dir" "meta names an unknown determinism class: $determinism"; continue ;;
 	esac
 
-	# The directory a vector lives in must agree with its meta.
 	if [ "$(basename "$(dirname "$dir")")" != "$kind" ]; then
 		fail_with "$dir" "kind $kind does not match the directory it is filed under"
 		continue

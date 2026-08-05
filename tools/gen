@@ -86,11 +86,8 @@ CLAMP_KEYS = [
      "the same scalar clamped; same public key and identity hash, different private key"),
 ]
 
-# Destination cases: (name, aspects tuple, key index or None, purpose).
-#
 # The first is the only destination hash asserted anywhere upstream, at
 # tests/link.py:113. It is reproduced here to anchor the derivation.
-#
 DESTINATIONS = [
     ("upstream-link-establish", ("rns_unit_tests", "link", "establish"), 0,
      "the destination hash asserted at upstream tests/link.py:113"),
@@ -112,8 +109,6 @@ DESTINATIONS = [
      "the same name decomposed (u+0075 u+0308); no normalisation, so the hash differs"),
 ]
 
-# Announce cases: (name, key index, aspects, app_data, ratchet,
-# path_response, purpose).
 ANNOUNCES = [
     ("minimal", 0, ("rns_unit_tests", "link", "establish"), None, False, False,
      "minimal announce: no ratchet, no app data"),
@@ -127,8 +122,6 @@ ANNOUNCES = [
      "path response context"),
 ]
 
-# Encrypted packet cases: (name, key index, aspects, plaintext, ratchet,
-# purpose).
 ENCRYPTED = [
     ("minimal", 0, ("rns_unit_tests", "link", "establish"), b"reticulum", False,
      "nine bytes of plaintext, one cipher block after padding"),
@@ -499,10 +492,11 @@ def invalid(reason, *evidence):
 
 
 def describe_header(raw):
-    """Decode a packet header, shared by every packet kind.
+    """Every packet kind starts here.
 
-    Returns the header field lines and the payload, or, when the packet
-    cannot be decoded that far, only the lines of an invalid block.
+    The layout is read without consulting any RNS object, so gen and
+    dump are two independent decoders of the same bytes and check
+    compares them. A misreading on one side shows up as a diff.
     """
     if len(raw) < 2:
         return invalid("short-header", ("length", len(raw)), ("minimum_length", 2)), None
@@ -550,13 +544,6 @@ def describe_header(raw):
 
 
 def describe_announce(raw, verify):
-    """Decode an announce packet from its bytes alone.
-
-    The layout is parsed here without consulting any RNS object. gen
-    and dump are then two independent decoders of the same bytes, and
-    check compares them. A misreading of the layout on one side shows
-    up as a diff.
-    """
     lines, h = describe_header(raw)
     if h is None:
         return lines
@@ -691,12 +678,6 @@ def hashable_part(raw, payload_len):
 
 
 def describe_linkrequest(raw):
-    """Decode a link request from its bytes alone.
-
-    As with the other packet kinds, the layout is read here without
-    consulting any RNS object, so gen and dump stay two independent
-    decoders of the same bytes.
-    """
     lines, h = describe_header(raw)
     if h is None:
         return lines
@@ -882,9 +863,7 @@ def gen_linkrequest(RNS, w, session):
 
 
 def describe_linkproof(request_raw, identity_public, raw, verify):
-    """Decode a link request proof.
-
-    Three of the four parts that were signed are not in the packet. The
+    """Three of the four parts that were signed are not in the packet. The
     link id comes from the request, the peer Ed25519 key from the
     identity of the destination the request was addressed to, and the
     signalling bytes are signed in the position they occupy here.
@@ -977,9 +956,7 @@ def gen_linkproof(RNS, w, verify, session):
 
 
 def describe_linkdata(request_raw, responder_private, raw, verify):
-    """Decode a packet sent on an established link.
-
-    Unlike a packet to a destination, this one carries no ephemeral
+    """Unlike a packet to a destination, this one carries no ephemeral
     key: both ends already hold the shared secret. The salt of the
     derivation is the link id, which is in no packet either.
     """
@@ -1138,12 +1115,6 @@ def hkdf_sha256(length, ikm, salt, context=b""):
 
 
 def describe_encrypted(raw, private, ratchet_private):
-    """Decode an encrypted packet from its bytes and the recipient's key.
-
-    As with announces, the layout and the cryptography are done here
-    without consulting any RNS object, so gen and dump remain two
-    independent decoders.
-    """
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     import hmac as _hmac

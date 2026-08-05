@@ -1,6 +1,8 @@
 # Conformance harness for sgiath/reticulum.
 #
 #	elixir -pa <build>/lib/reticulum/ebin dump.exs kind rawfile
+#
+# See ../README for what a harness may and may not do.
 
 defmodule Dump do
   import Bitwise
@@ -31,8 +33,6 @@ defmodule Dump do
     f("invalid", reason)
     Enum.each(pairs, fn {k, v} -> f(k, Integer.to_string(v)) end)
   end
-
-  # packets -----------------------------------------------------------
 
   # sgiath/reticulum exposes no entry point that yields the header
   # fields on their own, so they are read from its decoded packet.
@@ -75,8 +75,6 @@ defmodule Dump do
     end
   end
 
-  # link --------------------------------------------------------------
-  #
   # sgiath/reticulum has no Link module. Packet.truncated_hash is its
   # own, and is the link id derivation minus the one step that belongs
   # to links: chopping the signalling bytes before hashing. It is
@@ -96,8 +94,6 @@ defmodule Dump do
       _ -> :error
     end
   end
-
-  # identity ----------------------------------------------------------
 
   def run("identity", [pub]) do
     {:ok, id} = Identity.from_public_key(pub)

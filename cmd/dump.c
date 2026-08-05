@@ -3,20 +3,13 @@
  *	dump kind rawfile		decode raw, print fields
  *	dump -e kind expectfile		rebuild raw from fields
  *
- * The output of the first form is the expect file of a vector, so
- * checking is a diff. The second form exists for vectors of the encode
- * class, whose expect file claims to carry everything raw contains;
- * running it and diffing against raw is what turns that claim into a
- * test. See ../README.
- *
- * Every value dump prints is hex, a decimal number, or one of a fixed
- * set of keywords. Nothing else reaches a line. A destination name is
- * arbitrary bytes and is printed as hex for that reason: printed as
- * text, a newline in an aspect would forge or hide a field.
- *
  * dump is a second implementation of the wire format, independent of
  * python-rns. That is its purpose. It deliberately shares no code with
- * the generator. */
+ * the generator.
+ *
+ * Every value it prints is hex, a decimal number, or a keyword from a
+ * fixed set. A destination name is arbitrary bytes, so printing it as
+ * text would let a newline in an aspect forge or hide a field. */
 
 #include "aes256.h"
 #include "hmac.h"
@@ -52,8 +45,6 @@
 
 static const char *argv0;
 
-/* ---------------------------------------------------------------- output */
-
 static void fatal(const char *fmt, ...)
 {
 	va_list ap;
@@ -86,8 +77,6 @@ static void field_hex(const char *name, const uint8_t *p, size_t n)
 		printf("%02x", p[i]);
 	putchar('\n');
 }
-
-/* ----------------------------------------------------------------- input */
 
 struct blob {
 	uint8_t  data[MAXBLOB];
@@ -139,7 +128,6 @@ static int readline(FILE *f, char *buf, size_t size, const char *path, int n)
 	return 1;
 }
 
-/* raw: one hex blob per line, or "-" for an absent blob. */
 static int readraw(const char *path, struct blob *out, int max)
 {
 	FILE *f;
@@ -173,8 +161,8 @@ static int readraw(const char *path, struct blob *out, int max)
 	return n;
 }
 
-/* expect: "name<padding>value" per line. Values never contain a space,
- * so the split is exact. */
+/* No value ever contains a space, so splitting on the first one is
+ * exact and needs no quoting rule. */
 struct kv {
 	char name[32];
 	char value[MAXBLOB*2 + 2];
@@ -231,8 +219,6 @@ static const char *lookup(struct kv *fields, int n, const char *name)
 	return NULL;
 }
 
-/* --------------------------------------------------------------- crypto */
-
 /* tweetnacl declares randombytes and leaves it to the caller. dump has
  * no use for randomness; the one place tweetnacl reaches for it is
  * crypto_sign_keypair, which is how an Ed25519 public key is derived
@@ -283,9 +269,6 @@ static void truncated_hash(const uint8_t *p, size_t n, uint8_t *out, size_t take
 	memcpy(out, full, take);
 }
 
-/* ------------------------------------------------------------ decoding */
-
-/* identity: one blob, the 64-byte public key. See ../doc/identity. */
 static void dump_identity(struct blob *b, int nblobs)
 {
 	uint8_t hash[ADDRLEN];
@@ -303,7 +286,6 @@ static void dump_identity(struct blob *b, int nblobs)
 	field_hex("identity_hash",  hash, ADDRLEN);
 }
 
-/* keyset: one blob, the 64-byte private key. See ../doc/identity. */
 static void dump_keyset(struct blob *b, int nblobs)
 {
 	uint8_t pub[KEYSIZE];
@@ -327,8 +309,6 @@ static void dump_keyset(struct blob *b, int nblobs)
 	field_hex("identity_hash",   hash, ADDRLEN);
 }
 
-/* destination: two blobs, the utf-8 name and the identity hash.
- * See ../doc/destination. */
 static void dump_destination(struct blob *b, int nblobs)
 {
 	uint8_t name_hash[NAMEHASHLEN];
@@ -372,8 +352,6 @@ static void dump_destination(struct blob *b, int nblobs)
 	field_hex("destination_hash", dest_hash, ADDRLEN);
 }
 
-/* signature: three blobs, public key, message, signature.
- * See ../doc/identity. */
 static void dump_signature(struct blob *b, int nblobs)
 {
 	const uint8_t *ed_pub;
@@ -396,9 +374,6 @@ static void dump_signature(struct blob *b, int nblobs)
 	field("valid", "%s",
 	      ed25519_verify(ed_pub, b[2].data, b[1].data, b[1].len) ? "yes" : "no");
 }
-
-/* announce: one blob, the whole packet. See ../doc/packet and
- * ../doc/announce. */
 
 static const char *dest_types[]   = { "single", "group", "plain", "link" };
 static const char *packet_types[] = { "data", "announce", "linkrequest", "proof" };
@@ -556,7 +531,6 @@ static const char *context_name(unsigned c)
 	}
 }
 
-/* The header fields, shared by every packet kind. */
 static void print_header(const struct header *h)
 {
 	field("flags", "%02x", h->flags);
@@ -615,8 +589,6 @@ static void print_announce(const struct header *h, const struct announce *a)
 	                     signed_data, sdlen) ? "yes" : "no");
 }
 
-/* encrypted: three blobs, the recipient private key, the ratchet
- * private key or "-", and the packet. See ../doc/encryption. */
 static void dump_encrypted(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -753,7 +725,6 @@ static void print_mode(unsigned mode)
 		field("mode", "%02x", mode);
 }
 
-/* linkrequest: one blob, the whole packet. See ../doc/link. */
 static void dump_linkrequest(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -807,8 +778,6 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 	field_hex("link_id", link_id, ADDRLEN);
 }
 
-/* linkproof: three blobs, the link request, the public key of the
- * identity the request was addressed to, and the proof. See ../doc/link. */
 static void dump_linkproof(struct blob *b, int nblobs)
 {
 	struct header h, rh;
@@ -886,8 +855,6 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	      ed25519_verify(signer, signature, signed_data, sdlen) ? "yes" : "no");
 }
 
-/* linkdata: three blobs, the link request, the responder's X25519
- * private key, and the packet. See ../doc/link. */
 static void dump_linkdata(struct blob *b, int nblobs)
 {
 	struct header h, rh;
@@ -995,8 +962,6 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	}
 }
 
-/* ------------------------------------------------------------ encoding */
-
 static void print_hex_field(const char *value)
 {
 	printf("%s\n", value);
@@ -1017,8 +982,6 @@ static void encode_destination(struct kv *f, int n)
 	print_hex_field(lookup(f, n, "name"));
 	print_hex_field(lookup(f, n, "identity_hash"));
 }
-
-/* ------------------------------------------------------------------ main */
 
 int main(int argc, char **argv)
 {

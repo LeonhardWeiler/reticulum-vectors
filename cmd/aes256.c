@@ -2,8 +2,9 @@
  *
  * Reticulum derives a 64-byte token key and splits it into a 32-byte
  * HMAC key and a 32-byte cipher key, so every token in this corpus is
- * AES-256. The 128-bit mode exists but only for links, which are not
- * covered yet; nothing here is written before a vector needs it.
+ * AES-256. The 128-bit mode exists, and no link the reference
+ * establishes uses it: MODE_AES256_CBC is the only enabled mode at the
+ * pin. Nothing here is written before a vector needs it.
  *
  * Decryption only, for the same reason: every vector is decode class,
  * because the initialisation vector is drawn at random and is not
@@ -121,8 +122,7 @@ static void inv_sub_bytes(uint8_t *s)
 		s[i] = rsbox[s[i]];
 }
 
-/* The state is column-major: s[c*4 + r] is row r of column c. Row r is
- * rotated right by r. */
+/* The state is column-major: s[c*4 + r] is row r of column c. */
 static void inv_shift_rows(uint8_t *s)
 {
 	uint8_t t;
@@ -193,8 +193,7 @@ int aes256_cbc_decrypt(const uint8_t key[32], const uint8_t iv[16],
 	return 0;
 }
 
-/* RNS/Cryptography/PKCS7.py:41. The final byte gives the padding
- * length; a length above the block size is rejected. */
+/* RNS/Cryptography/PKCS7.py:41. */
 int pkcs7_unpad(const uint8_t *in, size_t len, size_t *outlen)
 {
 	uint8_t n;

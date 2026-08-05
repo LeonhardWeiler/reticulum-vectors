@@ -1,6 +1,8 @@
 // Conformance harness for attermann/microReticulum.
 //
 //	micro kind rawfile
+//
+// See ../README for what a harness may and may not do.
 
 #include <cstdint>
 #include <cstddef>

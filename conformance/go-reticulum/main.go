@@ -1,9 +1,8 @@
 // Conformance harness for svanichkin/go-reticulum.
 //
-// Prints the reticulum-vectors expect format using the rns package's
-// own types and derivations.
-//
 //	goret kind rawfile
+//
+// See ../README for what a harness may and may not do.
 
 package main
 

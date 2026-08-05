@@ -1,11 +1,8 @@
 // Conformance harness for liamcottle/rns.js.
 //
-// Prints the reticulum-vectors expect format using only rns.js's own
-// types and derivations. Where rns.js has no entry point that returns
-// the intermediate values, its logic is followed step by step using its
-// own primitives; those places are marked.
-//
 //	node dump.js kind rawfile
+//
+// See ../README for what a harness may and may not do.
 
 import fs from "fs";
 // Imported by file path: the harness lives outside rns.js's package.
