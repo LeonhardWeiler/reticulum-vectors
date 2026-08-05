@@ -3,6 +3,7 @@
 #	elixir -pa <build>/lib/reticulum/ebin dump.exs kind rawfile
 
 defmodule Dump do
+  import Bitwise
   alias Reticulum.Crypto
   alias Reticulum.Crypto.Fernet
   alias Reticulum.Destination
@@ -51,16 +52,41 @@ defmodule Dump do
 
     f("destination_hash", hx(List.last(p.addresses)))
 
-    f(
-      "context",
-      case :binary.first(p.context) do
-        0x00 -> "none"
-        0x0B -> "path_response"
-        c -> Base.encode16(<<c>>, case: :lower)
-      end
-    )
+    f("context", context_name(:binary.first(p.context)))
 
     f("payload_length", Integer.to_string(byte_size(p.data)))
+  end
+
+  # Named from sgiath/reticulum's own context module,
+  # lib/reticulum/packet/context.ex.
+  def context_name(c) do
+    alias Reticulum.Packet.Context
+
+    cond do
+      c == Context.none() -> "none"
+      c == Context.path_response() -> "path_response"
+      c == Context.keepalive() -> "keepalive"
+      c == Context.linkidentify() -> "link_identify"
+      c == Context.linkclose() -> "link_close"
+      c == Context.linkproof() -> "link_proof"
+      c == Context.lrrtt() -> "link_rtt"
+      c == Context.lrproof() -> "link_request_proof"
+      true -> Base.encode16(<<c>>, case: :lower)
+    end
+  end
+
+  # link --------------------------------------------------------------
+  #
+  # sgiath/reticulum has no Link module. Packet.truncated_hash is its
+  # own, and is the link id derivation minus the one step that belongs
+  # to links: chopping the signalling bytes before hashing. It is
+  # called as it stands, and where it disagrees the vector says so.
+  # Everything else here is assembled from the reference layout and
+  # handed to sgiath's own primitives.
+
+  def link_id(raw) do
+    {:ok, id} = Packet.truncated_hash(raw)
+    id
   end
 
   def decode(raw) do
@@ -222,6 +248,140 @@ defmodule Dump do
           pt ->
             f("plaintext_length", Integer.to_string(byte_size(pt)))
             f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+        end
+      end
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
+  def run("linkrequest", [raw]) do
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      payload = p.data
+
+      # No length rule: sgiath has no Link module and refuses no
+      # payload size, so the harness refuses none either.
+      signalled = byte_size(payload) == 67
+      header(p, raw)
+      f("x25519_public", hx(binary_part(payload, 0, 32)))
+      f("ed25519_public", hx(binary_part(payload, 32, 32)))
+      f("signalling", if(signalled, do: hx(binary_part(payload, 64, 3)), else: "-"))
+
+      # No mode is decoded anywhere: Fernet picks one from the key
+      # length, and a link key would be 64 bytes, so AES-256.
+      f("mode", "aes256_cbc")
+      f("mtu", "-")
+      f("link_id", hx(link_id(raw)))
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
+  def run("linkproof", [request_raw, identity_public, raw]) do
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      payload = p.data
+
+      # No length rule here either, for the same reason.
+      signalled = byte_size(payload) == 99
+      id = link_id(request_raw)
+      signature = binary_part(payload, 0, 64)
+      x25519_public = binary_part(payload, 64, 32)
+      signalling = if signalled, do: binary_part(payload, 96, 3), else: <<>>
+      signer_ed = binary_part(identity_public, 32, 32)
+      signed = id <> x25519_public <> signer_ed <> signalling
+
+      {:ok, signer} = Identity.from_public_key(identity_public)
+
+      header(p, raw)
+      f("link_id", hx(id))
+      f("link_id_match", if(List.last(p.addresses) == id, do: "yes", else: "no"))
+      f("signature", hx(signature))
+      f("x25519_public", hx(x25519_public))
+      f("signalling", if(signalled, do: hx(signalling), else: "-"))
+      f("mode", "aes256_cbc")
+
+      f("mtu", if(signalled,
+        do: Integer.to_string(:binary.decode_unsigned(signalling) &&& 0x1FFFFF),
+        else: "-"))
+
+      f("signer_ed25519", hx(signer_ed))
+      f("signed_data", hx(signed))
+      f("signature_valid",
+        if(Identity.validate(signer, signed, signature), do: "yes", else: "no"))
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
+  def run("linkdata", [request_raw, responder_private, raw]) do
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      payload = p.data
+      id = link_id(request_raw)
+      context = :binary.first(p.context)
+
+      header(p, raw)
+      f("link_id", hx(id))
+      f("link_id_match", if(List.last(p.addresses) == id, do: "yes", else: "no"))
+
+      if context == Reticulum.Packet.Context.keepalive() do
+        f("encrypted", "no")
+        f("plaintext_length", Integer.to_string(byte_size(payload)))
+        f("plaintext", if(payload == <<>>, do: "-", else: hx(payload)))
+      else
+        f("encrypted", "yes")
+
+        <<iv::binary-size(16), rest::binary>> = payload
+        ct = binary_part(rest, 0, byte_size(rest) - 32)
+        mac = binary_part(rest, byte_size(rest) - 32, 32)
+
+        {:ok, request} = decode(request_raw)
+        peer = binary_part(request.data, 0, 32)
+
+        shared = :crypto.compute_key(:eddh, peer, responder_private, :x25519)
+        derived = Crypto.hkdf(shared, id, <<>>, 64)
+        half = div(byte_size(derived), 2)
+        <<signing::binary-size(half), encryption::binary>> = derived
+
+        fernet = Fernet.new(derived)
+        hmac_ok = Fernet.sig_valid?(fernet, payload)
+
+        plaintext =
+          case Fernet.decrypt(fernet, payload) do
+            {:ok, pt} -> pt
+            _ -> nil
+          end
+
+        f("iv", hx(iv))
+        f("ciphertext", hx(ct))
+        f("hmac", hx(mac))
+        f("shared_key", hx(shared))
+        f("signing_key", hx(signing))
+        f("encryption_key", hx(encryption))
+        f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
+
+        case plaintext do
+          nil ->
+            f("plaintext_length", "-")
+            f("plaintext", "-")
+
+          pt ->
+            f("plaintext_length", Integer.to_string(byte_size(pt)))
+            f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+
+            if context == Reticulum.Packet.Context.linkidentify() and byte_size(pt) == 128 do
+              pub = binary_part(pt, 0, 64)
+              sig = binary_part(pt, 64, 64)
+              signed = id <> pub
+              {:ok, who} = Identity.from_public_key(pub)
+              f("identity_public", hx(pub))
+              f("identity_hash", hx(who.hash))
+              f("identity_signed", hx(signed))
+              f("identity_valid",
+                if(Identity.validate(who, signed, sig), do: "yes", else: "no"))
+            end
         end
       end
     else

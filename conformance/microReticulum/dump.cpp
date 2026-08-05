@@ -316,6 +316,8 @@ static void kind_linkrequest(std::vector<RNS::Bytes> &b) {
 	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
 
 	RNS::Bytes payload = p.data();
+	// The rule validate_request applies at Link.cpp:298. It is repeated
+	// here because that function wants a destination to own the link.
 	bool signalled = payload.size() == ECPUBSIZE + SIGNALLEN;
 	if (!signalled && payload.size() != ECPUBSIZE) {
 		invalid("invalid-length", "payload_length", payload.size(), "accepted_length", ECPUBSIZE);
