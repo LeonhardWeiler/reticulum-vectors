@@ -45,6 +45,8 @@ linkproof/signalling-removed
 linkrequest/invalid-length
 linkrequest/no-signalling
 linkrequest/signalling
+proof/explicit
+proof/implicit
 sign/upstream
 signature/altered
 signature/upstream

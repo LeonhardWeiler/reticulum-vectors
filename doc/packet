@@ -111,6 +111,46 @@ test/announce/in-transport is test/announce/minimal after this transformation.
     RNS/Transport.py:1369
 
 
+Proofs
+
+Packet type 3, destination type single, context 0x00, unencrypted.
+
+A receiver that accepts a data packet answers with a proof. The address
+field holds no destination hash: it is the first 16 bytes of the proved
+packet's hash, which is how the sender recognises the answer to its own
+packet and why a proof needs no destination of its own.
+
+    RNS/Packet.py:378
+
+The packet hash is taken over the whole packet with the low four flag
+bits and the hop count excluded, so that it survives a hop. It is the
+same material a link id is taken over, untrimmed and not truncated.
+
+    RNS/Packet.py:344, RNS/Packet.py:348
+
+Two payload lengths decode:
+
+    64    implicit    signature over the packet hash
+    96    explicit    packet hash, 32 bytes, then the signature
+
+The reference emits the implicit form: use_implicit_proof defaults to
+true and a configuration may turn it off. It accepts either form.
+
+    RNS/Reticulum.py:259, RNS/Packet.py:481
+
+The explicit form carries a hash the receiver already computed, so the
+extra 32 bytes prove nothing on their own. A decoder that trusts them
+instead of the hash it computed will accept a proof for a packet it
+never sent.
+
+The signature is over the packet hash, never over the proof packet.
+
+test/proof/implicit and test/proof/explicit carry the two forms of the
+same proof, so their signatures are identical.
+
+    RNS/Identity.py:942
+
+
 Interface access codes
 
 For what these are for, see upstream docs/source/understanding.rst,
@@ -192,6 +232,26 @@ numbers behind it, and nothing else:
 
 Naming the rule rather than the stage keeps two decoders from agreeing
 by accident when they fail for different reasons.
+
+
+Vector format: proof
+
+kind: proof, determinism: encode
+
+raw is three lines:
+
+    line 1    the packet being proved
+    line 2    the public key of the identity that signed, 64 bytes
+    line 3    the proof packet
+
+Neither of the first two is on the wire with the proof. The packet
+hash is in no packet, and the key belongs to the destination the proved
+packet was addressed to, which the sender already holds and a decoder
+here is handed.
+
+expect names both, the header fields, which form the proof takes, the
+hash computed from line 1, the hash the proof carries if it carries
+one, the address the proof should have, and the verdict.
 
 
 Vector format: ifac

@@ -1,6 +1,6 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 50 vectors in test/, through the
+Run on 2026-08-06 against the 52 vectors in test/, through the
 harnesses in conformance/.
 
 Each harness calls that implementation's own code and prints the corpus
@@ -25,8 +25,8 @@ failed, not by the corpus itself.
     rns.js              d4602ca   2025-02-10  29 / 49   0 / 12
     sgiath/reticulum    0c4904e   2026-07-09  23 / 49   0 / 12
 
-Out of 49, not 50: every harness skips test/ifac. See the end of this
-file.
+Out of 49, not 52: every harness skips test/ifac and both test/proof
+vectors. See the end of this file.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot
@@ -431,15 +431,21 @@ put each implementation and how to build its harness. The diff output
 of cmd/check names the exact vector and field behind every claim above.
 
 
-Not yet measured: interface access codes
+Not yet measured
 
-Every harness exits 77 for test/ifac, so all six report it skipped.
-Every one of the six has IFAC code, and none of them exposes it in a
-way this harness format reaches without going through interface
-plumbing.
+Three vectors are skipped by all six harnesses, for two different
+reasons. Skipped is not a pass and not a failure: it means nobody has
+looked.
 
-Skipped is not a pass and not a failure. It means nobody has looked. A
+test/ifac, because the implementations do not reach it. Every one of
+the six has IFAC code and none exposes it outside interface plumbing. A
 frame with bit 7 set is not a packet, and an implementation that reads
 one as a packet gets random flags, a random hop count and a destination
-hash that matches nothing, so this is worth measuring and it has not
-been measured.
+hash that matches nothing.
+
+test/proof/implicit and test/proof/explicit, because the harnesses do
+not reach it. That is a gap in this directory, not in the six: a proof
+is the fourth packet type and every implementation that acknowledges
+anything has to make and read one. Two of the six were already found to
+verify no link request proof anywhere (finding 14), so there is reason
+to look.

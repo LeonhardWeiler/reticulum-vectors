@@ -811,25 +811,42 @@ static void dump_announce(struct blob *b, int nblobs)
 	print_announce(&h, &a);
 }
 
-/* The link id is a truncated hash of the packet with the low four flag
- * bits and the hop count excluded, so that it survives a hop, and with
- * any signalling bytes chopped off the end, so that signalling the MTU
- * does not change the identity of the link. RNS/Link.py:336. */
+/* The bytes a packet is hashed over. The low four flag bits and the hop
+ * count are excluded, so that the hash survives a hop.
+ * RNS/Packet.py:348. */
+static size_t hashable_part(const uint8_t *raw, size_t len,
+                            const struct header *h, uint8_t *out)
+{
+	size_t from = h->header_type ? 2 + ADDRLEN : 2;
+
+	out[0] = raw[0] & 0x0f;
+	memcpy(out + 1, raw + from, len - from);
+	return 1 + len - from;
+}
+
+/* The link id is that hash truncated, with any signalling bytes chopped
+ * off the end first, so that signalling the MTU does not change the
+ * identity of the link. RNS/Link.py:336. */
 static void link_id_of(const uint8_t *raw, size_t len,
                        const struct header *h, uint8_t *out)
 {
 	uint8_t part[MAXBLOB];
-	size_t n, from;
-
-	part[0] = raw[0] & 0x0f;
-	from = h->header_type ? 2 + ADDRLEN : 2;
-	memcpy(part + 1, raw + from, len - from);
-	n = 1 + len - from;
+	size_t n = hashable_part(raw, len, h, part);
 
 	if (h->payload_len > ECPUBSIZE)
 		n -= h->payload_len - ECPUBSIZE;
 
 	truncated_hash(part, n, out, ADDRLEN);
+}
+
+/* The hash a proof is taken over: the same bytes, untrimmed and not
+ * truncated. RNS/Packet.py:344. */
+static void packet_hash_of(const uint8_t *raw, size_t len,
+                           const struct header *h, uint8_t out[32])
+{
+	uint8_t part[MAXBLOB];
+
+	sha256(part, hashable_part(raw, len, h, part), out);
 }
 
 static void print_mode(unsigned mode)
@@ -1054,6 +1071,66 @@ static void dump_linkdata(struct blob *b, int nblobs)
 		      ed25519_verify(t.plain + KEYHALF, t.plain + KEYSIZE,
 		                     signed_data, ADDRLEN + KEYSIZE) ? "yes" : "no");
 	}
+}
+
+/* A proof is what a receiver sends back for a data packet it accepted.
+ * It is addressed to the first 16 bytes of the proved packet's hash
+ * rather than to a destination, which is how the sender recognises the
+ * answer to its own packet. RNS/Packet.py:378. */
+static void dump_proof(struct blob *b, int nblobs)
+{
+	struct header h, ph;
+	enum reason r;
+	size_t got = 0, need = 0;
+	const uint8_t *signature, *signer;
+	uint8_t packet_hash[32];
+	int explicit_form;
+
+	if (nblobs != 3)
+		fatal("proof: expected 3 blobs, got %d", nblobs);
+	if (b[1].len != KEYSIZE)
+		fatal("proof: signer key is %zu bytes, expected %d", b[1].len, KEYSIZE);
+
+	field_blob("proved_packet", &b[0]);
+	field_blob("signer_public", &b[1]);
+
+	if (parse_header(b[0].data, b[0].len, &ph, &got, &need) != OK)
+		fatal("proof: the proved packet does not decode");
+
+	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	explicit_form = h.payload_len == 32 + SIGLEN;
+	if (!explicit_form && h.payload_len != SIGLEN) {
+		field("invalid", "invalid-length");
+		field("payload_length", "%zu", h.payload_len);
+		field("implicit_length", "%d", SIGLEN);
+		field("explicit_length", "%d", 32 + SIGLEN);
+		return;
+	}
+
+	packet_hash_of(b[0].data, b[0].len, &ph, packet_hash);
+	signature = explicit_form ? h.payload + 32 : h.payload;
+	signer    = b[1].data + KEYHALF;
+
+	print_header(&h);
+	field("form", "%s", explicit_form ? "explicit" : "implicit");
+	field_hex("packet_hash", packet_hash, sizeof packet_hash);
+	if (explicit_form)
+		field_hex("proof_hash", h.payload, 32);
+	else
+		field("proof_hash", "-");
+	field("hash_match", "%s",
+	      !explicit_form || memcmp(h.payload, packet_hash, 32) == 0 ? "yes" : "no");
+	field_hex("proof_destination", packet_hash, ADDRLEN);
+	field("destination_match", "%s",
+	      memcmp(h.destination_hash, packet_hash, ADDRLEN) == 0 ? "yes" : "no");
+	field_hex("signature", signature, SIGLEN);
+	field_hex("signer_ed25519", signer, KEYHALF);
+	field("signature_valid", "%s",
+	      ed25519_verify(signer, signature, packet_hash, sizeof packet_hash) ? "yes" : "no");
 }
 
 /* The mask covers the whole frame except the access code itself, which
@@ -1282,6 +1359,19 @@ static void encode_linkrequest(struct kv *f, int n)
 	emit(&o);
 }
 
+static void encode_proof(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "proved_packet");
+	emit_field(f, n, "signer_public");
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "proof_hash");
+	put_field(&o, f, n, "signature");
+	emit(&o);
+}
+
 static void encode_linkproof(struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1372,6 +1462,7 @@ static const struct {
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },
 	{ "linkdata",    dump_linkdata,    encode_linkdata    },
+	{ "proof",       dump_proof,       encode_proof       },
 	{ "ifac",        dump_ifac,        encode_ifac        },
 };
 
