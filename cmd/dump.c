@@ -807,6 +807,85 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 	field_hex("link_id", link_id, ADDRLEN);
 }
 
+/* linkproof: three blobs, the link request, the public key of the
+ * identity the request was addressed to, and the proof. See ../doc/link. */
+static void dump_linkproof(struct blob *b, int nblobs)
+{
+	struct header h, rh;
+	enum reason r;
+	size_t got = 0, need = 0, sdlen = 0;
+	const uint8_t *signature, *x25519, *signalling, *signer;
+	uint8_t link_id[ADDRLEN], signed_data[MAXBLOB];
+	unsigned mode, mtu = 0, value;
+	int signalled;
+
+	if (nblobs != 3)
+		fatal("linkproof: expected 3 blobs, got %d", nblobs);
+	if (b[1].len != KEYSIZE)
+		fatal("linkproof: identity key is %zu bytes, expected %d", b[1].len, KEYSIZE);
+
+	if ((r = parse_header(b[0].data, b[0].len, &rh, &got, &need)) != OK)
+		fatal("linkproof: the link request does not decode");
+
+	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	signalled = h.payload_len == SIGLEN + KEYHALF + SIGNALLEN;
+	if (!signalled && h.payload_len != SIGLEN + KEYHALF) {
+		field("invalid", "invalid-length");
+		field("payload_length", "%zu", h.payload_len);
+		field("accepted_length", "%d", SIGLEN + KEYHALF);
+		field("signalled_length", "%d", SIGLEN + KEYHALF + SIGNALLEN);
+		return;
+	}
+
+	signature  = h.payload;
+	x25519     = h.payload + SIGLEN;
+	signalling = h.payload + SIGLEN + KEYHALF;
+	signer     = b[1].data + KEYHALF;
+
+	if (signalled) {
+		value = ((unsigned)signalling[0] << 16) |
+		        ((unsigned)signalling[1] << 8) | signalling[2];
+		mode = (value >> 21) & 0x07;
+		mtu  = value & MTU_BYTEMASK;
+	} else {
+		mode = MODE_DEFAULT;
+	}
+
+	link_id_of(b[0].data, b[0].len, &rh, link_id);
+
+	memcpy(signed_data + sdlen, link_id, ADDRLEN);  sdlen += ADDRLEN;
+	memcpy(signed_data + sdlen, x25519, KEYHALF);   sdlen += KEYHALF;
+	memcpy(signed_data + sdlen, signer, KEYHALF);   sdlen += KEYHALF;
+	if (signalled) {
+		memcpy(signed_data + sdlen, signalling, SIGNALLEN);
+		sdlen += SIGNALLEN;
+	}
+
+	print_header(&h);
+	field_hex("link_id", link_id, ADDRLEN);
+	field("link_id_match", "%s",
+	      memcmp(h.destination_hash, link_id, ADDRLEN) == 0 ? "yes" : "no");
+	field_hex("signature", signature, SIGLEN);
+	field_hex("x25519_public", x25519, KEYHALF);
+	if (signalled)
+		field_hex("signalling", signalling, SIGNALLEN);
+	else
+		field("signalling", "-");
+	print_mode(mode);
+	if (signalled)
+		field("mtu", "%u", mtu);
+	else
+		field("mtu", "-");
+	field_hex("signer_ed25519", signer, KEYHALF);
+	field_hex("signed_data", signed_data, sdlen);
+	field("signature_valid", "%s",
+	      ed25519_verify(signer, signature, signed_data, sdlen) ? "yes" : "no");
+}
+
 /* ------------------------------------------------------------ encoding */
 
 static void print_hex_field(const char *value)
@@ -882,6 +961,8 @@ int main(int argc, char **argv)
 		dump_encrypted(blobs, n);
 	else if (strcmp(kind, "linkrequest") == 0)
 		dump_linkrequest(blobs, n);
+	else if (strcmp(kind, "linkproof") == 0)
+		dump_linkproof(blobs, n);
 	else
 		fatal("unknown kind %s", kind);
 

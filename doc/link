@@ -4,7 +4,7 @@ Byte layouts and derivations for link establishment. For what a link
 is and why it exists, see upstream docs/source/understanding.rst,
 section "Reticulum Link Establishment".
 
-Vectors: test/linkrequest/
+Vectors: test/linkrequest/, test/linkproof/
 
 See doc/packet for the header. Only the payload and the derivations
 are described here.
@@ -95,3 +95,62 @@ The link id is not a hash of the public keys, and it is not derived
 from the destination hash alone. Two requests to the same destination
 with the same keys but a different hop count produce the same id;
 two requests with different keys do not.
+
+
+Link request proof
+
+Packet type 3, context 0xff. Two fields of the header depart from
+every other packet in the corpus.
+
+The destination type in the flags byte is set to link, 3, regardless
+of the destination the proof is about, and it is written from a
+constant rather than read from the destination.
+
+    RNS/Packet.py:170
+
+The address field holds the link id, not a destination hash. It is
+written from destination.link_id, and the payload is not encrypted.
+
+    RNS/Packet.py:183
+
+    offset  size  field
+    0       64    Ed25519 signature
+    64      32    responder X25519 public key
+    96      3     signalling, optional
+
+The responder's Ed25519 key is not transmitted, and the proof carries
+no identity. Only the X25519 half of the responder's link keypair is
+sent, because that is all the initiator needs for the key agreement.
+
+Two payload lengths decode, 96 and 99. The reference emits only the
+99-byte form: prove always signals.
+
+    RNS/Link.py:366, RNS/Link.py:399
+
+
+Signed material
+
+    link id || responder X25519 public || signer Ed25519 public
+             || signalling
+
+Three of the four parts are not in the packet.
+
+    link id            derived from the link request
+    signer Ed25519     the Ed25519 half of the identity of the
+                       destination the request was addressed to
+    signalling         present in the packet, and signed in the
+                       position it occupies there
+
+The signature is made with the identity key of the destination, not
+with the link's own Ed25519 key. The link key signs packet proofs
+later; it does not sign the link request proof.
+
+    RNS/Link.py:368, RNS/Link.py:412, RNS/Link.py:407
+
+An initiator that verifies against a key it did not already hold
+proves nothing. The identity comes from an announce received earlier,
+which is what binds a link to a destination.
+
+test/linkproof/signalling-removed is the 96-byte form, made by
+removing the signalling bytes from a valid proof. It decodes, and the
+signature does not verify: the bytes were part of the signed material.

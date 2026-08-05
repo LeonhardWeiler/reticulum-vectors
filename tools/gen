@@ -727,13 +727,43 @@ def describe_linkrequest(raw):
     ]
 
 
-def link_request_raw(RNS, tag):
-    """Assemble a link request as Link.__init__ does at RNS/Link.py:304.
+@contextlib.contextmanager
+def captured(RNS):
+    """Packet.send hands the packet to Transport, which is not running.
+    The corpus wants the bytes, so send packs and records instead."""
+    real_send = RNS.Packet.send
+    sent = []
 
+    def send(self):
+        self.pack()
+        sent.append(self)
+        return True
+
+    RNS.Packet.send = send
+    try:
+        yield sent
+    finally:
+        RNS.Packet.send = real_send
+
+
+def link_session(RNS, tag):
+    """Establish one link, far enough to produce packets from both ends.
+
+    The request is assembled as Link.__init__ does at RNS/Link.py:304.
     The initiator half of that constructor reaches for a running
     instance three lines earlier, so the four lines that produce bytes
-    are run here instead. Everything they call is the reference's own:
-    the key classes Link resolves, its signalling encoder, and Packet.
+    are run here instead. The responder is then built as
+    validate_request builds it at RNS/Link.py:189, up to and including
+    prove; what follows there registers the link and starts a watchdog,
+    and produces no bytes.
+
+    Everything that shapes a byte is the reference's own: the key
+    classes Link resolves, its signalling encoder, its handshake, its
+    prove, and Packet.pack.
+
+    One pinned block covers all of it. The responder draws a key of its
+    own, and it has to come from the same stream for the proof to be
+    reproducible.
     """
     key_index, aspects = LINK_DESTINATION
     identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
@@ -743,8 +773,8 @@ def link_request_raw(RNS, tag):
 
     link_mod = sys.modules["RNS.Link"]
     with pinned(RNS, tag):
-        destination = RNS.Destination(public_only, RNS.Destination.OUT,
-                                      RNS.Destination.SINGLE, aspects[0], *aspects[1:])
+        out_destination = RNS.Destination(public_only, RNS.Destination.OUT,
+                                          RNS.Destination.SINGLE, aspects[0], *aspects[1:])
         prv     = link_mod.X25519PrivateKey.generate()
         sig_prv = link_mod.Ed25519PrivateKey.generate()
 
@@ -752,15 +782,36 @@ def link_request_raw(RNS, tag):
         request_data = prv.public_key().public_bytes() + \
                        sig_prv.public_key().public_bytes() + signalling
 
-        packet = RNS.Packet(destination, request_data, packet_type=RNS.Packet.LINKREQUEST)
-        packet.pack()
+        request = RNS.Packet(out_destination, request_data,
+                             packet_type=RNS.Packet.LINKREQUEST)
+        request.pack()
 
-    return prv, sig_prv, packet
+        in_destination = RNS.Destination(identity, RNS.Destination.IN,
+                                         RNS.Destination.SINGLE, aspects[0], *aspects[1:])
+        link = RNS.Link(owner=in_destination,
+                        peer_pub_bytes=request_data[:KEYHALF],
+                        peer_sig_pub_bytes=request_data[KEYHALF:ECPUBSIZE])
+        link.set_link_id(request)
+        link.mtu  = RNS.Link.mtu_from_lr_packet(request)
+        link.mode = RNS.Link.mode_from_lr_packet(request)
+        link.handshake()
+
+        with captured(RNS) as sent:
+            link.prove()
+
+    return {
+        "identity": identity,
+        "prv":      prv,
+        "sig_prv":  sig_prv,
+        "request":  request,
+        "link":     link,
+        "proof":    sent[0],
+    }
 
 
-def gen_linkrequest(RNS, w):
-    prv, sig_prv, packet = link_request_raw(RNS, "linkrequest")
-    raw = packet.raw
+def gen_linkrequest(RNS, w, session):
+    raw = session["request"].raw
+    packet = session["request"]
 
     # The reference must agree with the decoder above about which link
     # this request opens, and about what it signalled.
@@ -795,7 +846,100 @@ def gen_linkrequest(RNS, w):
         [short.hex()],
         describe_linkrequest(short))
 
-    return prv, sig_prv, packet
+
+def describe_linkproof(request_raw, identity_public, raw, verify):
+    """Decode a link request proof.
+
+    Three of the four parts that were signed are not in the packet. The
+    link id comes from the request, the peer Ed25519 key from the
+    identity of the destination the request was addressed to, and the
+    signalling bytes are signed in the position they occupy here.
+    """
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) not in (SIGLEN + KEYHALF, SIGLEN + KEYHALF + SIGNALLEN):
+        return invalid("invalid-length",
+                       ("payload_length", len(payload)),
+                       ("accepted_length", SIGLEN + KEYHALF),
+                       ("signalled_length", SIGLEN + KEYHALF + SIGNALLEN))
+
+    _, rh = describe_header(request_raw)
+    link_id = hashlib.sha256(
+        hashable_part(request_raw, len(rh["payload"]))).digest()[:ADDRLEN]
+
+    signalled  = len(payload) == SIGLEN + KEYHALF + SIGNALLEN
+    signature  = payload[:SIGLEN]
+    x25519     = payload[SIGLEN:SIGLEN+KEYHALF]
+    signalling = payload[SIGLEN+KEYHALF:]
+
+    if signalled:
+        value = int.from_bytes(signalling, "big")
+        mode  = (value >> 21) & 0x07
+        mtu   = value & MTU_BYTEMASK
+    else:
+        mode, mtu = MODE_DEFAULT, None
+
+    signer_ed25519 = identity_public[KEYHALF:]
+    signed_data    = link_id + x25519 + signer_ed25519 + signalling
+
+    return lines + [
+        field("link_id",         link_id.hex()),
+        field("link_id_match",   "yes" if h["dest_hash"] == link_id else "no"),
+        field("signature",       signature.hex()),
+        field("x25519_public",   x25519.hex()),
+        field("signalling",      signalling.hex() if signalled else "-"),
+        field("mode",            LINK_MODES.get(mode, "%02x" % mode)),
+        field("mtu",             "%d" % mtu if signalled else "-"),
+        field("signer_ed25519",  signer_ed25519.hex()),
+        field("signed_data",     signed_data.hex()),
+        field("signature_valid", "yes" if verify(signer_ed25519, signature, signed_data) else "no"),
+    ]
+
+
+def gen_linkproof(RNS, w, verify, session):
+    identity, request = session["identity"], session["request"]
+    link, proof = session["link"], session["proof"]
+
+    public  = identity.get_public_key()
+    request_raw, raw = request.raw, proof.raw
+    blobs = [request_raw.hex(), public.hex()]
+
+    # The reference must accept its own proof. validate_proof drives a
+    # link state machine, so the two facts it turns on are asserted
+    # instead: the address field is the link id, and the signature is
+    # over the four parts assembled below.
+    assert proof.raw[2:2+ADDRLEN] == link.link_id
+    assert lookup_field(describe_linkproof(request_raw, public, raw, verify),
+                        "signature_valid") == "yes"
+
+    w.vector("linkproof", "signalling",
+        meta_block("linkproof", "decode",
+                   "link request proof as the reference emits it, mtu confirmed"),
+        blobs + [raw.hex()],
+        describe_linkproof(request_raw, public, raw, verify))
+
+    # The 96-byte form validate_proof also accepts, at RNS/Link.py:405.
+    # The reference never emits it: prove always signals. Removing the
+    # bytes removes them from the signed material too, so the signature
+    # no longer verifies, which is the point of the vector.
+    removed = raw[:-SIGNALLEN]
+    w.vector("linkproof", "signalling-removed",
+        meta_block("linkproof", "decode",
+                   "signalling bytes removed; the proof still decodes and the signature does not verify",
+                   source="constructed by tools/gen from linkproof/signalling"),
+        blobs + [removed.hex()],
+        describe_linkproof(request_raw, public, removed, verify))
+
+    altered = raw[:19] + bytes([raw[19] ^ 0x01]) + raw[20:]
+    w.vector("linkproof", "altered-signature",
+        meta_block("linkproof", "decode",
+                   "first signature byte altered",
+                   source="constructed by tools/gen from linkproof/signalling"),
+        blobs + [altered.hex()],
+        describe_linkproof(request_raw, public, altered, verify))
 
 
 def lookup_field(lines, name):
@@ -969,7 +1113,10 @@ def main():
         gen_signature(RNS, w, verify)
         gen_announce(RNS, w, tmpdir, verify)
         gen_encrypted(RNS, w)
-        gen_linkrequest(RNS, w)
+
+        session = link_session(RNS, "link")
+        gen_linkrequest(RNS, w, session)
+        gen_linkproof(RNS, w, verify, session)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

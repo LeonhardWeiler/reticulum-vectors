@@ -9,9 +9,9 @@ transport_id       -
 destination_hash   fb48da0e82e6e01ba0c014513f74540d
 context            none
 payload_length     64
-x25519_public      6c946855170357795a40e6ea58a612b90db6b8d7387e8d42395a4e82c7960247
-ed25519_public     dc90656ca9e7ee52811ea3e43a119e3b22eb0a00751c0db50d07bdfa97463090
+x25519_public      81f99971cea5d4f00a482aff12a81a1c147931cbe62db76af871dad98c1bca1d
+ed25519_public     3363b3379fb081b26099d2e70b39f951362d6f0fa3cfce312fb06fd5f1b20cef
 signalling         -
 mode               aes256_cbc
 mtu                -
-link_id            9e353daf14cd4f5ea7070443ba994b45
+link_id            4be2a2dc5ff0321315222d5deca76937
