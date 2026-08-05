@@ -1,0 +1,241 @@
+# Conformance harness for sgiath/reticulum.
+#
+#	elixir -pa <build>/lib/reticulum/ebin dump.exs kind rawfile
+
+defmodule Dump do
+  alias Reticulum.Crypto
+  alias Reticulum.Crypto.Fernet
+  alias Reticulum.Destination
+  alias Reticulum.Identity
+  alias Reticulum.Packet
+
+  @w 18
+  @dest_types %{single: "single", group: "group", plain: "plain", link: "link"}
+  @packet_types %{data: "data", announce: "announce", link_request: "linkrequest", proof: "proof"}
+
+  def f(name, value), do: IO.puts(String.pad_trailing(name, @w) <> " " <> value)
+  def hx(b), do: Base.encode16(b, case: :lower)
+
+  def read_raw(path) do
+    path
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn
+      "-" -> nil
+      line -> Base.decode16!(String.trim(line), case: :lower)
+    end)
+  end
+
+  def invalid(reason, pairs) do
+    f("invalid", reason)
+    Enum.each(pairs, fn {k, v} -> f(k, Integer.to_string(v)) end)
+  end
+
+  # packets -----------------------------------------------------------
+
+  # sgiath/reticulum exposes no entry point that yields the header
+  # fields on their own, so they are read from its decoded packet.
+  def header(p, raw) do
+    f("flags", Base.encode16(binary_part(raw, 0, 1), case: :lower))
+    f("header_type", Integer.to_string(length(p.addresses)))
+    f("context_flag", if(p.context_flag == 1, do: "set", else: "unset"))
+    f("transport_type", Atom.to_string(p.propagation))
+    f("destination_type", Map.fetch!(@dest_types, p.destination))
+    f("packet_type", Map.fetch!(@packet_types, p.type))
+    f("hops", Integer.to_string(p.hops))
+
+    case p.addresses do
+      [t, _d] -> f("transport_id", hx(t))
+      [_d] -> f("transport_id", "-")
+    end
+
+    f("destination_hash", hx(List.last(p.addresses)))
+
+    f(
+      "context",
+      case :binary.first(p.context) do
+        0x00 -> "none"
+        0x0B -> "path_response"
+        c -> Base.encode16(<<c>>, case: :lower)
+      end
+    )
+
+    f("payload_length", Integer.to_string(byte_size(p.data)))
+  end
+
+  def decode(raw) do
+    try do
+      {:ok, Packet.decode(raw)}
+    rescue
+      _ -> :error
+    end
+  end
+
+  # identity ----------------------------------------------------------
+
+  def run("identity", [pub]) do
+    {:ok, id} = Identity.from_public_key(pub)
+    f("public_key", hx(id.enc_pub <> id.sig_pub))
+    f("x25519_public", hx(id.enc_pub))
+    f("ed25519_public", hx(id.sig_pub))
+    f("identity_hash", hx(id.hash))
+  end
+
+  def run("keyset", [priv]) do
+    {:ok, id} = Identity.from_private_key(priv)
+    f("private_key", hx(id.enc_sec <> id.sig_sec))
+    f("x25519_private", hx(id.enc_sec))
+    f("ed25519_private", hx(id.sig_sec))
+    f("public_key", hx(id.enc_pub <> id.sig_pub))
+    f("x25519_public", hx(id.enc_pub))
+    f("ed25519_public", hx(id.sig_pub))
+    f("identity_hash", hx(id.hash))
+  end
+
+  def run("destination", [name_bytes, identity_hash]) do
+    name = to_string(name_bytes)
+    [app | aspects] = String.split(name, ".")
+    {:ok, nh} = Destination.name_hash(app, aspects)
+    {:ok, dh} = Destination.hash(identity_hash, app, aspects)
+
+    f("name", hx(name_bytes))
+    f("app_name", hx(app))
+    Enum.each(aspects, fn a -> f("aspect", hx(a)) end)
+    f("name_hash", hx(nh))
+    f("identity_hash", if(identity_hash, do: hx(identity_hash), else: "-"))
+    f("destination_hash", hx(dh))
+  end
+
+  def run("signature", [pub, message, signature]) do
+    {:ok, id} = Identity.from_public_key(pub)
+    f("ed25519_public", hx(id.sig_pub))
+    f("message_length", Integer.to_string(byte_size(message)))
+    f("message_sha256", hx(:crypto.hash(:sha256, message)))
+    f("signature", hx(signature))
+    f("valid", if(Identity.validate(id, message, signature), do: "yes", else: "no"))
+  end
+
+  def run("announce", [raw]) do
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      # No hop limit check: the implementation has none at decode.
+      payload = p.data
+      ratchet_size = if p.context_flag == 1, do: 32, else: 0
+      minimum = 64 + 10 + 10 + ratchet_size + 64
+
+      if byte_size(payload) < minimum do
+        invalid("short-payload", [{"payload_length", byte_size(payload)}, {"minimum_length", minimum}])
+      else
+        <<pub::binary-size(64), nh::binary-size(10), rh::binary-size(10), rest::binary>> = payload
+
+        {ratchet, rest} =
+          if ratchet_size > 0 do
+            <<r::binary-size(32), tail::binary>> = rest
+            {r, tail}
+          else
+            {<<>>, rest}
+          end
+
+        <<sig::binary-size(64), app_data::binary>> = rest
+
+        dest = List.last(p.addresses)
+        <<identity_hash::binary-size(16), _::binary>> = :crypto.hash(:sha256, pub)
+        <<expected::binary-size(16), _::binary>> = :crypto.hash(:sha256, nh <> identity_hash)
+        signed = dest <> pub <> nh <> rh <> ratchet <> app_data
+
+        {:ok, announced} = Identity.from_public_key(pub)
+
+        header(p, raw)
+        f("public_key", hx(pub))
+        f("name_hash", hx(nh))
+        f("random_hash", hx(rh))
+        f("ratchet", if(ratchet == <<>>, do: "-", else: hx(ratchet)))
+        f("signature", hx(sig))
+        f("app_data", if(app_data == <<>>, do: "-", else: hx(app_data)))
+        f("identity_hash", hx(identity_hash))
+        f("expected_hash", hx(expected))
+        f("destination_match", if(dest == expected, do: "yes", else: "no"))
+        f("signed_data", hx(signed))
+        f("signature_valid", if(Identity.validate(announced, signed, sig), do: "yes", else: "no"))
+      end
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
+  def run("encrypted", [priv, ratchet_priv, raw]) do
+    with true <- byte_size(raw) >= 2,
+         {:ok, p} <- decode(raw) do
+      payload = p.data
+
+      if byte_size(payload) < 32 + 48 do
+        invalid("short-payload", [{"payload_length", byte_size(payload)}, {"minimum_length", 80}])
+      else
+        <<ephemeral::binary-size(32), token::binary>> = payload
+        <<iv::binary-size(16), rest::binary>> = token
+        ct = binary_part(rest, 0, byte_size(rest) - 32)
+        mac = binary_part(rest, byte_size(rest) - 32, 32)
+
+        {:ok, id} = Identity.from_private_key(priv)
+
+        agree = ratchet_priv || id.enc_sec
+        shared = :crypto.compute_key(:eddh, ephemeral, agree, :x25519)
+        derived = Crypto.hkdf(shared, id.hash, <<>>, 64)
+        half = div(byte_size(derived), 2)
+        <<signing::binary-size(half), encryption::binary>> = derived
+
+        fernet = Fernet.new(derived)
+        hmac_ok = Fernet.sig_valid?(fernet, token)
+
+        opts = if ratchet_priv, do: [ratchets: [ratchet_priv]], else: []
+        plaintext =
+          case Identity.decrypt(id, payload, opts) do
+            {:ok, pt} -> pt
+            _ -> nil
+          end
+
+        header(p, raw)
+        f("ephemeral_public", hx(ephemeral))
+        f("iv", hx(iv))
+        f("ciphertext", hx(ct))
+        f("hmac", hx(mac))
+        f("identity_hash", hx(id.hash))
+
+        f(
+          "ratchet_public",
+          if(ratchet_priv,
+            do: hx(:crypto.compute_key(:eddh, :binary.copy(<<9>>, 1) <> :binary.copy(<<0>>, 31), ratchet_priv, :x25519)),
+            else: "-"
+          )
+        )
+
+        f("shared_key", hx(shared))
+        f("signing_key", hx(signing))
+        f("encryption_key", hx(encryption))
+        f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
+
+        case plaintext do
+          nil ->
+            f("plaintext_length", "-")
+            f("plaintext", "-")
+
+          pt ->
+            f("plaintext_length", Integer.to_string(byte_size(pt)))
+            f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+        end
+      end
+    else
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+    end
+  end
+
+  def run(kind, _), do: IO.puts(:stderr, "unknown kind " <> kind)
+end
+
+[kind, path] = System.argv()
+
+try do
+  Dump.run(kind, Dump.read_raw(path))
+rescue
+  e -> Dump.f("error", e |> Exception.message() |> String.split("\n") |> hd())
+end

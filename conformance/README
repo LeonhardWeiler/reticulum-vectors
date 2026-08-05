@@ -20,6 +20,7 @@ Clone each next to its harness:
     conformance/src/Reticulum-rs/
     conformance/src/rsReticulum/
     conformance/src/microReticulum/
+    conformance/src/reticulum/          sgiath's Elixir implementation
 
 The commit each result was measured at is recorded in ../CONFORMANCE.
 
@@ -53,6 +54,12 @@ Building
 
     Reticulum-rs      cargo build --release in conformance/Reticulum-rs
     rsReticulum       cargo build --release in conformance/rsReticulum
+
+    reticulum         mix deps.get and mix compile in
+                      conformance/src/reticulum, then run dump.exs with
+                      every _build/dev/lib/*/ebin on the code path. A
+                      runtime without root:
+                          nix shell nixpkgs#elixir
 
     microReticulum    cmake the library first, then link the harness
                       against libmicroReticulum.a and libCryptoLib.a.
