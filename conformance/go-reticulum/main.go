@@ -424,6 +424,9 @@ func encrypted(b [][]byte) {
 const (
 	ecPubSize  = 64
 	signalSize = 3
+
+	// rns/link.go:66, the only mode it enables.
+	linkDefaultMode = 1
 )
 
 // LinkValidateRequest is the only exported way into the link id
@@ -537,13 +540,16 @@ func linkproof(b [][]byte) {
 	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
 	f("signature", hex.EncodeToString(sig))
 	f("x25519_public", hex.EncodeToString(x25519Public))
+	// linkModeFromProofPacket and linkMTUFromProofPacket are rns's own,
+	// at rns/link.go:2798 and rns/link.go:2755, and both are unexported.
+	// They are followed here rather than called.
 	if signalled {
 		f("signalling", hex.EncodeToString(signalling))
-		printMode(int(signalling[0] >> 5))
+		printMode(int(signalling[0]&0xe0) >> 5)
 		f("mtu", fmt.Sprintf("%d", (int(signalling[0])<<16|int(signalling[1])<<8|int(signalling[2]))&0x1fffff))
 	} else {
 		f("signalling", "-")
-		printMode(1)
+		printMode(linkDefaultMode)
 		f("mtu", "-")
 	}
 	f("signer_ed25519", hex.EncodeToString(signerEd))

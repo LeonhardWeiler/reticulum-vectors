@@ -5,7 +5,6 @@
 # See ../README for what a harness may and may not do.
 
 defmodule Dump do
-  import Bitwise
   alias Reticulum.Crypto
   alias Reticulum.Crypto.Fernet
   alias Reticulum.Destination
@@ -264,9 +263,9 @@ defmodule Dump do
       f("ed25519_public", hx(binary_part(payload, 32, 32)))
       f("signalling", if(signalled, do: hx(binary_part(payload, 64, 3)), else: "-"))
 
-      # No mode is decoded anywhere: Fernet picks one from the key
-      # length, and a link key would be 64 bytes, so AES-256.
-      f("mode", "aes256_cbc")
+      # No mode and no MTU are decoded anywhere, so neither is filled
+      # in from the reference.
+      f("mode", "-")
       f("mtu", "-")
       f("link_id", hx(link_id(raw)))
     else
@@ -296,11 +295,8 @@ defmodule Dump do
       f("signature", hx(signature))
       f("x25519_public", hx(x25519_public))
       f("signalling", if(signalled, do: hx(signalling), else: "-"))
-      f("mode", "aes256_cbc")
-
-      f("mtu", if(signalled,
-        do: Integer.to_string(:binary.decode_unsigned(signalling) &&& 0x1FFFFF),
-        else: "-"))
+      f("mode", "-")
+      f("mtu", "-")
 
       f("signer_ed25519", hx(signer_ed))
       f("signed_data", hx(signed))

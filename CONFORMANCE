@@ -1,6 +1,6 @@
 Conformance of independent implementations
 
-Run on 2026-08-05 against all 48 vectors in test/, through the
+Run on 2026-08-06 against all 48 vectors in test/, through the
 harnesses in conformance/.
 
 Each harness calls that implementation's own code and prints the corpus
@@ -12,10 +12,10 @@ result rather than in a footnote.
     ---------------------------------------------------------------
     go-reticulum        06621cc   2026-04-28  47 / 48  12 / 12
     rsReticulum         07ca721   2026-08-02  46 / 48  11 / 12
-    Reticulum-rs        be7a7fc   2026-07-31  42 / 48  10 / 12
     microReticulum      40fa628   2026-07-20  39 / 48   6 / 12
+    Reticulum-rs        be7a7fc   2026-07-31  38 / 48   6 / 12
     rns.js              d4602ca   2025-02-10  28 / 48   0 / 12
-    sgiath/reticulum    0c4904e   2026-07-09  24 / 48   1 / 12
+    sgiath/reticulum    0c4904e   2026-07-09  23 / 48   0 / 12
 
 
 What a result covers
@@ -27,14 +27,22 @@ implementation's own code step by step, using its constants and its
 primitives, and marks the place. Such fields test the transcription as
 much as the implementation.
 
-    implementation    derivations   announce fields   link id   verdicts
-    ---------------------------------------------------------------------
-    rsReticulum       called        called            called    called
-    Reticulum-rs      called        transcribed       called    called
-    go-reticulum      called        transcribed       called    called
-    rns.js            called        transcribed       called    called
-    microReticulum    called        transcribed       called    called
-    sgiath/reticulum  called        transcribed       called    called
+    implementation    derivations  announce fields  link id  signalling
+    --------------------------------------------------------------------
+    rsReticulum       called       called           called   called
+    microReticulum    called       transcribed      called   called
+    go-reticulum      called       transcribed      called   transcribed
+    Reticulum-rs      called       transcribed      called   absent
+    rns.js            called       transcribed      called   absent
+    sgiath/reticulum  called       transcribed      called   absent
+
+Three words, three different things. Called means the harness handed
+the bytes to the implementation and printed what came back.
+Transcribed means the implementation has the code and does not export
+it, so the harness follows it line by line and says where. Absent means
+the implementation has no such code at all, and the harness prints a
+dash rather than a value borrowed from the reference. A dash fails the
+vector, which is the point: see finding 14.
 
 Derivations are the identity hash, the name hash, the destination hash,
 Ed25519 verification, and for the encrypted and link vectors the key
@@ -72,8 +80,9 @@ shown.
 
 One of the six carries a link from request to established traffic
 without a single divergence. Two cannot establish one with the
-reference at all, and a third establishes one and then decrypts nothing
-on it.
+reference at all, a third establishes one and then decrypts nothing on
+it, and a fourth establishes one without ever reading what was
+signalled.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -353,10 +362,42 @@ The reference accepts exactly 64 and 67 and drops everything else
 Because the excess is chopped before hashing, a 65, 66 and 67-byte
 request carrying the same keys all open the same link id.
 
-Nothing in Reticulum-rs reads or writes MTU signalling either, so the
-MTU the reference signalled is not seen. The link id is right, so the
-link still forms; the two ends simply do not agree on how large a
-packet may be.
+It reads no signalling either; that is finding 14.
+
+
+Finding 14: four of six read no link signalling
+
+Affects Reticulum-rs, rns.js and sgiath/reticulum outright, and
+go-reticulum only in that its readers are unexported. Vectors
+test/linkrequest/ and test/linkproof/.
+
+The three signalling bytes of a link request carry the mode in the top
+three bits and the MTU in the low twenty-one (RNS/Link.py:148). Three
+of the six implementations have no function anywhere that reads them:
+
+    rsReticulum       SignallingData::unpack, both directions
+    microReticulum    mode_from_lr_packet, mtu_from_lr_packet, and the
+                      proof counterparts
+    go-reticulum      linkModeFromProofPacket at rns/link.go:2798,
+                      unexported
+    Reticulum-rs      none
+    rns.js            none
+    sgiath            none
+
+The three with none still form a link, because AES-256 is what they
+would have used anyway and 500 bytes is what they assume. What they
+cannot do is honour a peer that signals anything else. The MTU is the
+one value the two ends are supposed to agree on before any data
+flows, and it is signed into the proof, so it is not advisory.
+
+These four vectors were passing until the harnesses were corrected.
+Three of them printed the mode the reference would have decoded, which
+matched expect and passed, for implementations that decode nothing.
+A conformance harness that fills in a field the implementation does
+not compute credits it with code it does not have, and that is worse
+than a harness that reports too many failures. The rule is now written
+down under "What a result covers", and the numbers for Reticulum-rs
+and sgiath/reticulum fell by four and one.
 
 
 Reproducing

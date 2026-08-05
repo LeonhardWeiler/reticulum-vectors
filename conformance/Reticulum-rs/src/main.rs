@@ -422,17 +422,16 @@ fn linkrequest(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "x25519_public", &hexs(&payload[..32]));
     f(out, "ed25519_public", &hexs(&payload[32..64]));
 
-    // Reticulum-rs sends 64 bytes and reads no signalling: request() at
-    // link.rs:214 writes the two keys and stops, and nothing anywhere
-    // decodes a mode or an MTU. The bytes are shown where they are and
-    // nothing is read out of them, so the MTU has no value here. The
-    // mode is the one its derived key fixes: 64 bytes, so AES-256.
+    // Nothing in Reticulum-rs decodes a mode or an MTU. request() at
+    // link.rs:214 writes the two keys and stops. The bytes are shown
+    // where they are and nothing is read out of them, so both fields
+    // are absent rather than filled in from the reference.
     if payload.len() > 64 {
         f(out, "signalling", &hexs(&payload[64..]));
     } else {
         f(out, "signalling", "-");
     }
-    f(out, "mode", "aes256_cbc");
+    f(out, "mode", "-");
     f(out, "mtu", "-");
     f(out, "link_id", &hexs(&link_id));
 }
@@ -476,16 +475,11 @@ fn linkproof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "x25519_public", &hexs(x25519_public));
     if signalling.is_empty() {
         f(out, "signalling", "-");
-        f(out, "mode", "aes256_cbc");
-        f(out, "mtu", "-");
     } else {
         f(out, "signalling", &hexs(signalling));
-        f(out, "mode", if signalling[0] >> 5 == 1 { "aes256_cbc".to_string() }
-                       else { format!("{:02x}", signalling[0] >> 5) }.as_str());
-        f(out, "mtu", &format!("{}",
-            ((signalling[0] as u32) << 16 | (signalling[1] as u32) << 8
-             | signalling[2] as u32) & 0x1fffff));
     }
+    f(out, "mode", "-");
+    f(out, "mtu", "-");
     f(out, "signer_ed25519", &hexs(&identity_public[32..]));
     f(out, "signed_data", &hexs(&signed));
     f(out, "signature_valid", if verify(&signer, signature, &signed) { "yes" } else { "no" });

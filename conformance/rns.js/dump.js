@@ -261,10 +261,11 @@ function linkrequest(blobs) {
     f("ed25519_public", hex(p.data.slice(Link.ECPUBSIZE / 2, Link.ECPUBSIZE)));
     f("signalling", "-");
 
-    // rns.js signals no mode and reads none. The mode it uses is the one
-    // its key derivation and its Fernet fix: 32 derived bytes at
-    // src/link.js:289, aes-128-cbc at src/fernet.js:76.
-    f("mode", "aes128_cbc");
+    // rns.js signals no mode and reads none, so neither field is
+    // filled in here. What it would have used is a separate fact, and
+    // one the encrypted vectors already record: 32 derived bytes at
+    // src/link.js:289 and aes-128-cbc at src/fernet.js:76.
+    f("mode", "-");
     f("mtu", "-");
     f("link_id", hex(linkOf(p).hash));
 }
@@ -305,7 +306,7 @@ function linkproof(blobs) {
     f("signature", hex(signature));
     f("x25519_public", hex(x25519Public));
     f("signalling", "-");
-    f("mode", "aes128_cbc");
+    f("mode", "-");
     f("mtu", "-");
     f("signer_ed25519", hex(signer.signaturePublicKeyBytes));
     f("signed_data", hex(signedData));
