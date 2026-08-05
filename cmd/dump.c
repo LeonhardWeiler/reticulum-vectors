@@ -224,7 +224,8 @@ static const char *lookup(struct kv *fields, int n, const char *name)
 	return NULL;
 }
 
-/* tweetnacl declares randombytes and leaves it to the caller. dump has
+/* tweetnacl leaves randombytes to the caller and declares it nowhere,
+ * so the definition below carries its own prototype. dump has
  * no use for randomness; the one place tweetnacl reaches for it is
  * crypto_sign_keypair, which is how an Ed25519 public key is derived
  * from a given seed without editing the vendored source. Serving that
@@ -233,6 +234,8 @@ static const char *lookup(struct kv *fields, int n, const char *name)
 
 static unsigned char rb_seed[32];
 static int rb_armed;
+
+void randombytes(unsigned char *x, unsigned long long n);
 
 void randombytes(unsigned char *x, unsigned long long n)
 {

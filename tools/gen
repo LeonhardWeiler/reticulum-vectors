@@ -531,7 +531,6 @@ ECPUBSIZE   = 64        # RNS/Link.py:70, the two public keys together
 SIGNALLEN   = 3         # RNS/Link.py:80, LINK_MTU_SIZE
 MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144
 MODE_DEFAULT = 0x01     # RNS/Link.py:134
-RETICULUM_MTU = 500     # RNS/Reticulum.py:93
 
 
 def invalid(reason, *evidence):

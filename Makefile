@@ -1,4 +1,6 @@
-CFLAGS       = -std=c99 -Wall -Wextra -pedantic -O2
+CFLAGS       = -std=c99 -Wall -Wextra -pedantic -O2 \
+               -Wshadow -Wcast-qual -Wwrite-strings \
+               -Wstrict-prototypes -Wmissing-prototypes
 VENDORCFLAGS = -std=c99 -O2
 
 OBJ = cmd/dump.o cmd/sha256.o cmd/hmac.o cmd/aes256.o cmd/tweetnacl.o
