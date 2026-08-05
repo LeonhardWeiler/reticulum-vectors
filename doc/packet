@@ -41,7 +41,7 @@ Header 2, used while a packet is in transport:
 
 The transport id is inserted before the destination hash, not after.
 
-    RNS/Packet.py:177, RNS/Packet.py:240
+    RNS/Packet.py:177, RNS/Packet.py:242
 
 
 Flags

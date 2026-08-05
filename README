@@ -36,7 +36,7 @@ Layout
     doc/        byte layouts and derivation rules
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
-    tools/      gen, the Python generator
+    tools/      gen, the Python generator; cite, the citation check
 
 dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
 and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies
@@ -65,9 +65,10 @@ round trip described below:
     make verify
 
 additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change. That is the
-evidence behind the source line in every meta file. It needs Python and
-the checkout; cmd/check alone needs neither.
+implementation and fails if a single byte would change, and checks that
+every RNS line cited by doc/ and by the programs still names the line it
+claims. That is the evidence behind the source line in every meta file.
+It needs Python and the checkout; cmd/check alone needs neither.
 
 
 Vector format

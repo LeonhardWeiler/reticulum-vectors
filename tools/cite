@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+#
+# Check every RNS/...py:N citation in the corpus against the pinned
+# checkout.
+#
+#     tools/cite [--checkout PATH]
+#
+# doc/ and the programs cite the reference by line, and nothing else
+# reads those numbers. Twelve of them had already slid by one or two
+# lines before this existed. A citation landing on a blank line or on a
+# comment is the shape that drift takes, and it is enough to catch.
+
+import argparse
+import os
+import re
+import sys
+
+ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHECKOUT = os.path.join(os.path.dirname(ROOT), "reticulum")
+
+SOURCES = ["README", "CONFORMANCE", "Makefile", "cmd/check", "tools/gen",
+           "tools/cite"]
+DIRS    = ["doc", "cmd"]
+
+CITE = re.compile(r"RNS/[A-Za-z0-9_/]+\.py:(\d+)")
+
+
+def sources():
+    for name in SOURCES:
+        path = os.path.join(ROOT, name)
+        if os.path.isfile(path):
+            yield path
+    for d in DIRS:
+        for name in sorted(os.listdir(os.path.join(ROOT, d))):
+            path = os.path.join(ROOT, d, name)
+            if os.path.isfile(path) and not name.endswith(".o"):
+                yield path
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--checkout", default=CHECKOUT)
+    args = ap.parse_args()
+
+    cache = {}
+    checked, bad = 0, []
+
+    for path in sources():
+        try:
+            body = open(path, encoding="utf-8").read()
+        except UnicodeDecodeError:
+            continue
+
+        for m in CITE.finditer(body):
+            checked += 1
+            cited, line = m.group(0), int(m.group(1))
+            target = cited.rsplit(":", 1)[0]
+            where = os.path.relpath(path, ROOT)
+
+            if target not in cache:
+                full = os.path.join(args.checkout, target)
+                cache[target] = open(full).read().split("\n") \
+                    if os.path.isfile(full) else None
+
+            lines = cache[target]
+            if lines is None:
+                bad.append((where, cited, "no such file in the checkout"))
+            elif line > len(lines):
+                bad.append((where, cited, "past the end of a %d-line file" % len(lines)))
+            else:
+                text = lines[line-1].strip()
+                if text == "" or text.startswith("#"):
+                    bad.append((where, cited, "blank or comment"))
+
+    print("%d citations checked" % checked)
+    if bad:
+        for where, cited, why in bad:
+            print("    %-20s %-34s %s" % (where, cited, why))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

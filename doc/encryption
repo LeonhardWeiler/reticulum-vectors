@@ -11,7 +11,7 @@ See doc/packet for the header. Only the payload is described here.
 
 Constants
 
-    TOKEN_OVERHEAD          48 bytes   RNS/Cryptography/Token.py:51
+    TOKEN_OVERHEAD          48 bytes   RNS/Cryptography/Token.py:50
     DERIVED_KEY_LENGTH      64 bytes   RNS/Identity.py:90
     PKCS7 blocksize         16 bytes   RNS/Cryptography/PKCS7.py:32
 
@@ -58,7 +58,7 @@ recipient, derived from its own public key as in doc/identity. It stays
 the identity hash even when the shared secret came from a ratchet: the
 ratchet changes the agreement, not the salt.
 
-    RNS/Identity.py:822, RNS/Identity.py:797, RNS/Cryptography/HKDF.py:34
+    RNS/Identity.py:822, RNS/Identity.py:797, RNS/Cryptography/HKDF.py:35
 
 
 Token
@@ -82,14 +82,14 @@ initialisation vector and the ciphertext, not the ephemeral key:
 
 A token whose HMAC does not match is rejected without decrypting.
 
-    RNS/Cryptography/Token.py:76, RNS/Cryptography/Token.py:99
+    RNS/Cryptography/Token.py:77, RNS/Cryptography/Token.py:100
 
 Reticulum calls this construction a token because it is Fernet with the
 version byte and the eight-byte timestamp removed. An implementation
 reaching for a Fernet library will produce nine bytes too many at the
 front.
 
-    RNS/Cryptography/Token.py:39
+    RNS/Cryptography/Token.py:40
 
 
 Padding

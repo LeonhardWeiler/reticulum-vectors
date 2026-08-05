@@ -35,7 +35,7 @@
 #define RATCHETLEN   32
 #define IVLEN        16
 #define MACLEN       32
-#define TOKEN_OVERHEAD (IVLEN + MACLEN)   /* RNS/Cryptography/Token.py:51 */
+#define TOKEN_OVERHEAD (IVLEN + MACLEN)   /* RNS/Cryptography/Token.py:50 */
 #define DERIVEDLEN   64
 #define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
 #define ECPUBSIZE    64		/* RNS/Link.py:70 */
@@ -626,7 +626,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 
 	/* The salt is the recipient's identity hash, derived from its own
 	 * public key, even when the shared secret came from a ratchet.
-	 * RNS/Identity.py:836. */
+	 * RNS/Identity.py:841. */
 	crypto_scalarmult_base(pub, b[0].data);
 	ed25519_public(b[0].data + KEYHALF, pub + KEYHALF);
 	truncated_hash(pub, KEYSIZE, identity_hash, ADDRLEN);

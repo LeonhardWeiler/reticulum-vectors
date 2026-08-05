@@ -476,7 +476,7 @@ SIGLEN      = 64
 RATCHETLEN  = 32
 ADDRLEN     = 16
 KEYHALF     = 32
-TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:51, iv plus hmac
+TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:50, iv plus hmac
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 ECPUBSIZE   = 64        # RNS/Link.py:70, the two public keys together
 SIGNALLEN   = 3         # RNS/Link.py:80, LINK_MTU_SIZE
@@ -1100,7 +1100,7 @@ def lookup_field(lines, name):
 
 
 def hkdf_sha256(length, ikm, salt, context=b""):
-    """RFC 5869, which is what RNS/Cryptography/HKDF.py:34 implements."""
+    """RFC 5869, which is what RNS/Cryptography/HKDF.py:35 implements."""
     import hmac as _hmac
 
     def mac(key, data):
@@ -1139,7 +1139,7 @@ def describe_encrypted(raw, private, ratchet_private):
     identity_hash = hashlib.sha256(public_key).digest()[:ADDRLEN]
 
     # The salt is always the recipient's identity hash, including when
-    # the shared secret came from a ratchet. RNS/Identity.py:836.
+    # the shared secret came from a ratchet. RNS/Identity.py:841.
     if ratchet_private is not None:
         agree_with = ratchet_private
         ratchet_public = X25519PrivateKey.from_private_bytes(ratchet_private) \
