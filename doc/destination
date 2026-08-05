@@ -1,0 +1,82 @@
+Destination
+
+Byte layouts and derivations. For what destinations are for and when
+to use each type, see upstream docs/source/understanding.rst, section
+"Destinations".
+
+Vectors: test/destination/
+
+
+Name
+
+A destination name is an app name followed by zero or more aspects,
+joined with a single dot.
+
+    name = app_name [ "." aspect ]*
+
+No component may contain a dot. This is enforced, not merely
+conventional.
+
+    RNS/Destination.py:96
+
+
+Name hash
+
+    name_hash = SHA-256(utf8(name))[0:10]
+
+10 bytes, that is 80 bits, not 128. The name is hashed as its utf-8
+bytes exactly as given. No unicode normalisation is applied.
+
+test/destination/005 and test/destination/006 carry the same name in
+precomposed and decomposed form. They look identical and produce
+different hashes. An implementation that normalises will not
+interoperate.
+
+    RNS/Destination.py:120
+
+
+Destination hash
+
+    destination_hash = SHA-256(name_hash || identity_hash)[0:16]
+
+16 bytes. Without an identity, the second operand is absent:
+
+    destination_hash = SHA-256(name_hash)[0:16]
+
+The identity is mixed in at this step, as its 16-byte hash. It is not
+part of the name that produced name_hash.
+
+    RNS/Destination.py:130
+
+
+Discrepancy with the upstream prose
+
+docs/source/understanding.rst states that for single destinations
+Reticulum "will automatically append the associated public key as a
+destination aspect before hashing".
+
+The code does not do that. Destination.hash calls expand_name with a
+null identity, so the identity contributes nothing to name_hash; the
+identity hash is concatenated afterwards, at the second hash. The
+observable result differs from the prose, and this corpus follows the
+code.
+
+Destination.expand_name does append identity.hexhash when given an
+identity, but that path produces the human-readable full name only. It
+is not used in the hash derivation.
+
+    RNS/Destination.py:109 and RNS/Destination.py:120
+
+
+Vector format
+
+kind: destination, determinism: encode
+
+raw is two lines:
+
+    line 1    the name, utf-8 bytes, hex
+    line 2    identity hash, 16 bytes, or "-" when there is no identity
+
+The name is stored as hex rather than as text so that the byte
+sequence is unambiguous. Two names that render identically can differ
+in bytes; see above.

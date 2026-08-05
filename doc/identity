@@ -1,0 +1,117 @@
+Identity
+
+Byte layouts and derivations. For what an identity is for, see
+upstream docs/source/understanding.rst, section "Identities".
+
+Vectors: test/identity/
+
+
+Constants
+
+    KEYSIZE                 512 bits    RNS/Identity.py:59
+    SIGLENGTH               512 bits    RNS/Identity.py:81
+    TRUNCATED_HASHLENGTH    128 bits    RNS/Reticulum.py:145
+    NAME_HASH_LENGTH         80 bits    RNS/Identity.py:83
+    RATCHETSIZE             256 bits    RNS/Identity.py:64
+
+
+Private key
+
+64 bytes, two independent 32-byte keys concatenated.
+
+    offset  size  field
+    0       32    X25519 private key
+    32      32    Ed25519 private key
+
+The X25519 half is a raw scalar. Identity stores the bytes exactly as
+supplied and returns them unchanged; clamping happens inside the
+curve implementation when the scalar is used.
+
+    load_private_key       stores prv_bytes verbatim   RNS/Identity.py:744
+    get_private_key        returns them verbatim       RNS/Identity.py:722
+    curve25519 clamps      at exchange and base mult   RNS/Cryptography/X25519.py:78
+
+Two consequences, both recorded as vectors in test/identity/005 and
+test/identity/006:
+
+    An unclamped scalar round-trips through Identity unchanged. An
+    implementation that clamps on load will export a different private
+    key than it imported.
+
+    The public key, and therefore the identity hash, is derived after
+    clamping. An unclamped scalar and its clamped form yield the same
+    public key and the same identity hash.
+
+The Ed25519 half is a seed in the sense of RFC 8032, not an expanded
+secret scalar.
+
+The two halves are unrelated. Neither is derived from the other, and
+there is no master seed.
+
+    RNS/Identity.py:744, RNS/Cryptography/Ed25519.py:34,
+    RNS/Cryptography/X25519.py:78
+
+
+Public key
+
+64 bytes, in the same order.
+
+    offset  size  field
+    0       32    X25519 public key
+    32      32    Ed25519 public key
+
+    RNS/Identity.py:773
+
+
+Identity hash
+
+    identity_hash = SHA-256(public_key)[0:16]
+
+16 bytes. Derived from the public key only. The private key does not
+enter the derivation.
+
+    RNS/Identity.py:783
+
+
+Signature
+
+Ed25519 over the message bytes, 64 bytes, as specified in RFC 8032.
+Signing is deterministic: the same key and message always produce the
+same signature.
+
+    RNS/Identity.py:907
+
+
+Vector format
+
+kind: identity, determinism: encode
+
+raw is one line:
+
+    line 1    public key, 64 bytes
+
+expect names the public key, its two halves, and the identity hash.
+
+raw carries the public key rather than the private key because the
+Reticulum-specific facts are the concatenation order and the hash.
+Deriving a public key from a private one is X25519 and Ed25519, which
+are standard primitives with their own published vectors; this corpus
+does not restate them.
+
+The private-to-public derivation is covered by a separate kind,
+keyset, which is generated once dump can verify it. The clamping pair
+described above belongs there: as identity vectors the two cases would
+be byte-identical, which is precisely the property they exist to
+record.
+
+
+Note on the upstream signature vector
+
+The upstream test at tests/identity.py:35 signs
+
+    signed_message.encode("utf-8")
+
+where signed_message is a 1224-character hex string. The signed
+message is therefore the ASCII text of that hex, not the 612 bytes it
+represents. Vectors carrying that value record the message as the hex
+of its utf-8 bytes, so the distinction cannot be lost.

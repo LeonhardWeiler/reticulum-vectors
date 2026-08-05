@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# check - decode every vector and compare the result with its expect file.
+#
+# Uses cmd/dump. To check a different implementation, point DUMP at a
+# program taking the same two arguments and printing the same format:
+#
+#	DUMP=./my-decoder cmd/check
+#
+# Exits non-zero if any vector fails.
+
+root=$(dirname "$0")/..
+DUMP=${DUMP:-$root/cmd/dump}
+
+if [ ! -x "$DUMP" ]; then
+	echo "no dump program at $DUMP; run make" >&2
+	exit 2
+fi
+
+pass=0
+fail=0
+
+for dir in "$root"/test/*/*/; do
+	[ -f "$dir/meta" ] || continue
+
+	kind=$(sed -n 's/^kind  *//p' "$dir/meta")
+	if [ -z "$kind" ]; then
+		echo "FAIL $dir"
+		echo "    meta has no kind field"
+		fail=$((fail + 1))
+		continue
+	fi
+
+	out=$("$DUMP" "$kind" "$dir/raw" 2>&1)
+	if [ $? -ne 0 ]; then
+		echo "FAIL $dir"
+		printf '%s\n' "$out" | sed 's/^/    /'
+		fail=$((fail + 1))
+		continue
+	fi
+
+	if printf '%s\n' "$out" | diff -u "$dir/expect" - > /dev/null; then
+		pass=$((pass + 1))
+	else
+		echo "FAIL $dir"
+		printf '%s\n' "$out" | diff -u "$dir/expect" - | tail -n +3 | sed 's/^/    /'
+		fail=$((fail + 1))
+	fi
+done
+
+echo "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]

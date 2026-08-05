@@ -1,0 +1,92 @@
+Reticulum Vector Corpus
+
+Verified Reticulum protocol data, stored as files that can be checked
+without running Python.
+
+
+What this is
+
+Each vector is a directory holding input bytes, the expected field
+decomposition, and a record of where the data came from. An
+implementation checks itself by decoding the input and comparing its
+output to the expected decomposition.
+
+This is not a specification. It does not define correct behaviour. It
+records the observed behaviour of one implementation at one version:
+
+    python-rns 1.4.2, commit b48b96e61676504e0a4e527b33b9a0b4495c6872
+
+Every vector records that pin. When the pin moves, vectors are
+regenerated and the differences are examined.
+
+
+Known limitation
+
+Vectors generated from python-rns cannot detect bugs in python-rns.
+They define "compatible" as "identical to the reference
+implementation". That is the right definition for interoperability and
+the wrong one for correctness.
+
+
+Layout
+
+    doc/        byte layouts and derivation rules
+    test/       the vectors
+    cmd/        dump, a decoder written in C; check, a shell script
+    tools/      gen, the Python generator
+
+
+Checking an implementation
+
+    cmd/check
+
+runs the corpus against cmd/dump. To check your own implementation,
+make it print the same field format and substitute it for dump:
+
+    DUMP=./my-implementation cmd/check
+
+
+Vector format
+
+    test/<kind>/<nnn>/
+
+        meta      provenance and Determinism class
+        raw       input, hex, one blob per line
+        expect    field decomposition, one field per line
+
+meta records:
+
+    source        which implementation and version produced this
+    generated     the date
+    kind          which decoder applies
+    Determinism   decode or encode
+    purpose       one line
+
+Determinism: encode means every input is pinned and re-encoding
+reproduces raw byte for byte. Determinism: decode means the object
+contains randomness or a timestamp and can only be decoded and
+validated. Most Reticulum objects are decode-class; see doc/.
+
+The number of hex lines in raw depends on the kind and is documented
+in doc/.
+
+
+Relationship to the upstream test suite
+
+The upstream suite is a regression suite. It builds objects with RNS
+and validates them with RNS, and asserts nothing about the resulting
+bytes. It cannot detect an incompatibility in a different
+implementation.
+
+Where upstream does provide reusable values, they are adopted here
+verbatim and their origin recorded in meta, rather than re-derived.
+
+Primitives that every language already provides are not tested here.
+
+
+Upstream license
+
+Reticulum is licensed permissively with two added restrictions: no use
+in systems intended to harm humans, and no use in AI or language model
+training datasets. Adopted values are attributed in the meta file of
+the vector that carries them.

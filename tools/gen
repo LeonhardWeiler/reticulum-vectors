@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+#
+# Generate vectors against the pinned Reticulum checkout.
+#
+# gen is not part of the corpus contract. It is how vectors are
+# produced, not how they are consumed. Consumers read test/ and need
+# neither this program nor Python.
+#
+# Usage:
+#
+#     tools/gen [--checkout PATH] [--force]
+#
+# Without --force, gen refuses to change a vector that already exists
+# with different content, and reports the difference instead.
+
+import argparse
+import datetime
+import os
+import subprocess
+import sys
+
+PIN_VERSION = "1.4.2"
+PIN_COMMIT  = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
+
+ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHECKOUT = os.path.join(os.path.dirname(ROOT), "reticulum")
+
+FIELD_WIDTH = 18
+
+# Adopted verbatim from the upstream test suite. Not re-derived.
+#
+#     reticulum/tests/identity.py:13-19
+#
+UPSTREAM_KEYS = [
+    ("f8953ffaf607627e615603ff1530c82c434cf87c07179dd7689ea776f30b964c"
+     "fb7ba6164af00c5111a45e69e57d885e1285f8dbfe3a21e95ae17cf676b0f8b7",
+     "650b5d76b6bec0390d1f8cfca5bd33f9"),
+    ("d85d036245436a3c33d3228affae06721f8203bc364ee0ee7556368ac62add65"
+     "0ebf8f926abf628da9d92baaa12db89bd6516ee92ec29765f3afafcb8622d697",
+     "1469e89450c361b253aefb0c606b6111"),
+    ("8893e2bfd30fc08455997caf7abb7a6341716768dbbf9a91cc1455bd7eeaf74c"
+     "dc10ec72a4d4179696040bac620ee97ebc861e2443e5270537ae766d91b58181",
+     "e5fe93ee4acba095b3b9b6541515ed3e"),
+    ("b82c7a4f047561d974de7e38538281d7f005d3663615f30d9663bad35a716063c"
+     "931672cd452175d55bcdd70bb7aa35a9706872a97963dc52029938ea7341b39",
+     "1333b911fa8ebb16726996adbe3c6262"),
+    ("08bb35f92b06a0832991165a0d9b4fd91af7b7765ce4572aa6222070b11b7670"
+     "92b61b0fd18b3a59cae6deb9db6d4bfb1c7fcfe076cfd66eea7ddd5f877543b9",
+     "d13712efc45ef87674fb5ac26c37c912"),
+]
+
+UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13 (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
+GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
+
+# Constructed here, not upstream. The pair pins the clamping rule: the
+# X25519 scalar is stored as given and clamped only when used, so the
+# two keys differ while their public keys and identity hashes agree.
+CLAMP_UNCLAMPED = "ff" * 32 + "01" * 32
+CLAMP_CLAMPED   = "f8" + "ff" * 30 + "7f" + "01" * 32
+
+EXTRA_KEYS = [
+    (CLAMP_UNCLAMPED, "unclamped x25519 scalar, stored and returned verbatim"),
+    (CLAMP_CLAMPED,   "the same scalar clamped; same public key and identity hash, different private key"),
+]
+
+# Destination cases. Each is (aspects tuple, key index or None, purpose).
+#
+# Case 0 is the only destination hash asserted anywhere upstream, at
+# tests/link.py:113. It is reproduced here to anchor the derivation.
+#
+DESTINATIONS = [
+    (("rns_unit_tests", "link", "establish"), 0,
+     "the destination hash asserted at upstream tests/link.py:113"),
+    (("lxmf", "delivery"), 1,
+     "two components, the common real-world shape"),
+    (("example_utilities",), 2,
+     "app name only, no aspects"),
+    (("a", "b", "c", "d", "e"), 3,
+     "five components, to pin the joining rule"),
+    (("rns_unit_tests", "link", "establish"), None,
+     "same name without an identity, as used by plain destinations"),
+    # Written with explicit escapes so that no editor can silently
+    # normalise them. The pair pins that RNS hashes the utf-8 bytes as
+    # given and applies no unicode normalisation: the two names look
+    # identical and hash differently.
+    (("test", "gr\u00fc\u00dfe", "\u65e5\u672c\u8a9e"), 4,
+     "non-ascii aspects, precomposed (u+00fc)"),
+    (("test", "gru\u0308\u00dfe", "\u65e5\u672c\u8a9e"), 4,
+     "the same name decomposed (u+0075 u+0308); no normalisation, so the hash differs"),
+]
+
+
+def load_rns(checkout):
+    if not os.path.isdir(os.path.join(checkout, "RNS")):
+        sys.exit("no RNS package under %s" % checkout)
+
+    sys.path.insert(0, checkout)
+    import RNS
+
+    if not os.path.abspath(RNS.__file__).startswith(os.path.abspath(checkout)):
+        sys.exit("imported RNS from %s, not from the checkout" % RNS.__file__)
+
+    if RNS.__version__ != PIN_VERSION:
+        sys.exit("checkout is version %s, pin is %s" % (RNS.__version__, PIN_VERSION))
+
+    commit = subprocess.run(["git", "-C", checkout, "rev-parse", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()
+    if commit != PIN_COMMIT:
+        sys.exit("checkout is at %s, pin is %s" % (commit, PIN_COMMIT))
+
+    return RNS
+
+
+def field(name, value):
+    return "%-*s %s" % (FIELD_WIDTH, name, value)
+
+
+def meta_block(kind, determinism, purpose, source=GENERATED_SOURCE):
+    return [
+        field("source", source),
+        field("generated", datetime.date.today().isoformat()),
+        field("kind", kind),
+        field("determinism", determinism),
+        field("purpose", purpose),
+    ]
+
+
+class Writer:
+    def __init__(self, root, force):
+        self.root    = root
+        self.force   = force
+        self.written = 0
+        self.differs = []
+
+    def vector(self, kind, index, meta, raw, expect):
+        path = os.path.join(self.root, "test", kind, "%03d" % index)
+        os.makedirs(path, exist_ok=True)
+        self.file(os.path.join(path, "meta"), meta)
+        self.file(os.path.join(path, "raw"), raw)
+        self.file(os.path.join(path, "expect"), expect)
+
+    def file(self, path, lines):
+        body = "\n".join(lines) + "\n"
+        if os.path.exists(path) and not self.force:
+            with open(path) as f:
+                if f.read() != body:
+                    self.differs.append(path)
+                    return
+        with open(path, "w") as f:
+            f.write(body)
+        self.written += 1
+
+
+def identity_vector(RNS, w, index, private_hex, purpose, source):
+    """One identity vector.
+
+    raw is the public key, not the private key. Deriving a public key
+    from a private one is X25519 and Ed25519, standard primitives with
+    their own published vectors; this corpus does not restate them.
+    What is specific to Reticulum is the concatenation order and the
+    hash, and those are what the vector pins.
+
+    The private-to-public derivation is covered separately by the
+    keyset vectors, which are generated once dump can verify them.
+    """
+    identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
+
+    public = identity.get_public_key()
+    half   = RNS.Identity.KEYSIZE // 8 // 2
+
+    w.vector("identity", index,
+        meta_block("identity", "encode", purpose, source=source),
+        [public.hex()],
+        [
+            field("public_key",     public.hex()),
+            field("x25519_public",  public[:half].hex()),
+            field("ed25519_public", public[half:].hex()),
+            field("identity_hash",  identity.hash.hex()),
+        ])
+
+    return identity
+
+
+def gen_identity(RNS, w):
+    for n, (private_hex, hash_hex) in enumerate(UPSTREAM_KEYS):
+        identity = identity_vector(RNS, w, n, private_hex,
+            "public key of upstream key %d" % n,
+            UPSTREAM_KEY_SOURCE)
+
+        # The upstream table is the source of truth for these two values.
+        # Everything else is derived here and must agree with it.
+        assert identity.get_private_key() == bytes.fromhex(private_hex)
+        assert identity.hash == bytes.fromhex(hash_hex)
+
+    # The clamping pair belongs to the keyset vectors, which record the
+    # private-to-public derivation. As identity vectors the two would be
+    # byte-identical, since that is exactly the property they record.
+    # The assertion is kept here so the property is checked on every
+    # run, and the vectors follow when dump can verify them.
+    a = RNS.Identity.from_bytes(bytes.fromhex(EXTRA_KEYS[0][0]))
+    b = RNS.Identity.from_bytes(bytes.fromhex(EXTRA_KEYS[1][0]))
+    assert a.get_private_key() != b.get_private_key()
+    assert a.get_public_key()  == b.get_public_key()
+    assert a.hash              == b.hash
+
+
+def gen_destination(RNS, w):
+    for n, (aspects, key_index, purpose) in enumerate(DESTINATIONS):
+        app_name = aspects[0]
+        rest     = aspects[1:]
+
+        name       = RNS.Destination.expand_name(None, app_name, *rest)
+        name_bytes = name.encode("utf-8")
+        name_hash  = RNS.Identity.full_hash(name_bytes)[:RNS.Identity.NAME_HASH_LENGTH // 8]
+
+        if key_index is None:
+            identity      = None
+            identity_hash = None
+        else:
+            identity      = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
+            identity_hash = identity.hash
+
+        destination_hash = RNS.Destination.hash(identity, app_name, *rest)
+
+        expect = [field("name", name), field("app_name", app_name)]
+        for aspect in rest:
+            expect.append(field("aspect", aspect))
+        expect.append(field("name_hash", name_hash.hex()))
+        expect.append(field("identity_hash", identity_hash.hex() if identity_hash else "-"))
+        expect.append(field("destination_hash", destination_hash.hex()))
+
+        w.vector("destination", n,
+            meta_block("destination", "encode", purpose),
+            [name_bytes.hex(), identity_hash.hex() if identity_hash else "-"],
+            expect)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--checkout", default=CHECKOUT)
+    ap.add_argument("--force", action="store_true")
+    args = ap.parse_args()
+
+    RNS = load_rns(args.checkout)
+    w   = Writer(ROOT, args.force)
+
+    gen_identity(RNS, w)
+    gen_destination(RNS, w)
+
+    print("%d files written" % w.written)
+    if w.differs:
+        print("%d files differ and were left alone:" % len(w.differs))
+        for path in w.differs:
+            print("    %s" % os.path.relpath(path, ROOT))
+        print("run with --force to replace them, after examining why they changed")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
