@@ -20,7 +20,7 @@ result rather than in a footnote.
 
 What a result covers
 
-Not every field came from the implementation. Three of the five expose
+Not every field came from the implementation. Five of the six expose
 no entry point that yields the parsed announce fields; their validator
 returns a boolean and nothing else. For those the harness follows the
 implementation's own code step by step, using its constants and its
@@ -53,10 +53,11 @@ All six agree on the destination hash for names with at least one
 aspect, the announce payload layout, the assembly of signed data
 including the position of app data, and Ed25519 verification.
 
-Four of the five decrypt a packet from the reference correctly. The
+Four of the six decrypt a packet from the reference correctly. The
 encrypted vectors turned up one implementation that cannot decrypt any
-of them, and one whose ratchets do not work, both for reasons the
-announce vectors could not have shown.
+of them, one that never gets as far as trying, and one whose ratchets
+do not work, all for reasons the announce vectors could not have
+shown.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -148,6 +149,55 @@ key, so a stored identity never reaches that path.
 microReticulum's is not, and finding 6 below shows why. It fails
 silently with a wrong public key rather than refusing the input, and
 ratchet keys are not clamped when generated.
+
+
+Finding 5: rns.js derives half the key material
+
+Affects rns.js. All five test/encrypted/ vectors.
+
+    src/identity.js:237     Cryptography.hkdf(32, sharedKey, this.hash)
+    RNS/Identity.py:823     length=Identity.DERIVED_KEY_LENGTH, that is 64
+
+A 64-byte derived key selects AES-256-CBC and splits into two 32-byte
+halves; a 32-byte key selects AES-128-CBC and splits into two 16-byte
+halves. rns.js takes the second path throughout, down to
+src/fernet.js:76, which names aes-128-cbc outright.
+
+The HKDF output agrees as far as it goes: rns.js's signing key is the
+first half of the reference's signing key. Only the length differs.
+
+    reference   signing 61d1de0d...639e6aff  encryption a00a15a6...3bdcd28c
+    rns.js      signing 61d1de0d73097c427032bac52d5376b0
+                encryption 46b9856a53d1e8841cc6f8c9639e6aff
+
+The consequence is total for single-destination traffic: rns.js cannot
+decrypt a packet from python-rns 1.4.2, and python-rns cannot decrypt
+one from rns.js. The HMAC fails before decryption is even attempted.
+
+python-rns keeps DERIVED_KEY_LENGTH_LEGACY = 32 at RNS/Identity.py:91,
+so 32 was once right. This is version skew rather than a misreading,
+and it is what a corpus pinned to a version is for.
+
+
+Finding 6: microReticulum does not clamp, and that breaks ratchets
+
+Affects microReticulum. Vector test/encrypted/ratchet, and the same
+root cause as finding 4.
+
+Finding 4 recorded microReticulum deriving a different public key from
+a non-canonical X25519 scalar, and called it an edge case because every
+key the reference generates is already clamped. Ratchet keys are not.
+RNS/Identity.py:404 generates one as 32 raw random bytes, and a random
+scalar is already in clamped form only once in 32 tries.
+
+    ratchet private     267c9c1b...00d48784   as generated, non-canonical
+    clamped form        207c9c1b...00d48744
+    reference public    c82c57db...1a52fe32   from the clamped scalar
+    microReticulum      fa7c42ed...           from the raw scalar
+
+The shared secret differs, the HMAC fails, and the packet is dropped.
+microReticulum decrypts the three identity-key vectors correctly, so
+the defect is invisible until a ratchet is used.
 
 
 Finding 7: sgiath/reticulum cannot load an identity from a private key
