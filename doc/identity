@@ -79,10 +79,15 @@ Ed25519 over the message bytes, 64 bytes, as specified in RFC 8032.
 Signing is deterministic: the same key and message always produce the
 same signature.
 
+Identity.sign applies no prefix, no domain separator and no prior
+hashing. The message is passed to Ed25519 as it stands. This is what
+test/signature/ pins; Ed25519 itself has published vectors and is not
+restated here.
+
     RNS/Identity.py:907
 
 
-Vector format
+Vector format: identity
 
 kind: identity, determinism: encode
 
@@ -95,23 +100,48 @@ expect names the public key, its two halves, and the identity hash.
 raw carries the public key rather than the private key because the
 Reticulum-specific facts are the concatenation order and the hash.
 Deriving a public key from a private one is X25519 and Ed25519, which
-are standard primitives with their own published vectors; this corpus
-does not restate them.
-
-The private-to-public derivation is covered by a separate kind,
-keyset, which is generated once dump can verify it. The clamping pair
-described above belongs there: as identity vectors the two cases would
-be byte-identical, which is precisely the property they exist to
-record.
+are standard primitives with their own published vectors.
 
 
-Note on the upstream signature vector
+Vector format: keyset
 
-The upstream test at tests/identity.py:35 signs
+kind: keyset, determinism: encode
+
+raw is one line:
+
+    line 1    private key, 64 bytes
+
+expect adds the derived public key, its two halves, and the identity
+hash. These vectors do cross the boundary into the curve primitives,
+because the derivation is where the two halves of a Reticulum private
+key are told apart: the first is an X25519 scalar and the second an
+Ed25519 seed, and swapping them produces a key that still looks
+well-formed.
+
+test/keyset/005 and test/keyset/006 carry the clamping pair. As
+identity vectors the two would be byte-identical, which is precisely
+the property they exist to record.
+
+
+Vector format: signature
+
+kind: signature, determinism: encode
+
+raw is three lines:
+
+    line 1    public key, 64 bytes, in Reticulum form
+    line 2    the message
+    line 3    the signature, 64 bytes
+
+expect names the Ed25519 half of the public key, the message length,
+the SHA-256 of the message, the signature, and the verdict.
+
+The message is given by its bytes rather than as text, because the
+adopted upstream vector turns on exactly that distinction. The
+upstream test at tests/identity.py:35 signs
 
     signed_message.encode("utf-8")
 
-where signed_message is a 1224-character hex string. The signed
-message is therefore the ASCII text of that hex, not the 612 bytes it
-represents. Vectors carrying that value record the message as the hex
-of its utf-8 bytes, so the distinction cannot be lost.
+where signed_message is a 950-character hex string. The signed message
+is therefore the ASCII text of that hex, 950 bytes, not the 475 bytes
+it spells.

@@ -54,7 +54,26 @@ UPSTREAM_KEYS = [
      "d13712efc45ef87674fb5ac26c37c912"),
 ]
 
+# Adopted verbatim from reticulum/tests/identity.py:7-8. Note that the
+# upstream test signs signed_message.encode("utf-8"), so the signed
+# message is the ascii text of the hex, 950 bytes, not the 475 it spells.
+UPSTREAM_SIGNED_MESSAGE = (
+    "e51a008b8b8ba855993d8892a40daad84a6fb69a7138e1b5f69b427fe03449826ab6ccb81f0d72b4725e8d55c814d3e8"
+    "e151b495cf5b59702f197ec366d935ad04a98ca519d6964f96ea09910b020351d1cdff3befbad323a2a28a6ec7ced4d0"
+    "d67f02c525f93b321d9b076d704408475bd2d123cd51916f7e49039246ac56add37ef87e32d7f9853ac44a7f77d26fed"
+    "c83e4e67a45742b751c2599309f5eda6efa0dafd957f61af1f0e86c4d6c5052e0e5fa577db99846f2b7a0204c31cef40"
+    "13ca51cb307506c9209fd18d0195a7c9ae628af1a1d9ee7a4cf30037ed190a9fdcaa4ce5bb7bea19803cb5b5cea8c21f"
+    "db98d8f73ff5aaad87f5f6c3b7bcfe8974e5b063cc1113d77b9e96bec1c9d10ed37b780c3f7349a34092bb3968daeced"
+    "40eb0b5130c0d11595e30b9671896385d04289d067f671599386536eed8430a72e186fb95023d5ac5dd442443bfabfe1"
+    "3a84a38d060af73bf20f921f38a768672fdbcb1dfece7458166e2e15948d6b4fa81f42db48747d283c670f576a0b410b"
+    "31a70d2594823d0e29135a488cb0408c9e5bc1e197ff99aef471924231ccc8e3eddc82dbcea4801f14c5fc7a389a26a5"
+    "2cc93cfe0770953ef595ff410b7033a6ed5c975dd922b3f48f9dffcfb412eeed5758f3aa51de7eb47cd2cb")
+
+UPSTREAM_SIGNATURE = ("3020ef58f861591826a61c3d2d4a25b949cdb3094085ba6b1177a6f2a05f3cdd"
+                      "24d1095d6fdd078f0b2826e80b261c93c1ff97fbfd4857f25706d57dd073590c")
+
 UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13 (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
+UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py:7 (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
 GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
 
 # Constructed here, not upstream. The pair pins the clamping rule: the
@@ -328,12 +347,32 @@ ADDRLEN     = 16
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 
 
-def describe_announce(raw):
+def make_verifier(RNS):
+    """Ed25519 verification, as the reference implementation performs it.
+
+    dump verifies with tweetnacl, so the two sides remain independent
+    at the level that matters: two separate curve implementations must
+    agree on the same signature over the same assembled message.
+    """
+    from RNS.Cryptography import Ed25519PublicKey
+
+    def verify(ed25519_public, signature, message):
+        try:
+            Ed25519PublicKey.from_public_bytes(ed25519_public).verify(signature, message)
+            return True
+        except Exception:
+            return False
+
+    return verify
+
+
+def describe_announce(raw, verify):
     """Decode an announce packet from its bytes alone.
 
-    This deliberately does not consult any RNS object. gen and dump are
-    then two independent decoders of the same bytes, and check compares
-    them. A misreading of the layout on one side shows up as a diff.
+    The layout is parsed here without consulting any RNS object. gen
+    and dump are then two independent decoders of the same bytes, and
+    check compares them. A misreading of the layout on one side shows
+    up as a diff.
     """
     if len(raw) < 2:
         return [field("invalid", "length")]
@@ -411,6 +450,7 @@ def describe_announce(raw):
         field("expected_hash",    expected_hash.hex()),
         field("destination_match", "yes" if dest_hash == expected_hash else "no"),
         field("signed_data",      signed_data.hex()),
+        field("signature_valid",  "yes" if verify(public_key[32:], signature, signed_data) else "no"),
     ]
 
 
@@ -438,7 +478,73 @@ def transport_insert(raw, hops, transport_id):
     return bytes([flags, hops]) + transport_id + raw[2:]
 
 
-def gen_announce(RNS, w, tmpdir):
+def gen_keyset(RNS, w):
+    """The private-to-public derivation, which the identity vectors
+    deliberately leave out. See doc/identity."""
+    cases = [(k, "upstream key %d" % n) for n, (k, _) in enumerate(UPSTREAM_KEYS)]
+    cases += EXTRA_KEYS
+
+    for n, (private_hex, purpose) in enumerate(cases):
+        identity = RNS.Identity.from_bytes(bytes.fromhex(private_hex))
+        private  = identity.get_private_key()
+        public   = identity.get_public_key()
+        half     = RNS.Identity.KEYSIZE // 8 // 2
+
+        source = UPSTREAM_KEY_SOURCE if n < len(UPSTREAM_KEYS) else GENERATED_SOURCE
+
+        w.vector("keyset", n,
+            meta_block("keyset", "encode", purpose, source=source),
+            [private.hex()],
+            [
+                field("private_key",     private.hex()),
+                field("x25519_private",  private[:half].hex()),
+                field("ed25519_private", private[half:].hex()),
+                field("public_key",      public.hex()),
+                field("x25519_public",   public[:half].hex()),
+                field("ed25519_public",  public[half:].hex()),
+                field("identity_hash",   identity.hash.hex()),
+            ])
+
+
+def gen_signature(RNS, w, verify):
+    """One adopted signature and one negative counterpart.
+
+    Ed25519 itself has published vectors and is not restated here. What
+    this pins is that Identity.sign is plain Ed25519 over the message,
+    with no prefix, domain separator or prior hashing.
+    """
+    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
+    public   = identity.get_public_key()
+    message  = UPSTREAM_SIGNED_MESSAGE.encode("utf-8")
+    good     = bytes.fromhex(UPSTREAM_SIGNATURE)
+
+    # The reference implementation must reproduce the adopted value.
+    assert identity.sign(message) == good
+
+    bad = bytearray(good)
+    bad[0] ^= 0x01
+    bad = bytes(bad)
+
+    cases = [
+        (good, "adopted signature over the upstream message", UPSTREAM_SIG_SOURCE),
+        (bad,  "the same signature with the first byte altered",
+         "constructed by tools/gen from signature/000"),
+    ]
+
+    for n, (signature, purpose, source) in enumerate(cases):
+        w.vector("signature", n,
+            meta_block("signature", "encode", purpose, source=source),
+            [public.hex(), message.hex(), signature.hex()],
+            [
+                field("ed25519_public", public[32:].hex()),
+                field("message_length", "%d" % len(message)),
+                field("message_sha256", hashlib.sha256(message).hexdigest()),
+                field("signature",      signature.hex()),
+                field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
+            ])
+
+
+def gen_announce(RNS, w, tmpdir, verify):
     stub_transport(RNS)
     raws = []
 
@@ -449,7 +555,7 @@ def gen_announce(RNS, w, tmpdir):
         w.vector("announce", n,
             meta_block("announce", "decode", purpose),
             [raw.hex()],
-            describe_announce(raw))
+            describe_announce(raw, verify))
 
     base = len(ANNOUNCES)
     transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
@@ -472,13 +578,17 @@ def gen_announce(RNS, w, tmpdir):
         (raws[0][:1] + bytes([MAX_HOPS]) + raws[0][2:],
          "hop count at the limit, which the reference implementation rejects",
          "constructed by tools/gen from announce/000"),
+
+        (raws[0][:-SIGLEN] + bytes([raws[0][-SIGLEN] ^ 0x01]) + raws[0][-SIGLEN+1:],
+         "first signature byte altered; the announce decodes and matches, but the signature does not verify",
+         "constructed by tools/gen from announce/000"),
     ]
 
     for n, (raw, purpose, source) in enumerate(derived):
         w.vector("announce", base + n,
             meta_block("announce", "decode", purpose, source=source),
             [raw.hex()],
-            describe_announce(raw))
+            describe_announce(raw, verify))
 
 
 def main():
@@ -490,11 +600,14 @@ def main():
     RNS = load_rns(args.checkout)
     w   = Writer(ROOT, args.force)
 
+    verify = make_verifier(RNS)
     tmpdir = tempfile.mkdtemp(prefix="reticulum-vectors-")
     try:
         gen_identity(RNS, w)
+        gen_keyset(RNS, w)
         gen_destination(RNS, w)
-        gen_announce(RNS, w, tmpdir)
+        gen_signature(RNS, w, verify)
+        gen_announce(RNS, w, tmpdir, verify)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

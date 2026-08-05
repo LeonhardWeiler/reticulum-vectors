@@ -1,0 +1,20 @@
+Vendored code.
+
+    tweetnacl.c
+    tweetnacl.h
+
+        origin    https://tweetnacl.cr.yp.to/20140427/
+        fetched   2026-08-05
+        sha256    02e65bc3013ff2168983365e55906bc783c4c7e0a60d8100f17bb303a17175c4  tweetnacl.c
+                  43f29ad721d9927b747b0100ab4160c119e7bb180c7c98a66e4bf79d31244287  tweetnacl.h
+        license   public domain
+        modified  no
+
+        used for  Ed25519 verification, SHA-512, and X25519 base point
+                  multiplication. dump uses nothing else from it.
+
+tweetnacl declares randombytes but does not define it. dump supplies a
+definition that serves crypto_sign_keypair a caller-chosen seed, which
+is how an Ed25519 public key is derived from a given private key
+without editing the vendored source. dump never needs real randomness;
+that definition aborts if called for any other purpose.

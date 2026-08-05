@@ -10,6 +10,7 @@
  * the generator. */
 
 #include "sha256.h"
+#include "tweetnacl.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -126,6 +127,48 @@ static int readraw(const char *path, struct blob *out, int max)
 	return n;
 }
 
+/* tweetnacl declares randombytes and leaves it to the caller. dump has
+ * no use for randomness; the one place tweetnacl reaches for it is
+ * crypto_sign_keypair, which is how an Ed25519 public key is derived
+ * from a given seed without editing the vendored source. Serving that
+ * call a chosen seed keeps tweetnacl unmodified. Any other call is a
+ * bug and stops the program. See VENDOR. */
+
+static unsigned char rb_seed[32];
+static int rb_armed;
+
+void randombytes(unsigned char *x, unsigned long long n)
+{
+	if (!rb_armed || n != 32)
+		fatal("randombytes called outside seeded key derivation");
+	memcpy(x, rb_seed, 32);
+	rb_armed = 0;
+}
+
+static void ed25519_public(const uint8_t seed[32], uint8_t out[32])
+{
+	unsigned char sk[64];
+
+	memcpy(rb_seed, seed, 32);
+	rb_armed = 1;
+	crypto_sign_keypair(out, sk);
+}
+
+static int ed25519_verify(const uint8_t pk[32], const uint8_t sig[64],
+                          const uint8_t *msg, size_t mlen)
+{
+	static unsigned char sm[MAXBLOB + 64], m[MAXBLOB + 64];
+	unsigned long long got;
+
+	if (mlen > MAXBLOB)
+		fatal("message of %zu bytes exceeds %d", mlen, MAXBLOB);
+
+	memcpy(sm, sig, 64);
+	memcpy(sm + 64, msg, mlen);
+
+	return crypto_sign_open(m, &got, sm, (unsigned long long)mlen + 64, pk) == 0;
+}
+
 static void truncated_hash(const uint8_t *p, size_t n, uint8_t *out, size_t take)
 {
 	uint8_t full[32];
@@ -198,6 +241,57 @@ static void dump_destination(struct blob *b, int nblobs)
 	else
 		field_hex("identity_hash", b[1].data, IDENTITY_HASH_LEN);
 	field_hex("destination_hash", dest_hash, IDENTITY_HASH_LEN);
+}
+
+/* keyset: one blob, the 64-byte private key. See ../doc/identity. */
+static void dump_keyset(struct blob *b, int nblobs)
+{
+	uint8_t pub[IDENTITY_KEY_HALF*2];
+	uint8_t hash[IDENTITY_HASH_LEN];
+
+	if (nblobs != 1)
+		fatal("keyset: expected 1 blob, got %d", nblobs);
+	if (b[0].len != IDENTITY_KEY_HALF*2)
+		fatal("keyset: private key is %zu bytes, expected %d",
+		      b[0].len, IDENTITY_KEY_HALF*2);
+
+	crypto_scalarmult_base(pub, b[0].data);
+	ed25519_public(b[0].data + IDENTITY_KEY_HALF, pub + IDENTITY_KEY_HALF);
+	truncated_hash(pub, sizeof pub, hash, IDENTITY_HASH_LEN);
+
+	field_hex("private_key",     b[0].data, IDENTITY_KEY_HALF*2);
+	field_hex("x25519_private",  b[0].data, IDENTITY_KEY_HALF);
+	field_hex("ed25519_private", b[0].data + IDENTITY_KEY_HALF, IDENTITY_KEY_HALF);
+	field_hex("public_key",      pub, IDENTITY_KEY_HALF*2);
+	field_hex("x25519_public",   pub, IDENTITY_KEY_HALF);
+	field_hex("ed25519_public",  pub + IDENTITY_KEY_HALF, IDENTITY_KEY_HALF);
+	field_hex("identity_hash",   hash, IDENTITY_HASH_LEN);
+}
+
+/* signature: three blobs, the 64-byte public key, the message and the
+ * signature. See ../doc/identity. */
+static void dump_signature(struct blob *b, int nblobs)
+{
+	const uint8_t *ed_pub;
+	uint8_t digest[32];
+
+	if (nblobs != 3)
+		fatal("signature: expected 3 blobs, got %d", nblobs);
+	if (b[0].len != IDENTITY_KEY_HALF*2)
+		fatal("signature: public key is %zu bytes, expected %d",
+		      b[0].len, IDENTITY_KEY_HALF*2);
+	if (b[2].len != 64)
+		fatal("signature: signature is %zu bytes, expected 64", b[2].len);
+
+	ed_pub = b[0].data + IDENTITY_KEY_HALF;
+	sha256(b[1].data, b[1].len, digest);
+
+	field_hex("ed25519_public", ed_pub, IDENTITY_KEY_HALF);
+	field("message_length", "%zu", b[1].len);
+	field_hex("message_sha256", digest, sizeof digest);
+	field_hex("signature", b[2].data, b[2].len);
+	field("valid", "%s",
+	      ed25519_verify(ed_pub, b[2].data, b[1].data, b[1].len) ? "yes" : "no");
 }
 
 /* announce: one blob, the whole packet. See ../doc/packet and
@@ -349,6 +443,8 @@ static void dump_announce(struct blob *b, int nblobs)
 	field("destination_match", "%s",
 	      memcmp(dest_hash, expected_hash, ADDRLEN) == 0 ? "yes" : "no");
 	field_hex("signed_data", signed_data, sdlen);
+	field("signature_valid", "%s",
+	      ed25519_verify(public_key + 32, signature, signed_data, sdlen) ? "yes" : "no");
 }
 
 int main(int argc, char **argv)
@@ -368,6 +464,10 @@ int main(int argc, char **argv)
 		dump_identity(blobs, n);
 	else if (strcmp(argv[1], "destination") == 0)
 		dump_destination(blobs, n);
+	else if (strcmp(argv[1], "keyset") == 0)
+		dump_keyset(blobs, n);
+	else if (strcmp(argv[1], "signature") == 0)
+		dump_signature(blobs, n);
 	else if (strcmp(argv[1], "announce") == 0)
 		dump_announce(blobs, n);
 	else

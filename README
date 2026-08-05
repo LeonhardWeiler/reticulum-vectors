@@ -35,9 +35,17 @@ Layout
     cmd/        dump, a decoder written in C; check, a shell script
     tools/      gen, the Python generator
 
+dump needs a C compiler and nothing else. Its cryptography is SHA-256,
+written out in cmd/sha256.c, and tweetnacl for Ed25519 verification,
+SHA-512 and X25519, vendored unmodified; see cmd/VENDOR.
+
+gen needs Python and a checkout of the pinned reference implementation.
+Consumers of the corpus need neither.
+
 
 Checking an implementation
 
+    make
     cmd/check
 
 runs the corpus against cmd/dump. To check your own implementation,

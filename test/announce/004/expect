@@ -19,3 +19,4 @@ identity_hash      e5fe93ee4acba095b3b9b6541515ed3e
 expected_hash      85564896c18bd23cee35fcc5bf5a496d
 destination_match  yes
 signed_data        85564896c18bd23cee35fcc5bf5a496dd095214af0bc8267aa9e658375e1bb775029f2f798254a07fd6ce620bb7a135b10e7d32e2d67aeb316515de2ee77e7097777b80edfe3b9173db0f5de320b88a227b162d5f3adb29cb485cafe0b1c7300684ee180
+signature_valid    yes
