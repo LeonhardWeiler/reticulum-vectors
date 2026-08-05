@@ -20,6 +20,20 @@ Every vector records that pin. When the pin moves, vectors are
 regenerated and the differences are examined.
 
 
+Every private key here is public
+
+Eighteen vectors carry a private key: all of test/keyset/, the
+recipient key in test/encrypted/, and the responder's link key in
+test/linkdata/. Five of them are lifted from the upstream test suite
+and the rest are generated from a fixed seed. They are published, in
+this repository, on purpose, because a decryption vector cannot be
+checked without one.
+
+Never load one into anything that talks to a network. An identity built
+from a key in this corpus can be impersonated by anyone who has read
+this corpus, and every destination derived from it is already known.
+
+
 Known limitation
 
 Vectors generated from python-rns cannot detect bugs in python-rns.
