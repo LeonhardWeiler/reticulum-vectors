@@ -283,15 +283,31 @@ func printHeader(p *rns.Packet, raw []byte) {
 		f("transport_id", "-")
 	}
 	f("destination_hash", hex.EncodeToString(p.DestinationHash))
-	switch p.Context {
-	case 0x00:
-		f("context", "none")
-	case 0x0b:
-		f("context", "path_response")
-	default:
-		f("context", fmt.Sprintf("%02x", p.Context))
-	}
+	f("context", contextName(p.Context))
 	f("payload_length", fmt.Sprintf("%d", len(p.Data)))
+}
+
+// Named from rns's own context constants at rns/packet.go:36-49.
+func contextName(c byte) string {
+	switch c {
+	case rns.PacketCtxNone:
+		return "none"
+	case rns.PacketCtxPathResponse:
+		return "path_response"
+	case rns.PacketCtxKeepalive:
+		return "keepalive"
+	case rns.PacketCtxLinkIdentify:
+		return "link_identify"
+	case rns.PacketCtxLinkClose:
+		return "link_close"
+	case rns.PacketCtxLinkProof:
+		return "link_proof"
+	case rns.PacketCtxLRRTT:
+		return "link_rtt"
+	case rns.PacketCtxLRProof:
+		return "link_request_proof"
+	}
+	return fmt.Sprintf("%02x", c)
 }
 
 func encrypted(b [][]byte) {
@@ -406,6 +422,263 @@ func encrypted(b [][]byte) {
 	}
 }
 
+const (
+	ecPubSize  = 64
+	signalSize = 3
+)
+
+// LinkValidateRequest is the only exported way into the link id
+// derivation: linkIDFromLinkRequestPacket is unexported. It wants a
+// destination to own the link, and the link id does not depend on one,
+// so any identity serves. Everything the harness then reads off the
+// returned Link was computed by rns.
+func validateRequest(raw []byte) (*rns.Packet, *rns.Link) {
+	p := &rns.Packet{Raw: raw}
+	if !p.Unpack() {
+		return nil, nil
+	}
+	id, err := rns.NewIdentity()
+	if err != nil {
+		panic(err)
+	}
+	owner, err := rns.NewDestination(id, rns.DestinationIN, rns.DestinationSINGLE, "conformance", "link")
+	if err != nil {
+		panic(err)
+	}
+	return p, rns.LinkValidateRequest(owner, p.Data, p)
+}
+
+func linkrequest(b [][]byte) {
+	raw := b[0]
+	if len(raw) < 2 {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
+		return
+	}
+
+	p, link := validateRequest(raw)
+	if p == nil {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		return
+	}
+	if link == nil {
+		invalid("invalid-length",
+			[2]interface{}{"payload_length", len(p.Data)},
+			[2]interface{}{"accepted_length", ecPubSize},
+			[2]interface{}{"signalled_length", ecPubSize + signalSize})
+		return
+	}
+
+	signalled := len(p.Data) == ecPubSize+signalSize
+	printHeader(p, raw)
+	f("x25519_public", hex.EncodeToString(p.Data[:ecPubSize/2]))
+	f("ed25519_public", hex.EncodeToString(p.Data[ecPubSize/2:ecPubSize]))
+	if signalled {
+		f("signalling", hex.EncodeToString(p.Data[ecPubSize:]))
+	} else {
+		f("signalling", "-")
+	}
+	printMode(link.Mode)
+	if signalled {
+		f("mtu", fmt.Sprintf("%d", link.MTU))
+	} else {
+		f("mtu", "-")
+	}
+	f("link_id", hex.EncodeToString(link.LinkID))
+}
+
+func linkproof(b [][]byte) {
+	requestRaw, identityPublic, raw := b[0], b[1], b[2]
+
+	if len(raw) < 2 {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
+		return
+	}
+	p := &rns.Packet{Raw: raw}
+	if !p.Unpack() {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		return
+	}
+
+	_, requestLink := validateRequest(requestRaw)
+	if requestLink == nil {
+		panic("the link request does not validate")
+	}
+	linkID := requestLink.LinkID
+
+	accepted := sigLen + ecPubSize/2
+	signalled := len(p.Data) == accepted+signalSize
+	if len(p.Data) != accepted && !signalled {
+		invalid("invalid-length",
+			[2]interface{}{"payload_length", len(p.Data)},
+			[2]interface{}{"accepted_length", accepted},
+			[2]interface{}{"signalled_length", accepted + signalSize})
+		return
+	}
+
+	sig := p.Data[:sigLen]
+	x25519Public := p.Data[sigLen : sigLen+ecPubSize/2]
+	signalling := p.Data[sigLen+ecPubSize/2:]
+
+	signer := &rns.Identity{}
+	if err := signer.LoadPublicKey(identityPublic); err != nil {
+		panic(err)
+	}
+	signerEd := identityPublic[ecPubSize/2:]
+
+	// Follows rns/link.go:2033. validateProof drives a state machine and
+	// returns nothing, so the material is assembled here and handed to
+	// rns's own Identity.Validate.
+	signed := append([]byte{}, linkID...)
+	signed = append(signed, x25519Public...)
+	signed = append(signed, signerEd...)
+	signed = append(signed, signalling...)
+
+	printHeader(p, raw)
+	f("link_id", hex.EncodeToString(linkID))
+	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
+	f("signature", hex.EncodeToString(sig))
+	f("x25519_public", hex.EncodeToString(x25519Public))
+	if signalled {
+		f("signalling", hex.EncodeToString(signalling))
+		printMode(int(signalling[0] >> 5))
+		f("mtu", fmt.Sprintf("%d", (int(signalling[0])<<16|int(signalling[1])<<8|int(signalling[2]))&0x1fffff))
+	} else {
+		f("signalling", "-")
+		printMode(1)
+		f("mtu", "-")
+	}
+	f("signer_ed25519", hex.EncodeToString(signerEd))
+	f("signed_data", hex.EncodeToString(signed))
+	f("signature_valid", yesNo(signer.Validate(sig, signed)))
+}
+
+func linkdata(b [][]byte) {
+	requestRaw, responderPrivate, raw := b[0], b[1], b[2]
+
+	if len(raw) < 2 {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
+		return
+	}
+	p := &rns.Packet{Raw: raw}
+	if !p.Unpack() {
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		return
+	}
+
+	request, requestLink := validateRequest(requestRaw)
+	if requestLink == nil {
+		panic("the link request does not validate")
+	}
+	linkID := requestLink.LinkID
+
+	printHeader(p, raw)
+	f("link_id", hex.EncodeToString(linkID))
+	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
+
+	if p.Context == 0xfa {
+		f("encrypted", "no")
+		f("plaintext_length", fmt.Sprintf("%d", len(p.Data)))
+		if len(p.Data) > 0 {
+			f("plaintext", hex.EncodeToString(p.Data))
+		} else {
+			f("plaintext", "-")
+		}
+		return
+	}
+	f("encrypted", "yes")
+
+	iv := p.Data[:16]
+	ct := p.Data[16 : len(p.Data)-32]
+	mac := p.Data[len(p.Data)-32:]
+
+	// The link keeps its private key unexported, so the agreement uses
+	// Go's own curve, which is what rns uses internally.
+	curve := ecdh.X25519()
+	priv, err := curve.NewPrivateKey(responderPrivate)
+	if err != nil {
+		panic(err)
+	}
+	peer, err := curve.NewPublicKey(request.Data[:ecPubSize/2])
+	if err != nil {
+		panic(err)
+	}
+	shared, err := priv.ECDH(peer)
+	if err != nil {
+		panic(err)
+	}
+
+	// The derived length is 64 for AES_256_CBC, the only mode rns
+	// enables at rns/link.go:72. The salt is the link id and the
+	// context empty, as rns/link.go does.
+	derived, err := Cryptography.HKDF(64, shared, linkID, nil)
+	if err != nil {
+		panic(err)
+	}
+	signing, encryption := derived[:32], derived[32:]
+
+	// verifyHMAC is unexported; Decrypt refuses a token whose HMAC does
+	// not verify, so its verdict stands in for both.
+	token, terr := Cryptography.NewToken(derived)
+	var plaintext []byte
+	macOK := false
+	if terr == nil {
+		var derr error
+		plaintext, derr = token.Decrypt(p.Data)
+		macOK = derr == nil
+		if derr != nil {
+			plaintext = nil
+		}
+	}
+
+	f("iv", hex.EncodeToString(iv))
+	f("ciphertext", hex.EncodeToString(ct))
+	f("hmac", hex.EncodeToString(mac))
+	f("shared_key", hex.EncodeToString(shared))
+	f("signing_key", hex.EncodeToString(signing))
+	f("encryption_key", hex.EncodeToString(encryption))
+	f("hmac_valid", yesNo(macOK))
+	if plaintext == nil {
+		f("plaintext_length", "-")
+		f("plaintext", "-")
+		return
+	}
+	f("plaintext_length", fmt.Sprintf("%d", len(plaintext)))
+	if len(plaintext) > 0 {
+		f("plaintext", hex.EncodeToString(plaintext))
+	} else {
+		f("plaintext", "-")
+	}
+
+	if p.Context == 0xfb && len(plaintext) == keySize+sigLen {
+		pub := plaintext[:keySize]
+		sig := plaintext[keySize:]
+		signed := append(append([]byte{}, linkID...), pub...)
+		id := &rns.Identity{}
+		if err := id.LoadPublicKey(pub); err != nil {
+			panic(err)
+		}
+		f("identity_public", hex.EncodeToString(pub))
+		f("identity_hash", hex.EncodeToString(rns.TruncatedHash(pub)))
+		f("identity_signed", hex.EncodeToString(signed))
+		f("identity_valid", yesNo(id.Validate(sig, signed)))
+	}
+}
+
+func printMode(mode int) {
+	if mode == 1 {
+		f("mode", "aes256_cbc")
+	} else {
+		f("mode", fmt.Sprintf("%02x", mode))
+	}
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
 func main() {
 	if len(os.Args) != 3 {
 		fmt.Fprintln(os.Stderr, "usage: goret kind rawfile")
@@ -434,6 +707,12 @@ func main() {
 		announce(blobs)
 	case "encrypted":
 		encrypted(blobs)
+	case "linkrequest":
+		linkrequest(blobs)
+	case "linkproof":
+		linkproof(blobs)
+	case "linkdata":
+		linkdata(blobs)
 	default:
 		fmt.Fprintln(os.Stderr, "unknown kind "+kind)
 		os.Exit(2)
