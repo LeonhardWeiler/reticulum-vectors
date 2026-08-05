@@ -30,6 +30,10 @@ fi
 
 pass=0
 fail=0
+seen=0
+
+err=$(mktemp) || exit 2
+trap 'rm -f "$err"' EXIT INT TERM
 
 fail_with() {
 	echo "FAIL $1"
@@ -42,9 +46,28 @@ meta_field() {
 	sed -n "s/^$2  *//p" "$1/meta"
 }
 
+# The format has one rule a diff cannot enforce: a name wider than the
+# column silently shifts the value, and two vectors that disagree only
+# in alignment would still compare equal to a decoder that pads the
+# same way. Nothing else reads it, so it is read here.
+check_format() {
+	awk -v w=18 '
+		NF == 0 { next }
+		NF != 2 { printf "%s:%d: expected a name and one value\n", FILENAME, FNR; bad = 1; next }
+		length($1) > w { printf "%s:%d: field name %s is wider than the %d-column format\n", FILENAME, FNR, $1, w; bad = 1 }
+		END { if (bad) exit 1 }
+	' "$1"
+}
+
 for dir in "$root"/test/*/*/; do
 	dir=${dir%/}
-	[ -f "$dir/meta" ] || continue
+	[ -d "$dir" ] || continue
+	seen=$((seen + 1))
+
+	if [ ! -f "$dir/meta" ]; then
+		fail_with "$dir" "no meta"
+		continue
+	fi
 
 	# meta must be complete before anything is read from it.
 	missing=
@@ -74,8 +97,16 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
-	if ! out=$("$DUMP" "$kind" "$dir/raw" 2>&1); then
-		fail_with "$dir" "$out"
+	# stderr is kept out of the comparison. A decoder that writes a
+	# warning there would otherwise have it diffed against expect, and
+	# the vector would fail for something that is not a field.
+	if ! out=$("$DUMP" "$kind" "$dir/raw" 2>"$err"); then
+		fail_with "$dir" "$(cat "$err")"
+		continue
+	fi
+
+	if ! bad=$(check_format "$dir/expect"); then
+		fail_with "$dir" "$bad"
 		continue
 	fi
 
@@ -89,8 +120,8 @@ for dir in "$root"/test/*/*/; do
 	fi
 
 	if [ "$determinism" = encode ] && [ "$ENCODE" = yes ]; then
-		if ! back=$("$DUMP" -e "$kind" "$dir/expect" 2>&1); then
-			fail_with "$dir" "round trip: $back"
+		if ! back=$("$DUMP" -e "$kind" "$dir/expect" 2>"$err"); then
+			fail_with "$dir" "round trip: $(cat "$err")"
 			continue
 		fi
 		changed=$(printf '%s\n' "$back" | diff -u "$dir/raw" - | tail -n +3)
@@ -104,4 +135,11 @@ for dir in "$root"/test/*/*/; do
 done
 
 echo "$pass passed, $fail failed"
+
+# A corpus with nothing in it must not report success.
+if [ "$seen" -eq 0 ]; then
+	echo "no vectors under $root/test" >&2
+	exit 2
+fi
+
 [ "$fail" -eq 0 ]

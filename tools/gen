@@ -260,17 +260,31 @@ def load_rns(checkout):
     return RNS
 
 
-def field(name, value):
+def line(name, value):
+    # A name wider than the column shifts the value out of alignment.
+    # Two decoders that pad the same way would still compare equal, so
+    # nothing downstream can catch it.
+    if len(name) > FIELD_WIDTH:
+        raise ValueError("field name %r is wider than the %d-column format"
+                         % (name, FIELD_WIDTH))
     return "%-*s %s" % (FIELD_WIDTH, name, value)
+
+
+def field(name, value):
+    # An expect value is one word, so that splitting on the first space
+    # is exact. meta is prose and uses line() directly.
+    if " " in str(value):
+        raise ValueError("field %s has a space in its value: %r" % (name, value))
+    return line(name, value)
 
 
 def meta_block(kind, determinism, purpose, source=GENERATED_SOURCE):
     return [
-        field("source", source),
-        field("generated", datetime.date.today().isoformat()),
-        field("kind", kind),
-        field("determinism", determinism),
-        field("purpose", purpose),
+        line("source", source),
+        line("generated", datetime.date.today().isoformat()),
+        line("kind", kind),
+        line("determinism", determinism),
+        line("purpose", purpose),
     ]
 
 
@@ -284,12 +298,47 @@ class Writer:
     def vector(self, kind, name, meta, raw, expect):
         path = os.path.join(self.root, "test", kind, name)
         os.makedirs(path, exist_ok=True)
-        self.file(os.path.join(path, "meta"), meta)
-        self.file(os.path.join(path, "raw"), raw)
-        self.file(os.path.join(path, "expect"), expect)
+
+        rawpath, expectpath = os.path.join(path, "raw"), os.path.join(path, "expect")
+        unchanged = self.same(rawpath, raw) and self.same(expectpath, expect)
+
+        # generated records the day these bytes were produced. Stamping
+        # today onto a vector whose bytes did not change would make
+        # every regeneration differ from the last, and make verify would
+        # report a difference on any day after the corpus was generated,
+        # which is the one thing it exists to rule out. A vector whose
+        # bytes did change is dated today, because it is new.
+        self.file(os.path.join(path, "meta"),
+                  self.dated(os.path.join(path, "meta"), meta) if unchanged else meta)
+        self.file(rawpath, raw)
+        self.file(expectpath, expect)
+
+    @staticmethod
+    def body(lines):
+        return "\n".join(lines) + "\n"
+
+    def same(self, path, lines):
+        try:
+            with open(path) as f:
+                return f.read() == self.body(lines)
+        except FileNotFoundError:
+            return False
+
+    @staticmethod
+    def dated(path, meta):
+        try:
+            with open(path) as f:
+                for existing in f:
+                    if existing.startswith("generated"):
+                        existing = existing.rstrip("\n")
+                        return [existing if m.startswith("generated") else m
+                                for m in meta]
+        except FileNotFoundError:
+            pass
+        return meta
 
     def file(self, path, lines):
-        body = "\n".join(lines) + "\n"
+        body = self.body(lines)
         if os.path.exists(path) and not self.force:
             with open(path) as f:
                 if f.read() != body:
