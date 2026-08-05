@@ -505,6 +505,44 @@ def gen_signature(RNS, w, verify):
             source=source)
 
 
+def gen_sign(RNS, w):
+    """The other direction of the same adopted value.
+
+    tests/identity.py:31 asserts what Identity.sign produces, not what
+    it verifies. test/signature records the value and asks only that a
+    signature check succeed; here the signature is not given, it is
+    produced from the private key and the message.
+
+    Ed25519 signing is deterministic, RFC 8032 section 5.1.6, so this
+    is a fact a vector can state. An implementation that draws a random
+    nonce, or signs with the wrong half of the Reticulum private key,
+    passes every other vector in the corpus and emits announces and
+    link proofs that nothing accepts.
+
+    Decode class, for the same reason as test/signature: expect records
+    the message by length and digest, not by content.
+    """
+    private = bytes.fromhex(UPSTREAM_KEYS[0][0])
+    message = UPSTREAM_SIGNED_MESSAGE.encode("utf-8")
+
+    identity  = RNS.Identity.from_bytes(private)
+    signature = identity.sign(message)
+    assert signature == bytes.fromhex(UPSTREAM_SIGNATURE)
+
+    w.vector("sign", "upstream",
+        "private key and message to the signature upstream asserts",
+        [private.hex(), message.hex()],
+        [
+            field("private_key",     private.hex()),
+            field("ed25519_private", private[32:].hex()),
+            field("ed25519_public",  identity.get_public_key()[32:].hex()),
+            field("message_length",  "%d" % len(message)),
+            field("message_sha256",  hashlib.sha256(message).hexdigest()),
+            field("signature",       signature.hex()),
+        ],
+        source="python-rns %s tests/identity.py:31 (%s)" % (PIN_VERSION, PIN_COMMIT[:8]))
+
+
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
@@ -1313,6 +1351,7 @@ def main():
         gen_keyset(RNS, w)
         gen_destination(RNS, w)
         gen_signature(RNS, w, verify)
+        gen_sign(RNS, w)
         gen_announce(RNS, w, tmpdir, verify)
         gen_encrypted(RNS, w)
 

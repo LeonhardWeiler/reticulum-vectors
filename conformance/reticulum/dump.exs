@@ -136,6 +136,18 @@ defmodule Dump do
     f("valid", if(Identity.validate(id, message, signature), do: "yes", else: "no"))
   end
 
+  # The other direction of signature: the signature is produced, not
+  # handed in. lib/reticulum/identity.ex:234.
+  def run("sign", [priv, message]) do
+    {:ok, id} = Identity.from_private_key(priv)
+    f("private_key", hx(priv))
+    f("ed25519_private", hx(binary_part(priv, 32, 32)))
+    f("ed25519_public", hx(id.sig_pub))
+    f("message_length", Integer.to_string(byte_size(message)))
+    f("message_sha256", hx(:crypto.hash(:sha256, message)))
+    f("signature", hx(Identity.sign(id, message)))
+  end
+
   def run("announce", [raw]) do
     with true <- byte_size(raw) >= 2,
          {:ok, p} <- decode(raw) do

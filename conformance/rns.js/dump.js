@@ -91,6 +91,19 @@ const DEST_TYPES = ["single", "group", "plain", "link"];
 const PACKET_TYPES = ["data", "announce", "linkrequest", "proof"];
 const XPORT_TYPES = ["broadcast", "transport", "relay", "tunnel"];
 
+// The other direction of signature: the signature is produced, not
+// handed in. src/identity.js:179.
+function sign(blobs) {
+    const [priv, message] = blobs;
+    const id = Identity.fromPrivateKey(priv);
+    f("private_key", hex(id.getPrivateKey()));
+    f("ed25519_private", hex(id.signaturePrivateKeyBytes));
+    f("ed25519_public", hex(id.signaturePublicKeyBytes));
+    f("message_length", String(message.length));
+    f("message_sha256", hex(Cryptography.sha256(message)));
+    f("signature", hex(id.sign(message)));
+}
+
 function announce(blobs) {
     const raw = blobs[0];
     const invalid = (reason, ...pairs) => {
@@ -392,7 +405,7 @@ function linkdata(blobs) {
 
 const [kind, path] = process.argv.slice(2);
 const blobs = readRaw(path);
-const kinds = { identity, keyset, destination, signature, announce, encrypted,
+const kinds = { identity, keyset, destination, signature, sign, announce, encrypted,
                 linkrequest, linkproof, linkdata };
 if (!(kind in kinds)) {
     console.error("unknown kind " + kind);

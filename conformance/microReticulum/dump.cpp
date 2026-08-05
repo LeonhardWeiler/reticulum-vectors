@@ -122,6 +122,21 @@ static void kind_signature(std::vector<RNS::Bytes> &b) {
 	f("valid", id.validate(b[2], b[1]) ? "yes" : "no");
 }
 
+// The other direction of signature: the signature is produced, not
+// handed in. src/microReticulum/Identity.h:107.
+static void kind_sign(std::vector<RNS::Bytes> &b) {
+	RNS::Identity id(false);
+	id.load_private_key(b[0]);
+	char lenbuf[32];
+	snprintf(lenbuf, sizeof lenbuf, "%zu", (size_t)b[1].size());
+	f("private_key", hexs(b[0]));
+	f("ed25519_private", hexs(b[0].mid(32)));
+	f("ed25519_public", hexs(id.get_public_key().mid(32)));
+	f("message_length", lenbuf);
+	f("message_sha256", hexs(RNS::Identity::full_hash(b[1])));
+	f("signature", hexs(id.sign(b[1])));
+}
+
 static void invalid(const char *reason, const char *k1, size_t v1, const char *k2, size_t v2) {
 	char buf[32];
 	f("invalid", reason);
@@ -493,6 +508,7 @@ int main(int argc, char **argv) {
 		else if (kind == "keyset") kind_keyset(blobs);
 		else if (kind == "destination") kind_destination(blobs, absent[1]);
 		else if (kind == "signature") kind_signature(blobs);
+		else if (kind == "sign") kind_sign(blobs);
 		else if (kind == "announce") kind_announce(blobs);
 		else if (kind == "encrypted") kind_encrypted(blobs, absent[1]);
 		else if (kind == "linkrequest") kind_linkrequest(blobs);

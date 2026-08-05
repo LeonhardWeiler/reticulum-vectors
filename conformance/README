@@ -89,7 +89,9 @@ Building
 
                       The harness needs the include paths of the
                       dependencies cmake fetched, under
-                      build/_deps/*-src/{src,include}.
+                      build/_deps/*-src/{src,include}, and both src and
+                      src/microReticulum: the headers include each
+                      other unqualified.
 
 Two of the three link kinds need more than the packet they describe.
 linkproof and linkdata carry the link request as their first blob,

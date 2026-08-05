@@ -1,6 +1,6 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against all 48 vectors in test/, through the
+Run on 2026-08-06 against all 49 vectors in test/, through the
 harnesses in conformance/.
 
 Each harness calls that implementation's own code and prints the corpus
@@ -18,12 +18,16 @@ failed, not by the corpus itself.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  47 / 48  12 / 12
-    rsReticulum         07ca721   2026-08-02  46 / 48  11 / 12
-    microReticulum      40fa628   2026-07-20  39 / 48   6 / 12
-    Reticulum-rs        be7a7fc   2026-07-31  38 / 48   6 / 12
-    rns.js              d4602ca   2025-02-10  28 / 48   0 / 12
-    sgiath/reticulum    0c4904e   2026-07-09  23 / 48   0 / 12
+    go-reticulum        06621cc   2026-04-28  48 / 49  12 / 12
+    rsReticulum         07ca721   2026-08-02  47 / 49  11 / 12
+    microReticulum      40fa628   2026-07-20  40 / 49   6 / 12
+    Reticulum-rs        be7a7fc   2026-07-31  39 / 49   6 / 12
+    rns.js              d4602ca   2025-02-10  29 / 49   0 / 12
+    sgiath/reticulum    0c4904e   2026-07-09  23 / 49   0 / 12
+
+Five of the six produce the adopted signature from the private key and
+the message, bit for bit, through their own signer. The sixth cannot
+load an identity from a private key at all; see finding 7.
 
 
 What a result covers
@@ -235,8 +239,8 @@ the defect is invisible until a ratchet is used.
 
 Finding 7: sgiath/reticulum cannot load an identity from a private key
 
-Affects sgiath/reticulum. Twelve of its thirteen failures: every
-test/keyset/ and every test/encrypted/ vector.
+Affects sgiath/reticulum. Thirteen of its failures: every
+test/keyset/, every test/encrypted/, and test/sign/.
 
     lib/reticulum/identity.ex:54    enc_pub = :crypto.generate_key(:eddh, :x25519, enc_sec)
     lib/reticulum/identity.ex:55    sig_pub = :crypto.generate_key(:eddsa, :ed25519, sig_sec)
@@ -261,6 +265,12 @@ Nothing in test/ exercises from_private_key/1.
 This is the finding the corpus was most obviously for. It needs no
 network, no peer and no packet: load a private key, state the public
 key. A vector asks exactly that.
+
+test/sign shows how far the defect reaches. sig_sec is stored correctly
+and the signer would work, but the harness cannot get as far as calling
+it: printing the public key comes first and raises on the tuple. An
+implementation that cannot state its own public key cannot announce,
+whatever its Ed25519 does.
 
 
 Finding 8: microReticulum does not build with GCC 16

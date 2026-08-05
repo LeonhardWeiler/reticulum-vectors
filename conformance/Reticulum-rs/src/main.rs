@@ -295,6 +295,21 @@ fn print_header(out: &mut Vec<String>, raw: &[u8]) {
     f(out, "payload_length", &format!("{}", raw.len() - payload_at));
 }
 
+// The other direction of signature: the signature is produced, not
+// handed in. reticulum-core/src/identity.rs:327.
+fn sign(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
+    let prv = b[0].as_ref().unwrap();
+    let msg = b[1].as_ref().unwrap();
+    let id = PrivateIdentity::new_from_hex_string(&hexs(prv)).unwrap();
+
+    f(out, "private_key", &hexs(prv));
+    f(out, "ed25519_private", &hexs(&prv[32..]));
+    f(out, "ed25519_public", &hexs(id.as_identity().verifying_key_bytes()));
+    f(out, "message_length", &format!("{}", msg.len()));
+    f(out, "message_sha256", &hexs(&Sha256::digest(msg)));
+    f(out, "signature", &hexs(&id.sign(msg).to_bytes()));
+}
+
 fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     use rand_core::OsRng;
     use x25519_dalek::{PublicKey, StaticSecret};
@@ -602,6 +617,7 @@ fn main() {
         "keyset" => keyset(&mut out, &blobs),
         "destination" => destination(&mut out, &blobs),
         "signature" => signature(&mut out, &blobs),
+        "sign" => sign(&mut out, &blobs),
         "announce" => announce(&mut out, &blobs),
         "encrypted" => encrypted(&mut out, &blobs),
         "linkrequest" => linkrequest(&mut out, &blobs),

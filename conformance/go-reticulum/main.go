@@ -143,6 +143,27 @@ var destTypes = []string{"single", "group", "plain", "link"}
 var packetTypes = []string{"data", "announce", "linkrequest", "proof"}
 var xportTypes = []string{"broadcast", "transport", "relay", "tunnel"}
 
+// The other direction of signature: the signature is produced, not
+// handed in. rns/identity.go:900.
+func sign(b [][]byte) {
+	id, err := rns.IdentityFromBytes(b[0])
+	if err != nil {
+		panic(err)
+	}
+	sig, err := id.Sign(b[1])
+	if err != nil {
+		panic(err)
+	}
+	prv := id.GetPrivateKey()
+	digest := sha256.Sum256(b[1])
+	f("private_key", hex.EncodeToString(prv))
+	f("ed25519_private", hex.EncodeToString(prv[32:]))
+	f("ed25519_public", hex.EncodeToString(id.GetPublicKey()[32:]))
+	f("message_length", fmt.Sprintf("%d", len(b[1])))
+	f("message_sha256", hex.EncodeToString(digest[:]))
+	f("signature", hex.EncodeToString(sig))
+}
+
 func invalid(reason string, pairs ...[2]interface{}) {
 	f("invalid", reason)
 	for _, kv := range pairs {
@@ -723,6 +744,8 @@ func main() {
 		destination(blobs)
 	case "signature":
 		signature(blobs)
+	case "sign":
+		sign(blobs)
 	case "announce":
 		announce(blobs)
 	case "encrypted":

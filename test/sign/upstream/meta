@@ -1,0 +1,3 @@
+source             python-rns 1.4.2 tests/identity.py:31 (b48b96e6)
+determinism        decode
+purpose            private key and message to the signature upstream asserts

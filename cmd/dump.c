@@ -255,13 +255,36 @@ void randombytes(unsigned char *x, unsigned long long n)
 	rb_armed = 0;
 }
 
+static void ed25519_keypair(const uint8_t seed[32], uint8_t pk[32], uint8_t sk[64])
+{
+	memcpy(rb_seed, seed, 32);
+	rb_armed = 1;
+	crypto_sign_keypair(pk, sk);
+}
+
 static void ed25519_public(const uint8_t seed[32], uint8_t out[32])
 {
 	unsigned char sk[64];
 
-	memcpy(rb_seed, seed, 32);
-	rb_armed = 1;
-	crypto_sign_keypair(out, sk);
+	ed25519_keypair(seed, out, sk);
+}
+
+/* Ed25519 signing is deterministic, RFC 8032 section 5.1.6: the nonce
+ * is derived from the key and the message and not drawn at random. A
+ * signature is therefore something a vector can state. */
+static void ed25519_sign(const uint8_t seed[32], const uint8_t *msg, size_t mlen,
+                         uint8_t out[64])
+{
+	static unsigned char sm[MAXBLOB + 64];
+	unsigned char pk[32], sk[64];
+	unsigned long long smlen;
+
+	if (mlen > MAXBLOB)
+		fatal("message of %zu bytes exceeds %d", mlen, MAXBLOB);
+
+	ed25519_keypair(seed, pk, sk);
+	crypto_sign(sm, &smlen, msg, (unsigned long long)mlen, sk);
+	memcpy(out, sm, 64);
 }
 
 static int ed25519_verify(const uint8_t pk[32], const uint8_t sig[64],
@@ -391,6 +414,31 @@ static void dump_signature(struct blob *b, int nblobs)
 	field_hex("signature", b[2].data, b[2].len);
 	field("valid", "%s",
 	      ed25519_verify(ed_pub, b[2].data, b[1].data, b[1].len) ? "yes" : "no");
+}
+
+/* The other direction of test/signature: the signature is not given,
+ * it is produced. An implementation that verifies correctly and signs
+ * with a nonce of its own choosing passes every other vector here and
+ * emits announces and link proofs nothing accepts. */
+static void dump_sign(struct blob *b, int nblobs)
+{
+	uint8_t pub[KEYHALF], sig[SIGLEN], digest[32];
+
+	if (nblobs != 2)
+		fatal("sign: expected 2 blobs, got %d", nblobs);
+	if (b[0].len != KEYSIZE)
+		fatal("sign: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
+
+	ed25519_public(b[0].data + KEYHALF, pub);
+	ed25519_sign(b[0].data + KEYHALF, b[1].data, b[1].len, sig);
+	sha256(b[1].data, b[1].len, digest);
+
+	field_hex("private_key", b[0].data, KEYSIZE);
+	field_hex("ed25519_private", b[0].data + KEYHALF, KEYHALF);
+	field_hex("ed25519_public", pub, KEYHALF);
+	field("message_length", "%zu", b[1].len);
+	field_hex("message_sha256", digest, sizeof digest);
+	field_hex("signature", sig, SIGLEN);
 }
 
 static const char *dest_types[]   = { "single", "group", "plain", "link" };
@@ -1206,6 +1254,7 @@ static const struct {
 	{ "keyset",      dump_keyset,      encode_keyset      },
 	{ "destination", dump_destination, encode_destination },
 	{ "signature",   dump_signature,   NULL               },
+	{ "sign",        dump_sign,        NULL               },
 	{ "announce",    dump_announce,    encode_announce    },
 	{ "encrypted",   dump_encrypted,   encode_encrypted   },
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },

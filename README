@@ -122,13 +122,13 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Forty-three of the forty-eight are of that
-class. The five that are not name their reason:
+the result against raw. Forty-three of the forty-nine are of that
+class. The six that are not name their reason:
 
-    test/signature/            expect records the 950-byte message by
-                               length and digest, not by content
-    the three invalid vectors  nothing decoded, so expect names the
-                               rule that was broken and no fields
+    test/signature/, test/sign/   expect records the 950-byte message
+                                  by length and digest, not by content
+    the three invalid vectors     nothing decoded, so expect names the
+                                  rule that was broken and no fields
 
 The class says whether expect is total, not whether the reference
 could produce these bytes a second time. Most Reticulum objects

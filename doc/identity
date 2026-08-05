@@ -137,10 +137,39 @@ expect names the Ed25519 half of the public key, the message length,
 the SHA-256 of the message, the signature, and the verdict.
 
 Decode class: expect records the message by length and digest rather
-than by content, so raw cannot be rebuilt from it. This is the only
-kind in the corpus of which that is true. Every other kind is encode
-class, and cmd/check rebuilds raw from expect on every run for every
-vector that decoded.
+than by content, so raw cannot be rebuilt from it.
+
+
+Vector format: sign
+
+kind: sign, determinism: decode
+
+raw is two lines:
+
+    line 1    private key, 64 bytes
+    line 2    the message
+
+expect names the private key and its Ed25519 half, the public key
+derived from it, the message length and digest, and the signature.
+
+The signature is not an input here. test/signature hands a decoder a
+signature and asks whether it verifies; this one hands it a key and a
+message and asks what it produces. Ed25519 signing is deterministic,
+RFC 8032 section 5.1.6: the nonce comes from the key and the message
+and not from a random source, so the answer is a single value.
+
+An implementation that draws a random nonce, or signs with the X25519
+half of the Reticulum private key, verifies every signature the
+reference makes and passes every other vector here. What it emits is an
+announce and a link proof that no reference accepts.
+
+The value is the one upstream asserts at tests/identity.py:31, which
+is an assertion about signing. test/signature adopted the same value
+for the other direction.
+
+These two kinds are the only decode-class vectors in the corpus that
+decoded. Every other kind is encode class, and cmd/check rebuilds raw
+from expect on every run for every vector that decoded.
 
 The message is given by its bytes rather than as text, because the
 adopted upstream vector turns on exactly that distinction. The
