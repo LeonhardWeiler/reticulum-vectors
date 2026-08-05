@@ -4,7 +4,9 @@ Header layout and flag bits. For what packets are for and how they are
 routed, see upstream docs/source/understanding.rst, sections
 "Reticulum Transport" and "Binary Packet Format".
 
-Vectors: test/announce/ carries the only packets in the corpus so far.
+Vectors: every kind whose raw is a whole packet, that is
+test/announce/, test/encrypted/, test/linkrequest/, test/linkproof/
+and test/linkdata/.
 
 
 Constants
@@ -67,6 +69,10 @@ human-facing numbering, so bit 6 clear appears as header_type 1.
 
 The context flag has no fixed meaning. Its interpretation depends on
 the packet type; for announces it signals the presence of a ratchet.
+
+The destination type is read from the destination the packet is
+addressed to, with one exception: a link request proof writes it as
+link from a constant. See doc/link.
 
     RNS/Packet.py:169, RNS/Packet.py:248
 
