@@ -1,2 +1,7 @@
 cmd/dump
 *.o
+conformance/src/
+conformance/*/target/
+conformance/*/node_modules/
+conformance/go-reticulum/goret
+conformance/rns.js/dump

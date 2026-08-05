@@ -1,0 +1,62 @@
+Harnesses for other implementations
+
+One small program per implementation. Each takes the same two arguments
+as cmd/dump, prints the same field format, and calls that
+implementation's own code to produce the values. Together with
+cmd/check they are how the results in ../CONFORMANCE were produced.
+
+    ENCODE=no DUMP=conformance/<impl>/<binary> cmd/check
+
+ENCODE=no because none of them implements the -e direction. It is not
+part of the wire format, only of the corpus.
+
+
+Where to put the implementations
+
+Clone each next to its harness:
+
+    conformance/src/rns.js/
+    conformance/src/go-reticulum/
+    conformance/src/Reticulum-rs/
+    conformance/src/rsReticulum/
+    conformance/src/microReticulum/
+
+The commit each result was measured at is recorded in ../CONFORMANCE.
+
+
+What a harness may and may not do
+
+A harness calls the implementation. It does not reimplement it, and it
+does not paper over a missing check: where an implementation has no hop
+limit, the harness has none either, so the vector fails and the
+divergence shows in the result rather than in a footnote.
+
+It is not always possible to call. Some implementations validate an
+announce behind one entry point that returns a boolean and never yields
+the parsed fields. Where that is so, the harness follows the
+implementation's own code step by step, using its constants and its
+primitives, and says so at the point where it does:
+
+    // Follows src/announce.js:26-49 with rns.js's own constants.
+
+Those fields test the transcription as much as the implementation, and
+../CONFORMANCE says per implementation which fields were obtained
+which way. Read the numbers with that in mind.
+
+
+Building
+
+    rns.js            npm install in conformance/src/rns.js,
+                      then node conformance/rns.js/dump.js
+
+    go-reticulum      go build in conformance/go-reticulum
+
+    Reticulum-rs      cargo build --release in conformance/Reticulum-rs
+    rsReticulum       cargo build --release in conformance/rsReticulum
+
+    microReticulum    cmake the library first, then link the harness
+                      against libmicroReticulum.a and libCryptoLib.a.
+                      With GCC 16 the library needs -include cstdint:
+                      src/microReticulum/Utilities/Memory.h uses uint8_t
+                      and uint32_t without including <cstdint>, which
+                      older compilers supplied transitively.

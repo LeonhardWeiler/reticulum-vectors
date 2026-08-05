@@ -1,0 +1,9 @@
+[package]
+name = "rsret2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rns-crypto = { path = "../src/rsReticulum/crates/rns-crypto" }
+rns-identity = { path = "../src/rsReticulum/crates/rns-identity" }
+rns-wire = { path = "../src/rsReticulum/crates/rns-wire" }

@@ -32,6 +32,7 @@ Layout
 
     CONFORMANCE results of running the corpus against other
                 implementations
+    conformance/ the harnesses those results were produced with
     doc/        byte layouts and derivation rules
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script

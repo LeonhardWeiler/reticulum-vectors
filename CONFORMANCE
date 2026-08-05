@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-05 against the 31 vectors in test/, using a harness per
-implementation that calls that implementation's own derivations and
-parsers and prints the corpus field format. Harnesses add no logic of
-their own; where an implementation lacks a check, the harness does not
-supply one, so the vector fails and the divergence is visible.
+Run on 2026-08-05 against the 31 vectors in test/, through the
+harnesses in conformance/. Each calls that implementation's own code
+and prints the corpus field format. Where an implementation lacks a
+check, the harness does not supply one, so the vector fails and the
+divergence appears in the result rather than in a footnote.
 
     implementation      commit    date        result
     -----------------------------------------------------
@@ -18,6 +18,29 @@ supply one, so the vector fails and the divergence is visible.
 sgiath/reticulum was read, not executed: no Erlang runtime was
 available. Its findings below are from source and are marked as such.
 They carry less weight than the measured ones.
+
+
+What a result covers
+
+Not every field came from the implementation. Three of the five expose
+no entry point that yields the parsed announce fields; their validator
+returns a boolean and nothing else. For those the harness follows the
+implementation's own code step by step, using its constants and its
+primitives, and marks the place. Such fields test the transcription as
+much as the implementation.
+
+    implementation    derivations   announce fields   verdicts
+    ------------------------------------------------------------
+    rsReticulum       called        called            called
+    Reticulum-rs      called        transcribed       called
+    go-reticulum      called        transcribed       called
+    rns.js            called        transcribed       called
+    microReticulum    called        transcribed       called
+
+Derivations are the identity hash, the name hash, the destination hash
+and Ed25519 verification. Verdicts are signature_valid and, where the
+implementation offers one, its own accept or reject. All four findings
+below rest on called code or on source, not on transcription.
 
 All six agree on the identity hash, the destination hash for names with
 at least one aspect, the announce payload layout, the assembly of
@@ -144,13 +167,20 @@ These observations are worth what source reading is worth. Running the
 corpus against it would settle them.
 
 
+Finding 5: microReticulum does not build with GCC 16
+
+src/microReticulum/Utilities/Memory.h uses uint8_t and uint32_t without
+including <cstdint>, which older libstdc++ headers supplied
+transitively. Building the library needs -include cstdint. Not a wire
+format matter, but it stands between the corpus and anyone who wants to
+reproduce the microReticulum row.
+
+
 Reproducing
 
-Each harness takes the same two arguments as cmd/dump and prints the
-same format:
+    ENCODE=no DUMP=conformance/<impl>/<binary> cmd/check
 
-    DUMP=<harness> cmd/check
-
-The harnesses are not part of this repository. They are small and
-follow directly from each implementation's public API; the diff output
-of cmd/check names the exact vector and field for every claim above.
+ENCODE=no because no harness implements the -e direction; it belongs to
+the corpus, not to the wire format. See conformance/README for where to
+put each implementation and how to build its harness. The diff output
+of cmd/check names the exact vector and field behind every claim above.
