@@ -1,5 +1,5 @@
 source             constructed by tools/gen from linkrequest/signalling
 generated          2026-08-05
 kind               linkrequest
-determinism        decode
+determinism        encode
 purpose            the 64-byte form; same link id, mode falls back to the default

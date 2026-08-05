@@ -1,5 +1,5 @@
 source             constructed by tools/gen from linkproof/signalling
-generated          2026-08-05
+generated          2026-08-06
 kind               linkproof
-determinism        decode
+determinism        encode
 purpose            signalling bytes removed; the proof still decodes and the signature does not verify

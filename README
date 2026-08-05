@@ -76,6 +76,10 @@ round trip described below:
 
     DUMP=./my-implementation ENCODE=no cmd/check
 
+It gives up most of what the corpus can tell it. Decoding proves an
+implementation reads what python-rns writes; the round trip is the only
+thing here that says anything about what it writes.
+
     make verify
 
 additionally regenerates every vector from the pinned reference
@@ -110,10 +114,23 @@ its kind. A field nothing reads is a field that drifts.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. A vector of the decode class describes an
-object containing randomness, a timestamp, or a field expect records
-only by digest, and can be decoded but not rebuilt. Most Reticulum
-objects are decode class; see doc/.
+the result against raw. Forty-three of the forty-eight are of that
+class. The five that are not name their reason:
+
+    test/signature/            expect records the 950-byte message by
+                               length and digest, not by content
+    the three invalid vectors  nothing decoded, so expect names the
+                               rule that was broken and no fields
+
+The class says whether expect is total, not whether the reference
+could produce these bytes a second time. Most Reticulum objects
+contain randomness and cannot be produced twice; expect records what
+that randomness came out as, and raw follows from it.
+
+An object whose input is not the object itself carries that input in
+expect too, so that expect stays total: the recipient key of an
+encrypted packet, the link request a proof answers. Every such value is
+already a line of raw. See doc/.
 
 Every value in expect is one of three things: hex, a decimal number, or
 a keyword from a fixed set. Byte strings are always hex, names

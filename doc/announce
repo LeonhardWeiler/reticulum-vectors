@@ -35,8 +35,10 @@ Ten bytes, in two parts:
     5       5     unix seconds, big endian
 
 The timestamp is truncated to five bytes, not five bytes of a larger
-field. This is why announce vectors are decode class: the same
-destination announcing twice produces different bytes.
+field. The same destination announcing twice therefore produces
+different bytes, which is why no announce vector can be produced a
+second time. It can still be rebuilt: expect records the ten bytes as
+they came out, so announce vectors are encode class.
 
     RNS/Destination.py:283
 
@@ -111,6 +113,8 @@ _generate_ratchet reaches X25519PrivateKey.generate in PyCA
 generator and never touches os.urandom, so the two ratchet vectors
 changed on every run while this section claimed they did not.
 
-That is a property of tools/gen, not of the protocol. Consumers still
-cannot re-encode an announce from raw alone, because raw does not
-contain the private key. The vectors are decode class.
+That is a property of tools/gen, not of the protocol. It is also not
+what the encode class turns on. Consumers cannot sign a fresh announce
+from these vectors, because raw carries no private key; what they can
+do is lay the fields back out into the packet they came from, and
+cmd/check requires it of every announce that decodes.

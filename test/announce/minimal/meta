@@ -1,5 +1,5 @@
 source             python-rns 1.4.2 (b48b96e6)
 generated          2026-08-05
 kind               announce
-determinism        decode
+determinism        encode
 purpose            minimal announce: no ratchet, no app data

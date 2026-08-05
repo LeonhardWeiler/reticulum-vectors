@@ -8,6 +8,14 @@ field format. Where an implementation lacks a check, the harness does
 not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
+Every row is the decode direction only. cmd/check also rebuilds raw
+from expect for the forty-three vectors of the encode class, and no
+harness implements that direction, so nothing below says anything about
+what these implementations write. Findings 3, 5, 9 and 10 are all
+places where an implementation would emit bytes the reference rejects,
+and all four were found by reading its code after a decode vector
+failed, not by the corpus itself.
+
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
     go-reticulum        06621cc   2026-04-28  47 / 48  12 / 12

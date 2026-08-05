@@ -25,7 +25,7 @@
  * applied everywhere. A packet is bounded by the 500-byte MTU; the
  * largest input in the corpus is the 950-byte message of the adopted
  * signature vector. No vector carries more than three blobs or more
- * than 27 fields. */
+ * than 29 fields. */
 #define MAXBLOB   2048
 #define MAXBLOBS  4
 #define MAXFIELDS 32
@@ -88,6 +88,16 @@ struct blob {
 	size_t   len;
 	int      absent;	/* the line was "-" */
 };
+
+/* An input blob is echoed as a field so that expect holds every byte of
+ * raw and the encode direction has something to rebuild from. */
+static void field_blob(const char *name, const struct blob *b)
+{
+	if (b->absent)
+		field(name, "-");
+	else
+		field_hex(name, b->data, b->len);
+}
 
 static int unhex(int c)
 {
@@ -524,19 +534,28 @@ static void print_invalid(enum reason r, size_t got, size_t need)
 	}
 }
 
+static const struct {
+	unsigned    byte;
+	const char *name;
+} contexts[] = {
+	{ 0x00, "none" },
+	{ 0x0b, "path_response" },
+	{ 0xfa, "keepalive" },
+	{ 0xfb, "link_identify" },
+	{ 0xfc, "link_close" },
+	{ 0xfd, "link_proof" },
+	{ 0xfe, "link_rtt" },
+	{ 0xff, "link_request_proof" },
+};
+
 static const char *context_name(unsigned c)
 {
-	switch (c) {
-	case 0x00: return "none";
-	case 0x0b: return "path_response";
-	case 0xfa: return "keepalive";
-	case 0xfb: return "link_identify";
-	case 0xfc: return "link_close";
-	case 0xfd: return "link_proof";
-	case 0xfe: return "link_rtt";
-	case 0xff: return "link_request_proof";
-	default:   return NULL;
-	}
+	size_t i;
+
+	for (i = 0; i < sizeof contexts / sizeof contexts[0]; i++)
+		if (contexts[i].byte == c)
+			return contexts[i].name;
+	return NULL;
 }
 
 static void print_header(const struct header *h)
@@ -679,6 +698,9 @@ static void dump_encrypted(struct blob *b, int nblobs)
 		fatal("encrypted: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 	if (!b[1].absent && b[1].len != KEYHALF)
 		fatal("encrypted: ratchet key is %zu bytes, expected %d", b[1].len, KEYHALF);
+
+	field_blob("recipient_private", &b[0]);
+	field_blob("ratchet_private", &b[1]);
 
 	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
 		print_invalid(r, got, need);
@@ -838,6 +860,9 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	if (b[1].len != KEYSIZE)
 		fatal("linkproof: identity key is %zu bytes, expected %d", b[1].len, KEYSIZE);
 
+	field_blob("link_request", &b[0]);
+	field_blob("signer_public", &b[1]);
+
 	if ((r = parse_header(b[0].data, b[0].len, &rh, &got, &need)) != OK)
 		fatal("linkproof: the link request does not decode");
 
@@ -915,6 +940,9 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	if (b[1].len != KEYHALF)
 		fatal("linkdata: private key is %zu bytes, expected %d", b[1].len, KEYHALF);
 
+	field_blob("link_request", &b[0]);
+	field_blob("responder_private", &b[1]);
+
 	if (parse_header(b[0].data, b[0].len, &rh, &got, &need) != OK)
 		fatal("linkdata: the link request does not decode");
 
@@ -980,32 +1008,217 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	}
 }
 
-static void print_hex_field(const char *value)
+/* Rebuilding raw from expect. The layout below is the one the decoders
+ * above read, written out a second time and in the other direction: a
+ * vector of the encode class is one whose expect holds every byte of
+ * raw, and cmd/check tests that claim by diffing the result. A field
+ * whose value is "-" contributes no bytes, which is how the format
+ * spells every optional field. */
+
+struct out {
+	char   hex[MAXBLOB*2 + 2];
+	size_t len;
+};
+
+static void put(struct out *o, const char *hex)
 {
-	printf("%s\n", value);
+	size_t n = strlen(hex), i;
+
+	if (n % 2 != 0)
+		fatal("odd hex length in %s", hex);
+	for (i = 0; i < n; i++)
+		if (unhex(hex[i]) < 0)
+			fatal("bad hex in %s", hex);
+	if (o->len + n >= sizeof o->hex)
+		fatal("rebuilt blob exceeds %d bytes", MAXBLOB);
+
+	memcpy(o->hex + o->len, hex, n);
+	o->len += n;
+	o->hex[o->len] = '\0';
+}
+
+static void put_byte(struct out *o, unsigned v)
+{
+	char b[3];
+
+	snprintf(b, sizeof b, "%02x", v & 0xff);
+	put(o, b);
+}
+
+/* Absent fields carry no bytes, so an optional one needs no separate
+ * case anywhere in the encoders. */
+static void put_field(struct out *o, struct kv *f, int n, const char *name)
+{
+	const char *v = lookup(f, n, name);
+
+	if (strcmp(v, "-") != 0)
+		put(o, v);
+}
+
+static void put_hops(struct out *o, struct kv *f, int n)
+{
+	const char *v = lookup(f, n, "hops");
+	char *end;
+	unsigned long hops = strtoul(v, &end, 10);
+
+	if (*end != '\0' || hops >= MAX_HOPS)
+		fatal("unusable hops value %s", v);
+	put_byte(o, (unsigned)hops);
+}
+
+static void put_context(struct out *o, struct kv *f, int n)
+{
+	const char *v = lookup(f, n, "context");
+	size_t i;
+
+	for (i = 0; i < sizeof contexts / sizeof contexts[0]; i++)
+		if (strcmp(contexts[i].name, v) == 0) {
+			put_byte(o, contexts[i].byte);
+			return;
+		}
+	if (strlen(v) != 2)
+		fatal("unusable context value %s", v);
+	put(o, v);
+}
+
+static void put_header(struct out *o, struct kv *f, int n)
+{
+	put_field(o, f, n, "flags");
+	put_hops(o, f, n);
+	put_field(o, f, n, "transport_id");
+	put_field(o, f, n, "destination_hash");
+	put_context(o, f, n);
+}
+
+static void emit(struct out *o)
+{
+	printf("%s\n", o->hex);
+	o->len = 0;
+	o->hex[0] = '\0';
+}
+
+/* A blob that is one whole field is written out as it stands, "-"
+ * included: an absent blob is a line, not a missing line. */
+static void emit_field(struct kv *f, int n, const char *name)
+{
+	printf("%s\n", lookup(f, n, name));
 }
 
 static void encode_identity(struct kv *f, int n)
 {
-	print_hex_field(lookup(f, n, "public_key"));
+	emit_field(f, n, "public_key");
 }
 
 static void encode_keyset(struct kv *f, int n)
 {
-	print_hex_field(lookup(f, n, "private_key"));
+	emit_field(f, n, "private_key");
 }
 
 static void encode_destination(struct kv *f, int n)
 {
-	print_hex_field(lookup(f, n, "name"));
-	print_hex_field(lookup(f, n, "identity_hash"));
+	emit_field(f, n, "name");
+	emit_field(f, n, "identity_hash");
 }
+
+static void encode_announce(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "public_key");
+	put_field(&o, f, n, "name_hash");
+	put_field(&o, f, n, "random_hash");
+	put_field(&o, f, n, "ratchet");
+	put_field(&o, f, n, "signature");
+	put_field(&o, f, n, "app_data");
+	emit(&o);
+}
+
+static void encode_encrypted(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "recipient_private");
+	emit_field(f, n, "ratchet_private");
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "ephemeral_public");
+	put_field(&o, f, n, "iv");
+	put_field(&o, f, n, "ciphertext");
+	put_field(&o, f, n, "hmac");
+	emit(&o);
+}
+
+static void encode_linkrequest(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "x25519_public");
+	put_field(&o, f, n, "ed25519_public");
+	put_field(&o, f, n, "signalling");
+	emit(&o);
+}
+
+static void encode_linkproof(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "link_request");
+	emit_field(f, n, "signer_public");
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "signature");
+	put_field(&o, f, n, "x25519_public");
+	put_field(&o, f, n, "signalling");
+	emit(&o);
+}
+
+/* A keepalive is the one link packet the reference does not encrypt, so
+ * its payload is the plaintext and there is no token to write out. */
+static void encode_linkdata(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "link_request");
+	emit_field(f, n, "responder_private");
+
+	put_header(&o, f, n);
+	if (strcmp(lookup(f, n, "encrypted"), "no") == 0) {
+		put_field(&o, f, n, "plaintext");
+	} else {
+		put_field(&o, f, n, "iv");
+		put_field(&o, f, n, "ciphertext");
+		put_field(&o, f, n, "hmac");
+	}
+	emit(&o);
+}
+
+/* The nine kinds, and for each the two directions. A kind with no
+ * encoder is one no vector can claim the encode class for: its raw
+ * holds something expect does not record. */
+static const struct {
+	const char *name;
+	void (*decode)(struct blob *, int);
+	void (*encode)(struct kv *, int);
+} kinds[] = {
+	{ "identity",    dump_identity,    encode_identity    },
+	{ "keyset",      dump_keyset,      encode_keyset      },
+	{ "destination", dump_destination, encode_destination },
+	{ "signature",   dump_signature,   NULL               },
+	{ "announce",    dump_announce,    encode_announce    },
+	{ "encrypted",   dump_encrypted,   encode_encrypted   },
+	{ "linkrequest", dump_linkrequest, encode_linkrequest },
+	{ "linkproof",   dump_linkproof,   encode_linkproof   },
+	{ "linkdata",    dump_linkdata,    encode_linkdata    },
+};
 
 int main(int argc, char **argv)
 {
 	static struct blob blobs[MAXBLOBS];
 	static struct kv fields[MAXFIELDS];
 	const char *kind, *path;
+	size_t i;
 	int n, encode = 0;
 
 	argv0 = argv[0];
@@ -1022,41 +1235,21 @@ int main(int argc, char **argv)
 		return 2;
 	}
 
-	if (encode) {
-		n = readexpect(path, fields, MAXFIELDS);
-		if (strcmp(kind, "identity") == 0)
-			encode_identity(fields, n);
-		else if (strcmp(kind, "keyset") == 0)
-			encode_keyset(fields, n);
-		else if (strcmp(kind, "destination") == 0)
-			encode_destination(fields, n);
-		else
+	for (i = 0; i < sizeof kinds / sizeof kinds[0]; i++) {
+		if (strcmp(kinds[i].name, kind) != 0)
+			continue;
+		if (!encode) {
+			n = readraw(path, blobs, MAXBLOBS);
+			kinds[i].decode(blobs, n);
+		} else if (kinds[i].encode == NULL) {
 			fatal("kind %s is not of the encode class", kind);
+		} else {
+			n = readexpect(path, fields, MAXFIELDS);
+			kinds[i].encode(fields, n);
+		}
 		return 0;
 	}
 
-	n = readraw(path, blobs, MAXBLOBS);
-
-	if (strcmp(kind, "identity") == 0)
-		dump_identity(blobs, n);
-	else if (strcmp(kind, "keyset") == 0)
-		dump_keyset(blobs, n);
-	else if (strcmp(kind, "destination") == 0)
-		dump_destination(blobs, n);
-	else if (strcmp(kind, "signature") == 0)
-		dump_signature(blobs, n);
-	else if (strcmp(kind, "announce") == 0)
-		dump_announce(blobs, n);
-	else if (strcmp(kind, "encrypted") == 0)
-		dump_encrypted(blobs, n);
-	else if (strcmp(kind, "linkrequest") == 0)
-		dump_linkrequest(blobs, n);
-	else if (strcmp(kind, "linkproof") == 0)
-		dump_linkproof(blobs, n);
-	else if (strcmp(kind, "linkdata") == 0)
-		dump_linkdata(blobs, n);
-	else
-		fatal("unknown kind %s", kind);
-
-	return 0;
+	fatal("unknown kind %s", kind);
+	return 1;
 }

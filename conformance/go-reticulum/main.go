@@ -312,6 +312,15 @@ func contextName(c byte) string {
 func encrypted(b [][]byte) {
 	priv, ratchetPriv, raw := b[0], b[1], b[2]
 
+	// Echoes of the input lines, so that expect holds every byte of
+	// raw. Not a claim about go-reticulum: the harness was handed these.
+	f("recipient_private", hex.EncodeToString(priv))
+	if ratchetPriv == nil {
+		f("ratchet_private", "-")
+	} else {
+		f("ratchet_private", hex.EncodeToString(ratchetPriv))
+	}
+
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
 		return
@@ -491,6 +500,9 @@ func linkrequest(b [][]byte) {
 func linkproof(b [][]byte) {
 	requestRaw, identityPublic, raw := b[0], b[1], b[2]
 
+	f("link_request", hex.EncodeToString(requestRaw))
+	f("signer_public", hex.EncodeToString(identityPublic))
+
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
 		return
@@ -559,6 +571,9 @@ func linkproof(b [][]byte) {
 
 func linkdata(b [][]byte) {
 	requestRaw, responderPrivate, raw := b[0], b[1], b[2]
+
+	f("link_request", hex.EncodeToString(requestRaw))
+	f("responder_private", hex.EncodeToString(responderPrivate))
 
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})

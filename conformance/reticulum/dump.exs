@@ -185,6 +185,11 @@ defmodule Dump do
   end
 
   def run("encrypted", [priv, ratchet_priv, raw]) do
+    # Echoes of the input lines, so that expect holds every byte of raw.
+    # Not a claim about this implementation: the harness was handed these.
+    f("recipient_private", hx(priv))
+    f("ratchet_private", if(ratchet_priv, do: hx(ratchet_priv), else: "-"))
+
     with true <- byte_size(raw) >= 2,
          {:ok, p} <- decode(raw) do
       payload = p.data
@@ -274,6 +279,9 @@ defmodule Dump do
   end
 
   def run("linkproof", [request_raw, identity_public, raw]) do
+    f("link_request", hx(request_raw))
+    f("signer_public", hx(identity_public))
+
     with true <- byte_size(raw) >= 2,
          {:ok, p} <- decode(raw) do
       payload = p.data
@@ -308,6 +316,9 @@ defmodule Dump do
   end
 
   def run("linkdata", [request_raw, responder_private, raw]) do
+    f("link_request", hx(request_raw))
+    f("responder_private", hx(responder_private))
+
     with true <- byte_size(raw) >= 2,
          {:ok, p} <- decode(raw) do
       payload = p.data

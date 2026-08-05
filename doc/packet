@@ -108,11 +108,17 @@ test/announce/in-transport is test/announce/minimal after this transformation.
 
 Vector format
 
-kind: announce, determinism: decode
+kind: announce, determinism: encode
 
 raw is one line:
 
     line 1    the complete packet
+
+A packet that does decode is encode class: expect names every field the
+header and the payload hold, in order, and cmd/check lays them back out
+and diffs the result against raw. test/announce/hop-limit and
+test/announce/short-payload are decode class, because a packet that
+broke a rule has no fields to lay out.
 
 A packet that cannot be decoded produces the rule it broke and the
 numbers behind it, and nothing else:

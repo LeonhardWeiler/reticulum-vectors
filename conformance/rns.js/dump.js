@@ -171,6 +171,10 @@ function header(p, raw) {
 
 function encrypted(blobs) {
     const priv = blobs[0], ratchetPriv = blobs[1], raw = blobs[2];
+    // Echoes of the input lines, so that expect holds every byte of raw.
+    // Not a claim about rns.js: the harness was handed these.
+    f("recipient_private", hex(priv));
+    f("ratchet_private", ratchetPriv ? hex(ratchetPriv) : "-");
     const invalid = (reason, ...pairs) => {
         f("invalid", reason);
         for (const [k, v] of pairs) f(k, String(v));
@@ -272,6 +276,8 @@ function linkrequest(blobs) {
 
 function linkproof(blobs) {
     const [requestRaw, identityPublic, raw] = blobs;
+    f("link_request", hex(requestRaw));
+    f("signer_public", hex(identityPublic));
     const request = Packet.fromBytes(requestRaw);
     const p = Packet.fromBytes(raw);
     if (p === null || p === undefined) {
@@ -315,6 +321,8 @@ function linkproof(blobs) {
 
 function linkdata(blobs) {
     const [requestRaw, responderPrivate, raw] = blobs;
+    f("link_request", hex(requestRaw));
+    f("responder_private", hex(responderPrivate));
     const request = Packet.fromBytes(requestRaw);
     const p = Packet.fromBytes(raw);
     if (p === null || p === undefined) {

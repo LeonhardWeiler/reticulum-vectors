@@ -221,3 +221,39 @@ The signature covers the link id, so an identify proof cannot be
 lifted onto another link. Nothing else on a link names either end: the
 keys in the request and the proof are per link, and the identity of
 the initiator is revealed here or not at all.
+
+
+Vector format
+
+kind: linkrequest, determinism: encode
+
+raw is one line:
+
+    line 1    the complete packet
+
+kind: linkproof, determinism: encode
+
+raw is three lines:
+
+    line 1    the link request this proof answers
+    line 2    the public key of the identity that signed, 64 bytes
+    line 3    the complete packet
+
+kind: linkdata, determinism: encode
+
+raw is three lines:
+
+    line 1    the link request that opened the link
+    line 2    the responder's link private key, 32 bytes
+    line 3    the complete packet
+
+Two of the three kinds need a packet other than the one they describe.
+The link id, and with it the salt of the key derivation, is in no
+packet on the link, and the responder's Ed25519 key is in no packet at
+all. A decoder that ignores line 1 cannot produce a correct field for
+either kind.
+
+expect opens with those input lines, as link_request and either
+signer_public or responder_private, so that it holds every byte of raw.
+test/linkrequest/invalid-length is decode class; the other eight link
+vectors are encode class and cmd/check rebuilds all three lines.

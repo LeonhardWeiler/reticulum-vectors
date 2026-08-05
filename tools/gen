@@ -278,14 +278,27 @@ def field(name, value):
     return line(name, value)
 
 
-def meta_block(kind, determinism, purpose, source=GENERATED_SOURCE):
-    return [
-        line("source", source),
-        line("generated", datetime.date.today().isoformat()),
-        line("kind", kind),
-        line("determinism", determinism),
-        line("purpose", purpose),
-    ]
+# The kinds cmd/dump can rebuild raw for. signature is not among them:
+# its raw carries a 950-byte message that expect records only by its
+# digest, so the vector can be decoded and not rebuilt.
+ENCODABLE = ("identity", "keyset", "destination", "announce", "encrypted",
+             "linkrequest", "linkproof", "linkdata")
+
+
+def determinism(kind, expect):
+    """encode when expect holds every byte of raw.
+
+    That is so exactly when the kind has an encoder and the object
+    decoded: a vector that names a broken rule carries the rule and the
+    numbers behind it, and nothing to rebuild from. Deriving the class
+    here rather than declaring it per vector keeps the claim from being
+    wrong; cmd/check then tests it.
+    """
+    if kind not in ENCODABLE:
+        return "decode"
+    if any(l.startswith("invalid") for l in expect):
+        return "decode"
+    return "encode"
 
 
 class Writer:
@@ -295,7 +308,15 @@ class Writer:
         self.written = 0
         self.differs = []
 
-    def vector(self, kind, name, meta, raw, expect):
+    def vector(self, kind, name, purpose, raw, expect, source=GENERATED_SOURCE):
+        meta = [
+            line("source", source),
+            line("generated", datetime.date.today().isoformat()),
+            line("kind", kind),
+            line("determinism", determinism(kind, expect)),
+            line("purpose", purpose),
+        ]
+
         path = os.path.join(self.root, "test", kind, name)
         os.makedirs(path, exist_ok=True)
 
@@ -386,15 +407,15 @@ def gen_identity(RNS, w):
         assert identity.hash == bytes.fromhex(hash_hex)
 
         w.vector("identity", "upstream-%d" % n,
-            meta_block("identity", "encode", "public key of upstream key %d" % n,
-                       source=UPSTREAM_KEY_SOURCE),
+            "public key of upstream key %d" % n,
             [public.hex()],
             [
                 field("public_key",     public.hex()),
                 field("x25519_public",  public[:half].hex()),
                 field("ed25519_public", public[half:].hex()),
                 field("identity_hash",  identity.hash.hex()),
-            ])
+            ],
+            source=UPSTREAM_KEY_SOURCE)
 
 
 def gen_keyset(RNS, w):
@@ -413,8 +434,7 @@ def gen_keyset(RNS, w):
 
         source = UPSTREAM_KEY_SOURCE if name.startswith("upstream-") else GENERATED_SOURCE
 
-        w.vector("keyset", name,
-            meta_block("keyset", "encode", purpose, source=source),
+        w.vector("keyset", name, purpose,
             [private.hex()],
             [
                 field("private_key",     private.hex()),
@@ -424,7 +444,8 @@ def gen_keyset(RNS, w):
                 field("x25519_public",   public[:half].hex()),
                 field("ed25519_public",  public[half:].hex()),
                 field("identity_hash",   identity.hash.hex()),
-            ])
+            ],
+            source=source)
 
     # The property the clamping pair exists to record.
     assert made["unclamped"].get_private_key() != made["clamped"].get_private_key()
@@ -461,8 +482,7 @@ def gen_destination(RNS, w):
         expect.append(field("identity_hash", identity_hash.hex() if identity_hash else "-"))
         expect.append(field("destination_hash", destination_hash.hex()))
 
-        w.vector("destination", name,
-            meta_block("destination", "encode", purpose),
+        w.vector("destination", name, purpose,
             [name_bytes.hex(), identity_hash.hex() if identity_hash else "-"],
             expect)
 
@@ -496,8 +516,7 @@ def gen_signature(RNS, w, verify):
     ]
 
     for name, signature, purpose, source in cases:
-        w.vector("signature", name,
-            meta_block("signature", "decode", purpose, source=source),
+        w.vector("signature", name, purpose,
             [public.hex(), message.hex(), signature.hex()],
             [
                 field("ed25519_public", public[32:].hex()),
@@ -505,7 +524,8 @@ def gen_signature(RNS, w, verify):
                 field("message_sha256", hashlib.sha256(message).hexdigest()),
                 field("signature",      signature.hex()),
                 field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
-            ])
+            ],
+            source=source)
 
 
 DEST_TYPES   = ["single", "group", "plain", "link"]
@@ -670,8 +690,7 @@ def gen_announce(RNS, w, tmpdir, verify):
         raw = announce_raw(RNS, key_index, aspects, app_data, ratchet,
                            path_response, "announce-" + name, tmpdir)
         raws[name] = raw
-        w.vector("announce", name,
-            meta_block("announce", "decode", purpose),
+        w.vector("announce", name, purpose,
             [raw.hex()],
             describe_announce(raw, verify))
 
@@ -704,10 +723,10 @@ def gen_announce(RNS, w, tmpdir, verify):
     ]
 
     for name, raw, purpose, source in derived:
-        w.vector("announce", name,
-            meta_block("announce", "decode", purpose, source=source),
+        w.vector("announce", name, purpose,
             [raw.hex()],
-            describe_announce(raw, verify))
+            describe_announce(raw, verify),
+            source=source)
 
 
 def hashable_part(raw, payload_len):
@@ -885,8 +904,7 @@ def gen_linkrequest(RNS, w, session):
     assert RNS.Link.mode_from_lr_packet(packet) == RNS.Link.MODE_DEFAULT
 
     w.vector("linkrequest", "signalling",
-        meta_block("linkrequest", "decode",
-                   "link request as the reference emits it, mode and mtu signalled"),
+        "link request as the reference emits it, mode and mtu signalled",
         [raw.hex()],
         describe_linkrequest(raw))
 
@@ -895,19 +913,17 @@ def gen_linkrequest(RNS, w, session):
     # bytes are excluded from the link id.
     unsignalled = raw[:-SIGNALLEN]
     w.vector("linkrequest", "no-signalling",
-        meta_block("linkrequest", "decode",
-                   "the 64-byte form; same link id, mode falls back to the default",
-                   source="constructed by tools/gen from linkrequest/signalling"),
+        "the 64-byte form; same link id, mode falls back to the default",
         [unsignalled.hex()],
-        describe_linkrequest(unsignalled))
+        describe_linkrequest(unsignalled),
+        source="constructed by tools/gen from linkrequest/signalling")
 
     short = raw[:-1]
     w.vector("linkrequest", "invalid-length",
-        meta_block("linkrequest", "decode",
-                   "66-byte payload, neither of the two accepted lengths",
-                   source="constructed by tools/gen from linkrequest/signalling"),
+        "66-byte payload, neither of the two accepted lengths",
         [short.hex()],
-        describe_linkrequest(short))
+        describe_linkrequest(short),
+        source="constructed by tools/gen from linkrequest/signalling")
 
 
 def describe_linkproof(request_raw, identity_public, raw, verify):
@@ -916,16 +932,24 @@ def describe_linkproof(request_raw, identity_public, raw, verify):
     identity of the destination the request was addressed to, and the
     signalling bytes are signed in the position they occupy here.
     """
+    # The two input blobs are echoed so that expect holds every byte of
+    # raw. Without them the vector could be decoded but not rebuilt.
+    echo = [
+        field("link_request",  request_raw.hex()),
+        field("signer_public", identity_public.hex()),
+    ]
+
     lines, h = describe_header(raw)
+    lines = echo + lines
     if h is None:
         return lines
     payload = h["payload"]
 
     if len(payload) not in (SIGLEN + KEYHALF, SIGLEN + KEYHALF + SIGNALLEN):
-        return invalid("invalid-length",
-                       ("payload_length", len(payload)),
-                       ("accepted_length", SIGLEN + KEYHALF),
-                       ("signalled_length", SIGLEN + KEYHALF + SIGNALLEN))
+        return echo + invalid("invalid-length",
+                              ("payload_length", len(payload)),
+                              ("accepted_length", SIGLEN + KEYHALF),
+                              ("signalled_length", SIGLEN + KEYHALF + SIGNALLEN))
 
     _, rh = describe_header(request_raw)
     link_id = hashlib.sha256(
@@ -977,8 +1001,7 @@ def gen_linkproof(RNS, w, verify, session):
                         "signature_valid") == "yes"
 
     w.vector("linkproof", "signalling",
-        meta_block("linkproof", "decode",
-                   "link request proof as the reference emits it, mtu confirmed"),
+        "link request proof as the reference emits it, mtu confirmed",
         blobs + [raw.hex()],
         describe_linkproof(request_raw, public, raw, verify))
 
@@ -988,19 +1011,17 @@ def gen_linkproof(RNS, w, verify, session):
     # no longer verifies, which is the point of the vector.
     removed = raw[:-SIGNALLEN]
     w.vector("linkproof", "signalling-removed",
-        meta_block("linkproof", "decode",
-                   "signalling bytes removed; the proof still decodes and the signature does not verify",
-                   source="constructed by tools/gen from linkproof/signalling"),
+        "signalling bytes removed; the proof still decodes and the signature does not verify",
         blobs + [removed.hex()],
-        describe_linkproof(request_raw, public, removed, verify))
+        describe_linkproof(request_raw, public, removed, verify),
+        source="constructed by tools/gen from linkproof/signalling")
 
     altered = raw[:19] + bytes([raw[19] ^ 0x01]) + raw[20:]
     w.vector("linkproof", "altered-signature",
-        meta_block("linkproof", "decode",
-                   "first signature byte altered",
-                   source="constructed by tools/gen from linkproof/signalling"),
+        "first signature byte altered",
         blobs + [altered.hex()],
-        describe_linkproof(request_raw, public, altered, verify))
+        describe_linkproof(request_raw, public, altered, verify),
+        source="constructed by tools/gen from linkproof/signalling")
 
 
 def describe_linkdata(request_raw, responder_private, raw, verify):
@@ -1012,7 +1033,15 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     import hmac as _hmac
 
+    # The two input blobs are echoed so that expect holds every byte of
+    # raw. Without them the vector could be decoded but not rebuilt.
+    echo = [
+        field("link_request",      request_raw.hex()),
+        field("responder_private", responder_private.hex()),
+    ]
+
     lines, h = describe_header(raw)
+    lines = echo + lines
     if h is None:
         return lines
     payload = h["payload"]
@@ -1126,18 +1155,15 @@ def gen_linkdata(RNS, w, verify, session):
     for name, packet, purpose in cases:
         blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]
         described = describe_linkdata(request_raw, responder_private, packet.raw, verify)
-        w.vector("linkdata", name,
-            meta_block("linkdata", "decode", purpose),
-            blobs, described)
+        w.vector("linkdata", name, purpose, blobs, described)
 
     base = sent[0].raw
     altered = base[:-1] + bytes([base[-1] ^ 0x01])
     w.vector("linkdata", "altered-hmac",
-        meta_block("linkdata", "decode",
-                   "last byte of the token hmac altered; nothing is decrypted",
-                   source="constructed by tools/gen from linkdata/minimal"),
+        "last byte of the token hmac altered; nothing is decrypted",
         [request_raw.hex(), responder_private.hex(), altered.hex()],
-        describe_linkdata(request_raw, responder_private, altered, verify))
+        describe_linkdata(request_raw, responder_private, altered, verify),
+        source="constructed by tools/gen from linkdata/minimal")
 
 
 def lookup_field(lines, name):
@@ -1167,15 +1193,24 @@ def describe_encrypted(raw, private, ratchet_private):
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     import hmac as _hmac
 
+    # The two input blobs are echoed so that expect holds every byte of
+    # raw. Without them the vector could be decoded but not rebuilt.
+    echo = [
+        field("recipient_private", private.hex()),
+        field("ratchet_private",
+              ratchet_private.hex() if ratchet_private is not None else "-"),
+    ]
+
     lines, h = describe_header(raw)
+    lines = echo + lines
     if h is None:
         return lines
     payload = h["payload"]
 
     if len(payload) < KEYHALF + TOKEN_OVERHEAD:
-        return invalid("short-payload",
-                       ("payload_length", len(payload)),
-                       ("minimum_length", KEYHALF + TOKEN_OVERHEAD))
+        return echo + invalid("short-payload",
+                              ("payload_length", len(payload)),
+                              ("minimum_length", KEYHALF + TOKEN_OVERHEAD))
 
     ephemeral  = payload[:KEYHALF]
     token      = payload[KEYHALF:]
@@ -1271,19 +1306,17 @@ def gen_encrypted(RNS, w):
         private, ratchet, raw = encrypted_raw(RNS, key_index, aspects, plaintext,
                                               use_ratchet, "encrypted-" + name)
         made[name] = (private, ratchet, raw)
-        w.vector("encrypted", name,
-            meta_block("encrypted", "decode", purpose),
+        w.vector("encrypted", name, purpose,
             [private.hex(), ratchet.hex() if ratchet else "-", raw.hex()],
             describe_encrypted(raw, private, ratchet))
 
     private, ratchet, raw = made["minimal"]
     altered = raw[:-1] + bytes([raw[-1] ^ 0x01])
     w.vector("encrypted", "altered-hmac",
-        meta_block("encrypted", "decode",
-                   "last byte of the token hmac altered; nothing is decrypted",
-                   source="constructed by tools/gen from encrypted/minimal"),
+        "last byte of the token hmac altered; nothing is decrypted",
         [private.hex(), "-", altered.hex()],
-        describe_encrypted(altered, private, None))
+        describe_encrypted(altered, private, None),
+        source="constructed by tools/gen from encrypted/minimal")
 
 
 def main():

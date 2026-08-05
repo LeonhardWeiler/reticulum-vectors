@@ -1,3 +1,5 @@
+recipient_private  f8953ffaf607627e615603ff1530c82c434cf87c07179dd7689ea776f30b964cfb7ba6164af00c5111a45e69e57d885e1285f8dbfe3a21e95ae17cf676b0f8b7
+ratchet_private    267c9c1b11c1cf5ab62ee750cbc5656f0aac341c89feddc91e16cda100d48784
 flags              00
 header_type        1
 context_flag       unset

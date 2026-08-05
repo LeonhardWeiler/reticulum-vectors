@@ -241,6 +241,11 @@ static void kind_encrypted(std::vector<RNS::Bytes> &b, bool no_ratchet) {
 	const RNS::Bytes &raw = b[2];
 	char buf[32];
 
+	// Echoes of the input lines, so that expect holds every byte of raw.
+	// Not a claim about microReticulum: the harness was handed these.
+	f("recipient_private", hexs(priv));
+	f("ratchet_private", no_ratchet ? "-" : hexs(b[1]));
+
 	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
 	RNS::Packet p(raw);
 	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
@@ -348,6 +353,9 @@ static void kind_linkproof(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &raw = b[2];
 	char buf[32];
 
+	f("link_request", hexs(request_raw));
+	f("signer_public", hexs(identity_public));
+
 	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
 	RNS::Packet p(raw);
 	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
@@ -402,6 +410,9 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &responder_private = b[1];
 	const RNS::Bytes &raw = b[2];
 	char buf[32];
+
+	f("link_request", hexs(request_raw));
+	f("responder_private", hexs(responder_private));
 
 	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
 	RNS::Packet p(raw);

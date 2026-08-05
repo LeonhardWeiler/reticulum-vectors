@@ -102,7 +102,7 @@ a value above the block size is invalid.
 
 Vector format
 
-kind: encrypted, determinism: decode
+kind: encrypted, determinism: encode
 
 raw is three lines:
 
@@ -114,10 +114,13 @@ The private keys are in the vector because a packet cannot be decoded
 without them. They are the upstream test keys and a ratchet generated
 for the purpose; neither guards anything.
 
-expect carries the header fields, the payload decomposition, and every
-intermediate value down to the plaintext: shared_key, signing_key and
-encryption_key are all printed. An implementation whose decryption
-fails can find the step where it diverged rather than guessing.
+expect opens with the two keys, as recipient_private and
+ratchet_private, so that it holds every byte of raw and the packet can
+be rebuilt from it. It then carries the header fields, the payload
+decomposition, and every intermediate value down to the plaintext:
+shared_key, signing_key and encryption_key are all printed. An
+implementation whose decryption fails can find the step where it
+diverged rather than guessing.
 
     plaintext_length   the length in bytes, or "-" if nothing was
                        decrypted
@@ -126,6 +129,10 @@ fails can find the step where it diverged rather than guessing.
 The two together are unambiguous: length 0 with plaintext "-" is an
 empty plaintext, length "-" is a failure.
 
-Decode class. The ephemeral key and the initialisation vector are drawn
-at random and are not recoverable from the plaintext, so no
-implementation can reproduce raw from expect.
+Encode class. The ephemeral key and the initialisation vector are drawn
+at random, so no implementation can produce this packet a second time;
+expect records both as they came out, so it can lay this one back out.
+That is what cmd/check tests. It is also why the corpus carries no
+vector that asks an implementation to encrypt: the reference ships a
+token decryption vector and no token encryption vector for the same
+reason.

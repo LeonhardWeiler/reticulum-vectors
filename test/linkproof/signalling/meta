@@ -1,5 +1,5 @@
 source             python-rns 1.4.2 (b48b96e6)
-generated          2026-08-05
+generated          2026-08-06
 kind               linkproof
-determinism        decode
+determinism        encode
 purpose            link request proof as the reference emits it, mtu confirmed

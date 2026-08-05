@@ -303,6 +303,14 @@ fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let ratchet_priv = b[1].as_ref();
     let raw = b[2].as_ref().unwrap();
 
+    // Echoes of the input lines, so that expect holds every byte of raw.
+    // Not a claim about Reticulum-rs: the harness was handed these.
+    f(out, "recipient_private", &hexs(priv_key));
+    match ratchet_priv {
+        Some(r) => f(out, "ratchet_private", &hexs(r)),
+        None => f(out, "ratchet_private", "-"),
+    }
+
     if raw.len() < 19 {
         return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 19)]);
     }
@@ -441,6 +449,9 @@ fn linkproof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let identity_public = b[1].as_ref().unwrap();
     let raw = b[2].as_ref().unwrap();
 
+    f(out, "link_request", &hexs(request_raw));
+    f(out, "signer_public", &hexs(identity_public));
+
     if raw.len() < 19 {
         return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 19)]);
     }
@@ -499,6 +510,9 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let request_raw = b[0].as_ref().unwrap();
     let responder_private = b[1].as_ref().unwrap();
     let raw = b[2].as_ref().unwrap();
+
+    f(out, "link_request", &hexs(request_raw));
+    f(out, "responder_private", &hexs(responder_private));
 
     if raw.len() < 19 {
         return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 19)]);

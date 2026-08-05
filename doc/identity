@@ -137,9 +137,10 @@ expect names the Ed25519 half of the public key, the message length,
 the SHA-256 of the message, the signature, and the verdict.
 
 Decode class: expect records the message by length and digest rather
-than by content, so raw cannot be rebuilt from it. The other three
-static kinds are encode class and cmd/check rebuilds their raw from
-their expect on every run.
+than by content, so raw cannot be rebuilt from it. This is the only
+kind in the corpus of which that is true. Every other kind is encode
+class, and cmd/check rebuilds raw from expect on every run for every
+vector that decoded.
 
 The message is given by its bytes rather than as text, because the
 adopted upstream vector turns on exactly that distinction. The

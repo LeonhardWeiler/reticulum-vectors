@@ -1,5 +1,5 @@
 source             constructed by tools/gen from linkdata/minimal
-generated          2026-08-05
+generated          2026-08-06
 kind               linkdata
-determinism        decode
+determinism        encode
 purpose            last byte of the token hmac altered; nothing is decrypted
