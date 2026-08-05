@@ -19,6 +19,17 @@ records the observed behaviour of one implementation at one version:
 Every vector records that pin. When the pin moves, vectors are
 regenerated and the differences are examined.
 
+raw is what the reference produced. Where a value in raw was instead
+composed by tools/gen out of the reference's own functions, because the
+reference derives it inline and exposes nothing to call, doc/ says so
+at that vector. There is one such value: the interface key of
+test/ifac, see doc/packet.
+
+expect is a different matter. It is tools/gen's own reading of raw, and
+cmd/dump reads raw again without sharing a line of code with it. Two
+readings that agree is the point; one reading copied twice would not
+be.
+
 
 Every private key here is public
 

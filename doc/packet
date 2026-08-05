@@ -271,6 +271,20 @@ expect names the key, the size, the frame length, the access code the
 frame carries, the packet recovered from it, the access code that
 packet should have produced, and whether the two agree.
 
+The frame is what the reference produced: tools/gen hands the packet to
+Transport.transmit and writes down what came back. The key is not. RNS
+derives it inline in the constructor of a running instance and exposes
+no function to call, so tools/gen composes it from the same four RNS
+functions in the same order, with IFAC_SALT and the network name
+"reticulum-vectors".
+
+    RNS/Reticulum.py:958-971
+
+That is the only value in the corpus assembled rather than captured,
+and it is written here because nothing can detect it. A different
+netname or netkey gives a different key and a different frame; the
+derivation above is what makes them agree, not this vector.
+
 Encode class: cmd/check masks the packet again and diffs the frame.
 The corpus therefore checks both directions of the mask, which is the
 one place it does so with the sender's code path rather than the

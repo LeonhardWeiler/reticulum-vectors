@@ -644,11 +644,15 @@ def gen_ifac(RNS, w, announce_raw_bytes):
     named network or a passphrase does not look like a packet at all
     until it is unmasked.
 
-    The interface identity is derived here rather than called, because
+    The interface identity is composed here rather than called, because
     RNS/Reticulum.py:958-971 does it inline in the constructor of a
     running instance. Every step of it is an RNS function called with
-    RNS constants. The masking itself is not transcribed: the frame is
-    what RNS/Transport.py:1069 produced, through Transport.transmit.
+    RNS constants, but the order is this program's. It is the only
+    value in any raw that gen assembles rather than captures, and
+    doc/packet says so where a consumer will read it.
+
+    The masking itself is not composed: the frame is what
+    RNS/Transport.py:1069 produced, through Transport.transmit.
     """
     ifac_netname = "reticulum-vectors"
     ifac_size    = 16
