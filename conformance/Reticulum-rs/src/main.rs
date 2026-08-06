@@ -400,6 +400,7 @@ fn context_name(c: u8) -> String {
     match PacketContext::from(c) {
         PacketContext::None => "none".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
+        PacketContext::Channel => "channel".to_string(),
         PacketContext::KeepAlive => "keepalive".to_string(),
         PacketContext::LinkIdentify => "link_identify".to_string(),
         PacketContext::LinkClose => "link_close".to_string(),
@@ -443,13 +444,35 @@ fn proof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let payload = &raw[19..];
     let explicit = payload.len() == 96;
     let signature = if explicit { &payload[32..] } else { &payload[..] };
-    let id = Identity::new_from_slices(&signer_public[..32], &signer_public[32..]);
 
     f(out, "form", if explicit { "explicit" } else { "implicit" });
     f(out, "packet_hash", &hexs(packet_hash));
     f(out, "proof_hash", &(if explicit { hexs(&payload[..32]) } else { "-".to_string() }));
     f(out, "hash_match",
       if !explicit || &payload[..32] == packet_hash { "yes" } else { "no" });
+
+    // On a link the proof is addressed to the link id and verified
+    // under a single Ed25519 public. Reticulum-rs verifies no proof
+    // anywhere, so the key goes to the ed25519_dalek verifier it uses
+    // for everything else.
+    if (raw[0] & 0x0c) >> 2 == 3 {
+        f(out, "link_id", &hexs(&proved_raw[2..18]));
+        f(out, "link_id_match", if &raw[2..18] == &proved_raw[2..18] { "yes" } else { "no" });
+        f(out, "signature", &hexs(signature));
+        f(out, "signer_ed25519", &hexs(signer_public));
+        let ok = match (ed25519_dalek::VerifyingKey::try_from(&signer_public[..]),
+                        ed25519_dalek::Signature::from_slice(signature)) {
+            (Ok(k), Ok(s)) => {
+                use ed25519_dalek::Verifier;
+                k.verify(packet_hash, &s).is_ok()
+            }
+            _ => false,
+        };
+        f(out, "signature_valid", if ok { "yes" } else { "no" });
+        return;
+    }
+
+    let id = Identity::new_from_slices(&signer_public[..32], &signer_public[32..]);
     f(out, "proof_destination", &hexs(&packet_hash[..16]));
     f(out, "destination_match",
       if &raw[2..18] == &packet_hash[..16] { "yes" } else { "no" });
@@ -633,6 +656,16 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     }
 
     let pt = plaintext.unwrap();
+    // Reticulum-rs has no channel envelope code: the context byte is
+    // defined and nothing reads the six bytes behind it. Printed
+    // absent, which fails the vector. See ../README.
+    if context == 0x0e && pt.len() >= 6 {
+        f(out, "msgtype", "-");
+        f(out, "sequence", "-");
+        f(out, "declared_length", "-");
+        f(out, "message", "-");
+    }
+
     if context == 0xfb && pt.len() == 128 {
         let pub_key = &pt[..64];
         let sig = &pt[64..];

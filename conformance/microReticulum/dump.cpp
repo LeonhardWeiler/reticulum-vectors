@@ -154,6 +154,7 @@ static std::string context_name(unsigned c) {
 	switch (c) {
 	case RNS::Type::Packet::CONTEXT_NONE:   return "none";
 	case RNS::Type::Packet::PATH_RESPONSE:  return "path_response";
+	case RNS::Type::Packet::CHANNEL:        return "channel";
 	case RNS::Type::Packet::KEEPALIVE:      return "keepalive";
 	case RNS::Type::Packet::LINKIDENTIFY:   return "link_identify";
 	case RNS::Type::Packet::LINKCLOSE:      return "link_close";
@@ -384,13 +385,36 @@ static void kind_proof(std::vector<RNS::Bytes> &b) {
 	bool explicit_form = payload.size() == 96;
 	RNS::Bytes signature = explicit_form ? payload.mid(32) : payload;
 
-	RNS::Identity signer(false);
-	signer.load_public_key(signer_public);
-
 	f("form", explicit_form ? "explicit" : "implicit");
 	f("packet_hash", hexs(packet_hash));
 	f("proof_hash", explicit_form ? hexs(payload.left(32)) : "-");
 	f("hash_match", (!explicit_form || payload.left(32) == packet_hash) ? "yes" : "no");
+
+	// On a link the proof is addressed to the link id and verified
+	// under a single Ed25519 public rather than the halves of an
+	// identity. microReticulum verifies through Identity, which wants
+	// both halves, so the key is placed in the half that is read and
+	// the other is left zero; the verifier is microReticulum's own.
+	if (((raw.data()[0] & 0x0c) >> 2) == 3) {
+		uint8_t zeros[32] = {0};
+		RNS::Bytes full(zeros, sizeof zeros);
+		full << signer_public;
+
+		RNS::Identity link_signer(false);
+		link_signer.load_public_key(full);
+
+		f("link_id", hexs(proved.destination_hash()));
+		f("link_id_match", p.destination_hash() == proved.destination_hash() ? "yes" : "no");
+		f("signature", hexs(signature));
+		f("signer_ed25519", hexs(signer_public));
+		f("signature_valid", link_signer.validate(signature, packet_hash) ? "yes" : "no");
+		(void)buf;
+		return;
+	}
+
+	RNS::Identity signer(false);
+	signer.load_public_key(signer_public);
+
 	f("proof_destination", hexs(packet_hash.left(16)));
 	f("destination_match", p.destination_hash() == packet_hash.left(16) ? "yes" : "no");
 	f("signature", hexs(signature));
@@ -516,6 +540,16 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	snprintf(buf, sizeof buf, "%zu", (size_t)plaintext.size());
 	f("plaintext_length", buf);
 	f("plaintext", plaintext.size() ? hexs(plaintext) : "-");
+
+	// microReticulum has no channel envelope code: Type.h names the
+	// context byte and nothing reads the six bytes behind it. Printed
+	// absent, which fails the vector. See ../README.
+	if ((unsigned)p.context() == 0x0e && plaintext.size() >= 6) {
+		f("msgtype", "-");
+		f("sequence", "-");
+		f("declared_length", "-");
+		f("message", "-");
+	}
 
 	if ((unsigned)p.context() == RNS::Type::Packet::LINKIDENTIFY && plaintext.size() == 128) {
 		RNS::Bytes pub = plaintext.left(64);

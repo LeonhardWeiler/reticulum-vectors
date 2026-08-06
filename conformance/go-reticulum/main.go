@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"crypto/ecdh"
+	"crypto/ed25519"
+	"encoding/binary"
 
 	"github.com/svanichkin/go-reticulum/rns"
 	Cryptography "github.com/svanichkin/go-reticulum/rns/cryptography"
@@ -186,8 +188,10 @@ func proof(b [][]byte) {
 	printHeader(p, raw)
 
 	id := &rns.Identity{}
-	if err := id.LoadPublicKey(signerPublic); err != nil {
-		panic(err)
+	if len(signerPublic) == 64 {
+		if err := id.LoadPublicKey(signerPublic); err != nil {
+			panic(err)
+		}
 	}
 
 	payload := p.Data
@@ -211,6 +215,22 @@ func proof(b [][]byte) {
 		f("proof_hash", "-")
 	}
 	f("hash_match", yesNo(!explicit || bytes.Equal(payload[:32], packetHash)))
+
+	// On a link the proof is addressed to the link id and verified
+	// under a single Ed25519 public. go-reticulum has that path, at
+	// packet.go:697 validateLinkProof through link.go:2259
+	// Link.Validate, but it reaches it through a Link whose peerSigPub
+	// is unexported, so the key goes to the same ed25519.Verify that
+	// Link.Validate calls.
+	if p.DestinationType == 3 {
+		f("link_id", hex.EncodeToString(proved.DestinationHash))
+		f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, proved.DestinationHash)))
+		f("signature", hex.EncodeToString(signature))
+		f("signer_ed25519", hex.EncodeToString(signerPublic))
+		f("signature_valid", yesNo(ed25519.Verify(ed25519.PublicKey(signerPublic), packetHash, signature)))
+		return
+	}
+
 	f("proof_destination", hex.EncodeToString(packetHash[:addrLen]))
 	f("destination_match", yesNo(bytes.Equal(p.DestinationHash, packetHash[:addrLen])))
 	f("signature", hex.EncodeToString(signature))
@@ -368,6 +388,8 @@ func contextName(c byte) string {
 		return "none"
 	case rns.PacketCtxPathResponse:
 		return "path_response"
+	case rns.PacketCtxChannel:
+		return "channel"
 	case rns.PacketCtxKeepalive:
 		return "keepalive"
 	case rns.PacketCtxLinkIdentify:
@@ -742,6 +764,21 @@ func linkdata(b [][]byte) {
 		f("plaintext", hex.EncodeToString(plaintext))
 	} else {
 		f("plaintext", "-")
+	}
+
+	// The channel envelope. go-reticulum has Envelope.Unpack at
+	// rns/channel.go:108, and both it and the raw field it reads are
+	// unexported, so this follows those three lines with the same
+	// offsets rather than calling them.
+	if p.Context == 0x0e && len(plaintext) >= 6 {
+		f("msgtype", hex.EncodeToString(plaintext[0:2]))
+		f("sequence", fmt.Sprintf("%d", binary.BigEndian.Uint16(plaintext[2:4])))
+		f("declared_length", fmt.Sprintf("%d", binary.BigEndian.Uint16(plaintext[4:6])))
+		if len(plaintext) > 6 {
+			f("message", hex.EncodeToString(plaintext[6:]))
+		} else {
+			f("message", "-")
+		}
 	}
 
 	if p.Context == 0xfb && len(plaintext) == keySize+sigLen {

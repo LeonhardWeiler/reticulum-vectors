@@ -1,73 +1,15 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 52 vectors test/ held at that date,
-through the harnesses in conformance/.
+Run on 2026-08-06 against the 78 vectors test/ held at that date,
+through the harnesses in conformance/, at the implementation commits
+named below. Every row is reproducible only at its commit.
 
-That is a date and a count, which is what was available then. cmd/check
-now prints a checksum over the corpus alongside the result, and a rerun
-records it: a count says how many vectors passed, and the checksum says
-which corpus they were. Two vectors have since changed shape without
-changing the count.
+    corpus 678091306
 
-Twenty-six vectors have been added since, and no row below covers them.
-The rows are left at what was measured rather than restated against a
-corpus they were not run on.
-
-    signature/non-canonical-s     the three that turn on which curve
-    announce/non-canonical-s      backend is in use; the reference
-    encrypted/low-order-ephemeral itself diverges here
-
-    announce/hop-limit-below      the other side of the hop boundary,
-                                  which every row below fails
-
-    linkrequest/in-transport      the header 2 branch of the link id
-    proof/proved-in-transport     and of the packet hash
-
-    destination/empty-aspect      the empty byte string
-    plain/payload                 a destination type with no vectors
-    plain/empty                   until now
-
-    announce/short-header         two rejection rules that both
-    proof/invalid-length          decoders had and no vector carried
-
-    pathrequest/tagged            the payload a transport node reads
-    pathrequest/transport         before it knows a path is wanted,
-    pathrequest/tagless           and the four boundaries its length
-    pathrequest/ambiguous         rule turns on
-    pathrequest/long-tag
-    pathrequest/short
-
-    ifac/passphrase               the two halves of the interface key
-    ifac/passphrase-only          and a code size that is not 16
-    ifac/minimum-size
-
-    linkdata/channel              the channel envelope, which no
-    linkdata/channel-eof          harness reads and every one of them
-                                  will decrypt to a plaintext it does
-                                  not decompose
-
-    group/minimal                 a destination type nothing here
-    group/altered-hmac            implements
-
-    proof/link-initiator          a delivery proof on a link, and the
-    proof/link-responder          two keys the two ends sign with
-
-Four of the eleven that fall under a kind a harness already implements
-are expected to change rows that pass today. The hop boundary separates
-three kinds of failure that currently look alike (finding 1), and the
-two in-transport vectors reach code no harness has been asked for. The
-path request and group vectors are kinds no harness implements, so they
-will be skipped rather than failed, and so are the three new ifac
-vectors. The two channel vectors are the exception among the new ones:
-they are linkdata, which four harnesses do implement, and they will
-fail on the four envelope fields rather than be skipped. So are the two
-link delivery proofs: they are kind proof, which every harness
-implements, and every one of them will verify against the wrong key,
-because until now there was only one key it could be.
-
-test/ifac/announce also changed shape: its raw now carries the network
-name and passphrase rather than the derived key, so a harness that
-implemented the kind would have to be rewritten. None did.
+That number is what cmd/check prints beside the result: a checksum over
+test/INDEX and every raw and expect. A count does not identify a
+corpus; two vectors changed shape without changing the count between
+this run and the last.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
@@ -75,32 +17,70 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the forty-six vectors of the encode class, and no
+from expect for the sixty-eight vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
-what these implementations write. Findings 3, 5, 9 and 10 are all
-places where an implementation would emit bytes the reference rejects,
-and all four were found by reading its code after a decode vector
-failed, not by the corpus itself.
+what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  50 / 51  12 / 12
-    rsReticulum         07ca721   2026-08-02  49 / 51  11 / 12
-    microReticulum      40fa628   2026-07-20  42 / 51   6 / 12
-    Reticulum-rs        be7a7fc   2026-07-31  41 / 51   6 / 12
-    rns.js              d4602ca   2025-02-10  31 / 51   0 / 12
-    sgiath/reticulum    0c4904e   2026-07-09  25 / 51   0 / 12
+    go-reticulum        06621cc   2026-04-28  60 / 64  17 / 17
+    rsReticulum         07ca721   2026-08-02  57 / 64  14 / 17
+    Reticulum-rs        be7a7fc   2026-07-31  48 / 64   8 / 17
+    microReticulum      40fa628   2026-07-20  47 / 64  10 / 17
+    rns.js              d4602ca   2025-02-10  37 / 64   2 / 17
+    sgiath/reticulum    0c4904e   2026-07-09  32 / 64   2 / 17
 
-Out of 51, not 52: every harness skips test/ifac. See the end of this
-file.
+Out of 64, not 78: every harness exits 77 for four kinds, and those
+fourteen vectors are skipped rather than counted against anyone.
+
+    plain         2 vectors
+    pathrequest   6
+    group         2
+    ifac          4
+
+The link column is the fifteen vectors of the three link kinds plus the
+two delivery proofs made on a link, which are filed under proof.
+
+Three failures in this run are the harnesses' own and are not counted
+as findings. They are recorded here rather than quietly fixed, because
+a harness is evidence and a change to one changes what the numbers
+mean:
+
+    destination/empty-aspect       All six compute the right
+                                   destination hash and print the empty
+                                   aspect as an empty value rather than
+                                   as "-". A format rule of the corpus,
+                                   broken by six harnesses and by no
+                                   implementation.
+
+    encrypted/low-order-ephemeral  go-reticulum's crypto/ecdh refuses
+                                   the low-order point, which is what
+                                   the pinned backend does. The harness
+                                   reports the exception instead of the
+                                   six "-" fields that say no agreement
+                                   was reached.
+
+    announce/short-header          microReticulum logs the rejection on
+                                   standard output, so the log line
+                                   lands in the field stream.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot
 load an identity from a private key at all; see finding 7.
 
-All six agree on both forms of a delivery proof, without a single
-divergence, including the one that fails half the corpus. See the note
-below the findings.
+All six agree on both forms of a delivery proof to a destination, and
+all six agree on both delivery proofs made on a link once the harness
+hands them the key that signs one. Which key that is, they do not
+decide: only go-reticulum and rsReticulum have a link proof path at
+all, and the other four verify no proof on a link anywhere. See
+doc/link.
+
+The channel envelope is read by one implementation of the six.
+go-reticulum has Envelope.Unpack and reads all six bytes; rsReticulum
+has Envelope::unpack and reads four of them, discarding the declared
+length exactly as the reference does, so it cannot reproduce the two
+bytes it did not keep. The other four define the context byte and have
+no code behind it.
 
 
 What a result covers
@@ -199,6 +179,13 @@ Where a limit exists at all, it sits further in and reads differently:
 go-reticulum's threshold is one higher than the reference. A packet at
 exactly 128 hops is dropped by python-rns and forwarded by
 go-reticulum.
+
+test/announce/hop-limit-below, the other side of the boundary, passes
+in all six. The pair was added to separate a threshold one hop too high
+from one a hop too low from none at all, and it separated nothing: no
+implementation applies any threshold at the parse step, so all six
+accept 127 and all six accept 128. The thresholds listed above sit
+further in, where a vector that is one packet cannot reach them.
 
 This is the one finding shared by every implementation, which suggests
 the rule is not obvious from reading the reference. It is now
@@ -553,3 +540,63 @@ A frame with bit 7 set is not a packet, and an implementation that
 reads one as a packet gets random flags, a random hop count and a
 destination hash that matches nothing. It is worth measuring and it has
 not been measured.
+
+
+Finding 15: a 63-byte proof payload is read as an implicit proof
+
+Affects every implementation tested. Vector test/proof/invalid-length.
+
+python-rns reads 64 bytes as an implicit proof and 96 as an explicit
+one and drops every other length (RNS/Packet.py:481#EXPL_LENGTH). None
+of the six checks the length. All take the 63 bytes as a signature,
+verify it, and report a decoded proof that does not verify, where the
+reference reports nothing at all.
+
+The distinction matters where a proof arrives truncated: the reference
+leaves the packet unproved and the receipt open, and these six mark it
+proved-and-invalid, which is a different state.
+
+
+Finding 16: the low-order shared secret is returned rather than refused
+
+Affects rsReticulum, Reticulum-rs, microReticulum and sgiath/reticulum.
+Vector test/encrypted/low-order-ephemeral.
+
+X25519 against a point of small order yields an all-zero secret that
+neither end contributed to. The pinned backend raises; these four
+return the zero secret, derive a key from it, and report hmac_valid no
+rather than "-". go-reticulum's crypto/ecdh refuses it, which agrees
+with the pin; see the note above about how the harness reports that.
+
+Every reader of an announce can compute the derivation that follows,
+because the salt is the recipient's identity hash and that is public.
+See doc/encryption, section Contributory behaviour.
+
+
+Finding 17: microReticulum accepts a non-canonical Ed25519 scalar
+
+Affects microReticulum. Vectors test/signature/non-canonical-s and
+test/announce/non-canonical-s.
+
+RFC 8032 section 5.1.7 admits only S < L. A signature with S re-encoded
+as S+L is a second encoding of one signature; the pinned backend
+refuses it and microReticulum's verifier reduces S instead of
+range-checking it, so it reports the announce as valid where the
+reference drops it.
+
+This is the same split python-rns has between its two backends, which
+is why the backend is part of the pin. See doc/identity, section
+Canonical signatures.
+
+
+Finding 18: rns.js names the wrong rejection for a short header
+
+Affects rns.js. Vector test/announce/short-header.
+
+Eighteen bytes is one short of a header 1 header, and nothing about the
+packet can be read, not even the context byte. rns.js reports
+short-payload with a payload length of 0 against a minimum of 148: it
+reads a header out of bytes that do not hold one and then measures what
+is left. The rejection names the wrong rule, which is the reason the
+corpus records the numbers behind a rejection rather than a single
+word.

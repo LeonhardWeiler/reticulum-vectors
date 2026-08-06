@@ -64,6 +64,7 @@ defmodule Dump do
     cond do
       c == Context.none() -> "none"
       c == Context.path_response() -> "path_response"
+      c == Context.channel() -> "channel"
       c == Context.keepalive() -> "keepalive"
       c == Context.linkidentify() -> "link_identify"
       c == Context.linkclose() -> "link_close"
@@ -280,8 +281,7 @@ defmodule Dump do
 
       explicit = byte_size(payload) == 96
       signature = if explicit, do: binary_part(payload, 32, 64), else: payload
-      signer_ed = binary_part(signer_public, 32, 32)
-      {:ok, signer} = Identity.from_public_key(signer_public)
+      on_link = byte_size(signer_public) == 32
 
       header(p, raw)
       f("form", if(explicit, do: "explicit", else: "implicit"))
@@ -294,16 +294,37 @@ defmodule Dump do
           else: "no"
         ))
 
-      f("proof_destination", hx(binary_part(packet_hash, 0, 16)))
+      # On a link the proof is addressed to the link id and verified
+      # under a single Ed25519 public. sgiath/reticulum verifies no
+      # proof anywhere, so the key goes to the same :crypto verifier
+      # Identity.validate calls.
+      if on_link do
+        {:ok, proved} = decode(proved_raw)
+        link_id = List.last(proved.addresses)
+        f("link_id", hx(link_id))
+        f("link_id_match", if(List.last(p.addresses) == link_id, do: "yes", else: "no"))
+        f("signature", hx(signature))
+        f("signer_ed25519", hx(signer_public))
 
-      f("destination_match",
-        if(List.last(p.addresses) == binary_part(packet_hash, 0, 16), do: "yes", else: "no"))
+        f("signature_valid",
+          if(:crypto.verify(:eddsa, :none, packet_hash, signature, [signer_public, :ed25519]),
+            do: "yes",
+            else: "no"
+          ))
+      else
+        signer_ed = binary_part(signer_public, 32, 32)
+        {:ok, signer} = Identity.from_public_key(signer_public)
+        f("proof_destination", hx(binary_part(packet_hash, 0, 16)))
 
-      f("signature", hx(signature))
-      f("signer_ed25519", hx(signer_ed))
+        f("destination_match",
+          if(List.last(p.addresses) == binary_part(packet_hash, 0, 16), do: "yes", else: "no"))
 
-      f("signature_valid",
-        if(Identity.validate(signer, packet_hash, signature), do: "yes", else: "no"))
+        f("signature", hx(signature))
+        f("signer_ed25519", hx(signer_ed))
+
+        f("signature_valid",
+          if(Identity.validate(signer, packet_hash, signature), do: "yes", else: "no"))
+      end
     else
       _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
     end
@@ -427,6 +448,16 @@ defmodule Dump do
           pt ->
             f("plaintext_length", Integer.to_string(byte_size(pt)))
             f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+
+            # sgiath/reticulum defines the channel context byte and has
+            # no envelope code behind it. Printed absent, which fails
+            # the vector. See ../README.
+            if context == Reticulum.Packet.Context.channel() and byte_size(pt) >= 6 do
+              f("msgtype", "-")
+              f("sequence", "-")
+              f("declared_length", "-")
+              f("message", "-")
+            end
 
             if context == Reticulum.Packet.Context.linkidentify() and byte_size(pt) == 128 do
               pub = binary_part(pt, 0, 64)

@@ -6,7 +6,7 @@
 
 import fs from "fs";
 // Imported by file path: the harness lives outside rns.js's package.
-import { x25519 } from "../src/rns.js/node_modules/@noble/curves/esm/ed25519.js";
+import { x25519, ed25519 } from "../src/rns.js/node_modules/@noble/curves/esm/ed25519.js";
 import Fernet from "../src/rns.js/src/fernet.js";
 import Identity from "../src/rns.js/src/identity.js";
 import Destination from "../src/rns.js/src/destination.js";
@@ -264,17 +264,29 @@ function proof(blobs) {
     const explicit = payload.length === 32 + Identity.SIGLENGTH_IN_BYTES;
     const packetHash = proved.getHash();
     const signature = explicit ? payload.slice(32) : payload;
-    const id = Identity.fromPublicKey(signerPublic);
+
+    // On a link the proof is addressed to the link id and verified
+    // under a single Ed25519 public rather than the halves of an
+    // identity. rns.js has no link proof path of its own; the key is
+    // handed to its own verifier, which is what it would use.
+    const onLink = p.destinationType === Destination.LINK;
+    const signer = onLink ? signerPublic
+                          : Identity.fromPublicKey(signerPublic).signaturePublicKeyBytes;
 
     f("form", explicit ? "explicit" : "implicit");
     f("packet_hash", hex(packetHash));
     f("proof_hash", explicit ? hex(payload.slice(0, 32)) : "-");
     f("hash_match", !explicit || payload.slice(0, 32).equals(packetHash) ? "yes" : "no");
-    f("proof_destination", hex(packetHash.slice(0, 16)));
-    f("destination_match", p.destinationHash.equals(packetHash.slice(0, 16)) ? "yes" : "no");
+    if (onLink) {
+        f("link_id", hex(proved.destinationHash));
+        f("link_id_match", p.destinationHash.equals(proved.destinationHash) ? "yes" : "no");
+    } else {
+        f("proof_destination", hex(packetHash.slice(0, 16)));
+        f("destination_match", p.destinationHash.equals(packetHash.slice(0, 16)) ? "yes" : "no");
+    }
     f("signature", hex(signature));
-    f("signer_ed25519", hex(id.signaturePublicKeyBytes));
-    f("signature_valid", id.validate(signature, packetHash) ? "yes" : "no");
+    f("signer_ed25519", hex(signer));
+    f("signature_valid", ed25519.verify(signature, packetHash, signer) ? "yes" : "no");
 }
 
 function linkOf(packet) {
@@ -418,6 +430,17 @@ function linkdata(blobs) {
     f("hmac_valid", hmacOk ? "yes" : "no");
     f("plaintext_length", plaintext === null ? "-" : String(plaintext.length));
     f("plaintext", plaintext === null || plaintext.length === 0 ? "-" : hex(plaintext));
+
+    // rns.js has no channel envelope code of any kind: it defines the
+    // context byte and nothing reads the six bytes behind it. The
+    // fields are printed as absent, which fails the vector, and that
+    // is the honest answer. See ../README.
+    if (p.context === 0x0e && plaintext !== null && plaintext.length >= 6) {
+        f("msgtype", "-");
+        f("sequence", "-");
+        f("declared_length", "-");
+        f("message", "-");
+    }
 
     if (p.context === 0xfb && plaintext !== null
         && plaintext.length === Identity.KEYSIZE_IN_BYTES + Identity.SIGLENGTH_IN_BYTES) {

@@ -388,6 +388,7 @@ fn context_name(c: u8) -> String {
     match PacketContext::from_byte(c) {
         PacketContext::None => "none".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
+        PacketContext::Channel => "channel".to_string(),
         PacketContext::Keepalive => "keepalive".to_string(),
         PacketContext::LinkIdentify => "link_identify".to_string(),
         PacketContext::LinkClose => "link_close".to_string(),
@@ -432,17 +433,37 @@ fn proof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let payload = p.data();
     let explicit = payload.len() == 96;
     let signature = if explicit { &payload[32..] } else { &payload[..] };
-    let signer_ed = &signer_public[32..];
-
-    let id = Identity::from_public_key(signer_public).unwrap();
     let mut sig = [0u8; 64];
-    sig.copy_from_slice(signature);
+    if signature.len() == 64 { sig.copy_from_slice(signature); }
 
     f(out, "form", if explicit { "explicit" } else { "implicit" });
     f(out, "packet_hash", &hexs(&packet_hash));
     f(out, "proof_hash", &(if explicit { hexs(&payload[..32]) } else { "-".to_string() }));
     f(out, "hash_match",
       if !explicit || payload[..32] == packet_hash[..] { "yes" } else { "no" });
+
+    // On a link the proof is addressed to the link id and verified
+    // under a single Ed25519 public rather than the halves of an
+    // identity. rsReticulum reaches that path through a Link whose
+    // peer key is set during establishment, so the key goes to the
+    // same Ed25519PublicKey::verify that Link uses.
+    if p.header.flags.destination_type == DestinationType::Link {
+        let proved_hdr = &proved.header.destination_hash;
+        f(out, "link_id", &hexs(proved_hdr));
+        f(out, "link_id_match",
+          if p.header.destination_hash == *proved_hdr { "yes" } else { "no" });
+        f(out, "signature", &hexs(signature));
+        f(out, "signer_ed25519", &hexs(signer_public));
+        let mut ed = [0u8; 32];
+        ed.copy_from_slice(&signer_public[..32]);
+        let key = rns_crypto::ed25519::Ed25519PublicKey::from_bytes(&ed).unwrap();
+        f(out, "signature_valid",
+          if key.verify(&packet_hash, &sig).is_ok() { "yes" } else { "no" });
+        return;
+    }
+
+    let signer_ed = &signer_public[32..];
+    let id = Identity::from_public_key(signer_public).unwrap();
     f(out, "proof_destination", &hexs(&packet_hash[..16]));
     f(out, "destination_match",
       if p.header.destination_hash == packet_hash[..16] { "yes" } else { "no" });
@@ -627,6 +648,31 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
             pt
         }
     };
+
+    // The channel envelope, through rsReticulum's own Envelope::unpack
+    // (crates/rns-protocol/src/channel.rs:85). It reads the message
+    // type and the sequence and discards the declared length, exactly
+    // as the reference does, so there is nothing to call for that field
+    // and it is printed absent.
+    if p.header.context.to_byte() == 0x0e && pt.len() >= 6 {
+        use rns_protocol::channel::Envelope;
+        match Envelope::unpack(&pt) {
+            Ok(e) => {
+                f(out, "msgtype", &hexs(&e.msg_type.to_be_bytes()));
+                f(out, "sequence", &format!("{}", e.sequence));
+                f(out, "declared_length", "-");
+                let payload = e.payload();
+                if payload.is_empty() { f(out, "message", "-"); }
+                else { f(out, "message", &hexs(payload)); }
+            }
+            Err(_) => {
+                f(out, "msgtype", "-");
+                f(out, "sequence", "-");
+                f(out, "declared_length", "-");
+                f(out, "message", "-");
+            }
+        }
+    }
 
     if p.header.context.to_byte() == 0xfb && pt.len() == 128 {
         let pub_key = &pt[..64];
