@@ -267,6 +267,13 @@ def stub_transport(RNS, tmpdir):
     # A receiving resource writes segments under this path before it
     # reassembles them. RNS/Reticulum.py:248#resourcepath.
     RNS.Reticulum.resourcepath = tmpdir
+    # Proving a resource sends a packet, and Transport caches every
+    # packet it sends under this path. Without an instance it is the
+    # empty string, os.path.join leaves the name relative, and the file
+    # lands in whatever directory gen was run from: two packet hashes
+    # in the repository root after every run.
+    # RNS/Reticulum.py:169#cachepath, RNS/Transport.py:2653#cachepath.
+    RNS.Reticulum.cachepath = tmpdir
     # The constructor sets this and nothing else does, so without an
     # instance the attribute does not exist at all and every reader of
     # it raises. RNS/Reticulum.py:254#__transport_enabled.
