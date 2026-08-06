@@ -740,10 +740,7 @@ static void print_announce(const struct header *h, const struct announce *a)
 	else
 		field("ratchet", "-");
 	field_hex("signature", a->signature, SIGLEN);
-	if (a->app_data_len > 0)
-		field_hex("app_data", a->app_data, a->app_data_len);
-	else
-		field("app_data", "-");
+	field_hex("app_data", a->app_data, a->app_data_len);
 	field_hex("identity_hash", identity_hash, ADDRLEN);
 	field_hex("expected_hash", expected_hash, ADDRLEN);
 	field("destination_match", "%s",
@@ -832,10 +829,7 @@ static void print_plaintext(const struct token *t)
 		return;
 	}
 	field("plaintext_length", "%zu", t->ptlen);
-	if (t->ptlen > 0)
-		field_hex("plaintext", t->plain, t->ptlen);
-	else
-		field("plaintext", "-");
+	field_hex("plaintext", t->plain, t->ptlen);
 }
 
 static void dump_encrypted(struct blob *b, int nblobs)
@@ -1486,10 +1480,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	if (h.context == 0xfa) {
 		field("encrypted", "no");
 		field("plaintext_length", "%zu", h.payload_len);
-		if (h.payload_len > 0)
-			field_hex("plaintext", h.payload, h.payload_len);
-		else
-			field("plaintext", "-");
+		field_hex("plaintext", h.payload, h.payload_len);
 		return;
 	}
 
