@@ -101,16 +101,19 @@ skips a check rather than causing one. A decode-class vector whose
 expect rebuilds raw is now a failure.
 
 Only two things put a vector in the decode class: expect records a
-field by digest rather than by content, or the object broke a rule
-before its header was read and so has no fields at all. Ten vectors are
-of that class.
+field by digest rather than by content, or the object broke a rule and
+the bytes it broke it on are therefore not printed.
 
-A broken rule is not by itself the second case. Where the rule broken
-is inside a plaintext, the packet around it decoded whole and expect
-holds every byte of raw, so the vector is encode class and rebuilds;
-test/linkdata holds four of those. What tells the two apart is whether
-flags was printed, and gen derives the class that way rather than from
-the presence of the word invalid.
+A broken rule is not by itself the second case. short-plaintext is
+broken inside a plaintext the packet around it decoded whole, so expect
+holds every byte of raw and the vector rebuilds; test/linkdata holds
+four of those. gen derives the class from which rule was broken, and
+that is the rule itself rather than a proxy for it. It read "whether
+flags was printed" until test/linkdata/short-payload, which prints the
+header before it looks at the token, because the context byte decides
+whether there is a token at all. A proxy that agrees with the rule on
+every vector on file is a proxy that has not met the vector that
+separates them yet.
 
 The corpus proves the read direction with expect and the write
 direction with the round trip. An implementation that decodes every

@@ -1,0 +1,3 @@
+source             constructed by tools/gen from announce/minimal
+determinism        decode
+purpose            one byte, too short to say which of the two header lengths applies

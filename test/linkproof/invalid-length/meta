@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkproof/signalling-removed
+determinism        decode
+purpose            95-byte payload, neither of the two accepted lengths

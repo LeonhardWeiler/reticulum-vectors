@@ -1,0 +1,3 @@
+source             constructed by tools/gen from encrypted/minimal
+determinism        decode
+purpose            79-byte payload, one short of an ephemeral key and an empty token

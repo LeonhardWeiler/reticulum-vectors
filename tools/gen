@@ -426,16 +426,24 @@ def determinism(kind, expect):
     directions, which is what makes a rule of thumb safe to use here.
 
     A broken rule is not by itself the decode class. What decides is
-    whether the packet was read at all, and a packet that was read
-    printed its flags first. Where the rule broken is inside a
-    plaintext, the packet around it decoded whole and every byte of raw
-    is in expect: those vectors rebuild.
+    which rule: short-plaintext is the one that stops after the packet
+    decoded whole, so the token is printed, every byte of raw is in
+    expect, and the vector rebuilds. Every other rejection stopped at
+    bytes it then did not print.
+
+    This was written as "the packet printed its flags first", which is
+    the same answer for every rejection that happens before the header
+    is printed and the wrong one for the rejection that does not.
+    linkdata prints the header before it looks at the token, because the
+    context byte decides whether there is a token at all, so a link data
+    packet with a payload too short for one has flags in expect and its
+    payload nowhere.
     """
     if kind not in ENCODABLE:
         return "decode"
-    if any(l.startswith("invalid") for l in expect) and \
-       not any(l.startswith("flags ") for l in expect):
-        return "decode"
+    for l in expect:
+        if l.startswith("invalid "):
+            return "encode" if l.split()[1] == "short-plaintext" else "decode"
     return "encode"
 
 
@@ -1179,6 +1187,15 @@ def gen_announce(RNS, w, tmpdir, verify):
          "18 bytes, one short of a header 1 header",
          "constructed by tools/gen from announce/minimal"),
 
+        # The other threshold, and the only one that is not a header
+        # length: how long a header has to be does not follow from the
+        # bytes until the header type is read, and the header type is in
+        # the first of them. A decoder that reaches for byte 0 alone and
+        # then for the length is right about this packet by accident.
+        ("no-header", base[:1],
+         "one byte, too short to say which of the two header lengths applies",
+         "constructed by tools/gen from announce/minimal"),
+
         ("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],
          "hop count at the limit, which the reference implementation rejects",
          "constructed by tools/gen from announce/minimal"),
@@ -1789,6 +1806,18 @@ def gen_linkproof(RNS, w, verify, session):
         describe_linkproof(request_raw, public, altered, verify),
         source="constructed by tools/gen from linkproof/signalling")
 
+    # Neither accepted length. linkproof and linkrequest each have two,
+    # and they are not the same two: a proof carries a signature where a
+    # request carries an Ed25519 key. A decoder that checks the request
+    # and takes the proof on trust passes linkrequest/invalid-length and
+    # opens a link on 95 bytes of nothing.
+    short = removed[:-1]
+    w.vector("linkproof", "invalid-length",
+        "95-byte payload, neither of the two accepted lengths",
+        blobs + [short.hex()],
+        describe_linkproof(request_raw, public, short, verify),
+        source="constructed by tools/gen from linkproof/signalling-removed")
+
 
 def describe_linkdata(request_raw, responder_private, raw, verify):
     """Unlike a packet to a destination, this one carries no ephemeral
@@ -1972,6 +2001,18 @@ def gen_linkdata(RNS, w, verify, session):
         "last byte of the token hmac altered; nothing is decrypted",
         [request_raw.hex(), responder_private.hex(), altered.hex()],
         describe_linkdata(request_raw, responder_private, altered, verify),
+        source="constructed by tools/gen from linkdata/minimal")
+
+    # The one rejection in the corpus that happens after the header was
+    # printed. A link data packet is not known to carry a token until
+    # the context byte is read, so the header is printed first and the
+    # length rule applies to what is left. That makes it the vector the
+    # class derivation in determinism() is written against; see there.
+    short = base[:HEADER1LEN + TOKEN_OVERHEAD - 1]
+    w.vector("linkdata", "short-payload",
+        "47-byte payload, one short of an empty token, in a context that says there is one",
+        [request_raw.hex(), responder_private.hex(), short.hex()],
+        describe_linkdata(request_raw, responder_private, short, verify),
         source="constructed by tools/gen from linkdata/minimal")
 
     gen_request(RNS, w, verify, session, link, request_raw, responder_private)
@@ -2436,6 +2477,16 @@ def gen_group(RNS, w):
         describe_group(altered, group_key),
         source="constructed by tools/gen from group/minimal")
 
+    # One byte short of an iv and an hmac with nothing between them. A
+    # group packet carries no ephemeral key, so its threshold is the
+    # token overhead alone and not the one test/encrypted applies.
+    short = packet.raw[:HEADER1LEN + TOKEN_OVERHEAD - 1]
+    w.vector("group", "short-payload",
+        "47-byte payload, one short of an empty token",
+        [group_key.hex(), short.hex()],
+        describe_group(short, group_key),
+        source="constructed by tools/gen from group/minimal")
+
     # PKCS7.pad writes 1..16, so the reference cannot be asked for a
     # token with a padding length of zero, and PKCS7.unpad accepts one:
     # it applies the upper bound and nothing else, and removes nothing.
@@ -2688,6 +2739,17 @@ def gen_resource(RNS, w, verify):
         [resource.hash.hex(), proof.raw.hex()],
         describe_resourceproof(resource.hash, proof.raw))
 
+    # A resource proof has one accepted length where a delivery proof
+    # has two, and the two kinds are the same packet type at a different
+    # context byte. A decoder that reads 63 bytes here as an implicit
+    # delivery proof has taken a hash for a signature.
+    short = proof.raw[:-1]
+    w.vector("resourceproof", "invalid-length",
+        "63-byte payload, one short of the resource hash and its proof",
+        [resource.hash.hex(), short.hex()],
+        describe_resourceproof(resource.hash, short),
+        source="constructed by tools/gen from resourceproof/complete")
+
 
 def private_to_public(private):
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -2759,6 +2821,17 @@ def gen_encrypted(RNS, w):
         "ephemeral key replaced with a point of small order; no shared secret exists",
         [private.hex(), "-", low_order.hex()],
         describe_encrypted(low_order, private, None),
+        source="constructed by tools/gen from encrypted/minimal")
+
+    # One byte short of an ephemeral key and an empty token. This is the
+    # first rule the kind applies to its own payload, and the threshold
+    # is its own: an encrypted packet carries a key the other two token
+    # kinds do not.
+    short = raw[:HEADER1LEN + KEYHALF + TOKEN_OVERHEAD - 1]
+    w.vector("encrypted", "short-payload",
+        "79-byte payload, one short of an ephemeral key and an empty token",
+        [private.hex(), "-", short.hex()],
+        describe_encrypted(short, private, None),
         source="constructed by tools/gen from encrypted/minimal")
 
 

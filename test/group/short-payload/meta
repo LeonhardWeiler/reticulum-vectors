@@ -1,0 +1,3 @@
+source             constructed by tools/gen from group/minimal
+determinism        decode
+purpose            47-byte payload, one short of an empty token

@@ -378,12 +378,15 @@ raw is one line:
 
 A packet that does decode is encode class: expect names every field the
 header and the payload hold, in order, and cmd/check lays them back out
-and diffs the result against raw. test/announce/hop-limit,
-test/announce/short-header and test/announce/short-payload are decode
-class, because a packet that broke a rule has no fields to lay out.
+and diffs the result against raw. A packet that broke a rule has no
+fields to lay out and is decode class.
 
 A packet that cannot be decoded produces the rule it broke and the
-numbers behind it, and nothing else. Each of the three has a vector:
+numbers behind it, and nothing else. Each rule has a vector:
+
+    invalid            short-header       test/announce/no-header
+    length             1
+    minimum_length     2
 
     invalid            short-header       test/announce/short-header
     length             18
@@ -396,6 +399,11 @@ numbers behind it, and nothing else. Each of the three has a vector:
     invalid            short-payload      test/announce/short-payload
     payload_length     147
     minimum_length     148
+
+short-header has two thresholds and both are on file. The second is the
+length of a header, which follows from the header type; the first is
+the two bytes it takes to read the header type at all, and it is the
+only threshold in the format that is not a length of something.
 
 Naming the rule rather than the stage keeps two decoders from agreeing
 by accident when they fail for different reasons. See doc/fields for

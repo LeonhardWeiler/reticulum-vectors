@@ -5,6 +5,7 @@ announce/hop-limit
 announce/hop-limit-below
 announce/in-transport
 announce/minimal
+announce/no-header
 announce/non-canonical-s
 announce/path-response
 announce/ratchet
@@ -25,8 +26,10 @@ encrypted/empty
 encrypted/low-order-ephemeral
 encrypted/minimal
 encrypted/ratchet
+encrypted/short-payload
 group/altered-hmac
 group/minimal
+group/short-payload
 group/zero-padding
 identity/upstream-0
 identity/upstream-1
@@ -66,7 +69,9 @@ linkdata/resource-request-exhausted-short
 linkdata/resource-request-short
 linkdata/response
 linkdata/rtt
+linkdata/short-payload
 linkproof/altered-signature
+linkproof/invalid-length
 linkproof/signalling
 linkproof/signalling-removed
 linkrequest/in-transport
@@ -90,6 +95,7 @@ proof/link-initiator
 proof/link-responder
 proof/proved-in-transport
 resourceproof/complete
+resourceproof/invalid-length
 sign/upstream
 signature/altered
 signature/non-canonical-s

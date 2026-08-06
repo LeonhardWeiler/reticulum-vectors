@@ -201,6 +201,13 @@ A receiver that has the whole resource can compute it. So can anyone
 else who has the data, which is what it is for: it says the transfer
 arrived, not who sent it.
 
+Sixty-four bytes is the only length that decodes. Any other is rejected
+as invalid-length, with the one accepted length beside it, and
+test/resourceproof/invalid-length is one byte under. A delivery proof
+has two accepted lengths where this has one, and 64 is one of them: a
+decoder that reads the context byte and then hands the packet to its
+delivery proof path takes a hash of the data for a signature.
+
 
 Cancels, 0x06 and 0x07
 

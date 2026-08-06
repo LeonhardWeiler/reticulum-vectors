@@ -139,7 +139,11 @@ no identity. Only the X25519 half of the responder's link keypair is
 sent, because that is all the initiator needs for the key agreement.
 
 Two payload lengths decode, 96 and 99. The reference emits only the
-99-byte form: prove always signals.
+99-byte form: prove always signals. Any other length is rejected as
+invalid-length with both accepted lengths beside it;
+test/linkproof/invalid-length is one byte short of the shorter. They
+are not the two a link request accepts, which are 64 and 67: a proof
+carries a signature where a request carries an Ed25519 key.
 
     RNS/Link.py:366#prove, RNS/Link.py:399#LINK_MTU_SIZE
 
@@ -212,7 +216,15 @@ Destination type link, address field the link id.
 
 There is no ephemeral public key. Both ends already hold the shared
 secret, so the payload is a bare token, 48 bytes of overhead rather
-than 80.
+than 80. A payload shorter than that is not a token and is rejected as
+short-payload; test/linkdata/short-payload is one byte short of it.
+
+That rejection is the only one in the corpus that happens after the
+header was printed. Whether a link data packet carries a token at all
+is decided by the context byte, which is in the header, so the header
+is read and printed first and the length rule applies to what is left.
+The vector is decode class all the same: the payload it stopped at is
+not in expect.
 
 The context byte says what the plaintext holds. One context is not
 encrypted at all:

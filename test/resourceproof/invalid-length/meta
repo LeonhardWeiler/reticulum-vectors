@@ -1,0 +1,3 @@
+source             constructed by tools/gen from resourceproof/complete
+determinism        decode
+purpose            63-byte payload, one short of the resource hash and its proof

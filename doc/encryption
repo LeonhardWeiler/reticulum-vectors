@@ -31,6 +31,20 @@ block aligned, and adds a whole block to an empty one.
 
     RNS/Identity.py:803#encrypt
 
+A shorter payload is rejected as short-payload with 80 beside it;
+test/encrypted/short-payload is one byte under. A group packet carries
+no ephemeral key, so its threshold is the token overhead alone;
+test/group/short-payload is one byte under that.
+
+This is a rule of the layout above and not a check the reference makes
+at that length. Identity.decrypt refuses a payload of 32 bytes or fewer
+and tries anything longer, and a token that is not one fails its hmac,
+so the reference drops such a packet without naming a length. The
+corpus names the rule because a rejection that names nothing cannot be
+told from a different rejection.
+
+    RNS/Identity.py:858#KEYSIZE, RNS/Cryptography/Token.py:78#Cannot
+
 
 Key agreement
 
