@@ -726,6 +726,43 @@ def describe_proof(proved_raw, signer_public, raw, verify):
     ]
 
 
+def ifac_key(RNS, netname, netkey):
+    """The interface identity, composed here rather than called.
+
+    RNS/Reticulum.py:958-971 derives it inline in the constructor of a
+    running instance and exposes no function to call. Every step is an
+    RNS function called with RNS constants, but the order is this
+    program's, and the order is exactly what a foreign implementation
+    can get wrong: origin is a concatenation of two hashes, and neither
+    half is present when that half is not configured.
+
+    That is why netname and netkey are lines of raw and the key is a
+    field: cmd/dump derives it again, from the same two strings and
+    without sharing a line of code, and cmd/check diffs the results.
+    """
+    origin = b""
+    if netname is not None:
+        origin += RNS.Identity.full_hash(netname)
+    if netkey is not None:
+        origin += RNS.Identity.full_hash(netkey)
+
+    return origin, RNS.Cryptography.hkdf(length=64,
+                                         derive_from=RNS.Identity.full_hash(origin),
+                                         salt=RNS.Reticulum.IFAC_SALT, context=None)
+
+
+IFACS = [
+    ("announce", b"reticulum-vectors", None, 16,
+     "a named network, no passphrase; origin is one hash"),
+    ("passphrase", b"reticulum-vectors", b"open sesame", 16,
+     "network and passphrase; origin is the two hashes, name first"),
+    ("passphrase-only", None, b"open sesame", 16,
+     "a passphrase and no network; origin is one hash, and not the same one"),
+    ("minimum-size", b"reticulum-vectors", None, 1,
+     "a one-byte access code, IFAC_MIN_SIZE; the size is not on the wire"),
+]
+
+
 def gen_ifac(RNS, w, announce_raw_bytes):
     """The one transformation of the header that happens below Packet.
 
@@ -734,62 +771,52 @@ def gen_ifac(RNS, w, announce_raw_bytes):
     named network or a passphrase does not look like a packet at all
     until it is unmasked.
 
-    The interface identity is composed here rather than called, because
-    RNS/Reticulum.py:958-971 does it inline in the constructor of a
-    running instance. Every step of it is an RNS function called with
-    RNS constants, but the order is this program's. It is the only
-    value in any raw that gen assembles rather than captures, and
-    doc/packet says so where a consumer will read it.
-
-    The masking itself is not composed: the frame is what
-    RNS/Transport.py:1069 produced, through Transport.transmit.
+    The masking is not composed: the frame is what RNS/Transport.py:1069
+    produced, through Transport.transmit.
     """
-    ifac_netname = "reticulum-vectors"
-    ifac_size    = 16
+    for name, netname, netkey, size, purpose in IFACS:
+        origin, key = ifac_key(RNS, netname, netkey)
+        identity    = RNS.Identity.from_bytes(key)
 
-    # RNS/Reticulum.py:958-969, with no netkey configured.
-    origin      = RNS.Identity.full_hash(ifac_netname.encode("utf-8"))
-    origin_hash = RNS.Identity.full_hash(origin)
-    ifac_key    = RNS.Cryptography.hkdf(length=64, derive_from=origin_hash,
-                                        salt=RNS.Reticulum.IFAC_SALT, context=None)
-    ifac_identity = RNS.Identity.from_bytes(ifac_key)
+        class Interface:
+            pass
 
-    class Interface:
-        pass
+        iface = Interface()
+        iface.ifac_identity = identity
+        iface.ifac_size     = size
+        iface.ifac_key      = key
 
-    iface = Interface()
-    iface.ifac_identity = ifac_identity
-    iface.ifac_size     = ifac_size
-    iface.ifac_key      = ifac_key
+        frames = []
+        iface.process_outgoing = frames.append
 
-    frames = []
-    iface.process_outgoing = frames.append
+        # transmit logs and swallows exceptions, so the capture is the
+        # only evidence that it ran.
+        RNS.Transport.transmit(iface, announce_raw_bytes)
+        assert len(frames) == 1, "Transport.transmit produced no frame"
+        masked = frames[0]
 
-    # transmit logs and swallows exceptions, so the capture is the only
-    # evidence that it ran.
-    RNS.Transport.transmit(iface, announce_raw_bytes)
-    assert len(frames) == 1, "Transport.transmit produced no frame"
-    masked = frames[0]
+        assert masked[0] & 0x80 == 0x80
+        assert len(masked) == len(announce_raw_bytes) + size
 
-    assert masked[0] & 0x80 == 0x80
-    assert len(masked) == len(announce_raw_bytes) + ifac_size
+        ifac = masked[2:2+size]
+        expected_ifac = identity.sign(announce_raw_bytes)[-size:]
+        assert ifac == expected_ifac
 
-    ifac = masked[2:2+ifac_size]
-    expected_ifac = ifac_identity.sign(announce_raw_bytes)[-ifac_size:]
-    assert ifac == expected_ifac
-
-    w.vector("ifac", "announce",
-        "announce/minimal on an interface with a named network",
-        [ifac_key.hex(), "%02x" % ifac_size, masked.hex()],
-        [
-            field("ifac_key",      ifac_key.hex()),
-            field("ifac_size",     "%d" % ifac_size),
-            field("frame_length",  "%d" % len(masked)),
-            field("ifac",          ifac.hex()),
-            field("packet",        announce_raw_bytes.hex()),
-            field("expected_ifac", expected_ifac.hex()),
-            field("ifac_valid",    "yes"),
-        ])
+        w.vector("ifac", name, purpose,
+            [hexf(netname or b""), hexf(netkey or b""),
+             "%02x" % size, masked.hex()],
+            [
+                field("netname",       hexf(netname or b"")),
+                field("netkey",        hexf(netkey or b"")),
+                field("ifac_origin",   origin.hex()),
+                field("ifac_key",      key.hex()),
+                field("ifac_size",     "%d" % size),
+                field("frame_length",  "%d" % len(masked)),
+                field("ifac",          ifac.hex()),
+                field("packet",        announce_raw_bytes.hex()),
+                field("expected_ifac", expected_ifac.hex()),
+                field("ifac_valid",    "yes"),
+            ])
 
 
 DEST_TYPES   = ["single", "group", "plain", "link"]

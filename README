@@ -27,11 +27,11 @@ tools/gen refuses to run under the other one. See doc/identity, section
 "Canonical signatures", and doc/encryption, section "Contributory
 behaviour".
 
-raw is what the reference produced. Where a value in raw was instead
-composed by tools/gen out of the reference's own functions, because the
-reference derives it inline and exposes nothing to call, doc/ says so
-at that vector. There is one such value: the interface key of
-test/ifac, see doc/packet.
+raw is what the reference produced, or configuration a human would have
+typed. No line of it is a value tools/gen composed out of the
+reference's own functions: the one that was, the interface key of
+test/ifac, is now derived in expect from the two strings it comes from,
+so cmd/dump derives it too and the two are diffed. See doc/packet.
 
 expect is a different matter. It is tools/gen's own reading of raw, and
 cmd/dump reads raw again without sharing a line of code with it. Two
@@ -41,13 +41,14 @@ be.
 
 Every private key here is public
 
-Twenty-one vectors carry a private key: all of test/keyset/ and
+Twenty-four vectors carry a private key: all of test/keyset/ and
 test/sign/, the recipient key in test/encrypted/, the responder's link
-key in test/linkdata/, and the interface key in test/ifac/. Six of them
-are lifted from the upstream test suite and the rest are generated from
-a fixed seed or derived from a published passphrase. They are published, in
-this repository, on purpose, because a decryption vector cannot be
-checked without one.
+key in test/linkdata/, and the interface key in test/ifac/, which is
+derived rather than given and no less public for it. Six of them are
+lifted from the upstream test suite and the rest are generated from a
+fixed seed or derived from a published network name and passphrase.
+They are published, in this repository, on purpose, because a
+decryption vector cannot be checked without one.
 
 Never load one into anything that talks to a network. An identity built
 from a key in this corpus can be impersonated by anyone who has read
@@ -154,7 +155,7 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Fifty-nine of the sixty-nine are of
+the result against raw. Sixty-two of the seventy-two are of
 that class. The ten that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message

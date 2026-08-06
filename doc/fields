@@ -33,7 +33,7 @@ would still compare equal, so both cmd/dump and tools/gen refuse one.
 
 Echoed inputs
 
-raw carries more than the object for six kinds, because the object
+raw carries more than the object for seven kinds, because the object
 cannot be read without it. expect echoes those lines so that it holds
 every byte of raw and the encode direction has something to rebuild
 from. Each is the line of raw named in the kind's own document.
@@ -45,7 +45,8 @@ from. Each is the line of raw named in the kind's own document.
     signer_public      hex      linkproof, proof: the signer's 64-byte public key
     proved_packet      hex      proof: the packet being proved
     private_key        hex      keyset, sign: the 64-byte identity private key
-    ifac_key           hex      ifac: the 64-byte interface key
+    netname            hex, -   ifac: the network name the key comes from
+    netkey             hex, -   ifac: the passphrase it comes from
 
 
 Header
@@ -227,12 +228,21 @@ Interface access code
 
 See doc/packet, section Interface access codes.
 
+    netname            hex, -   the network name, utf-8 bytes
+    netkey             hex, -   the passphrase, utf-8 bytes
+    ifac_origin        hex      32 or 64 bytes, the two hashes
+    ifac_key           hex      64 bytes, derived from ifac_origin
     ifac_size          decimal  bytes of access code; configuration
     frame_length       decimal  bytes of the whole frame
     ifac               hex      the access code the frame carries
     packet             hex      the packet recovered from the frame
     expected_ifac      hex      the code that packet should have produced
     ifac_valid         keyword  yes, no
+
+netname and netkey are "-" when that half is not configured, and each
+absent half is one that contributes nothing to ifac_origin. Neither can
+be both configured and empty here: a configuration that sets neither
+has no access code at all.
 
 
 Signature and sign

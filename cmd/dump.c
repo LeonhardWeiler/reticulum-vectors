@@ -24,7 +24,7 @@
 /* Each bound is the largest thing the format can hold, not one number
  * applied everywhere. A packet is bounded by the 500-byte MTU; the
  * largest input in the corpus is the 950-byte message of the adopted
- * signature vector. No vector carries more than three blobs or more
+ * signature vector. No vector carries more than four blobs or more
  * than 29 fields. */
 #define MAXBLOB   2048
 #define MAXBLOBS  4
@@ -1303,6 +1303,44 @@ static void dump_proof(struct blob *b, int nblobs)
 	      ed25519_verify(signer, signature, packet_hash, sizeof packet_hash) ? "yes" : "no");
 }
 
+/* RNS/Reticulum.py:150. */
+static const uint8_t ifac_salt[32] = {
+	0xad,0xf5,0x4d,0x88,0x2c,0x9a,0x9b,0x80,
+	0x77,0x1e,0xb4,0x99,0x5d,0x70,0x2d,0x4a,
+	0x3e,0x73,0x33,0x91,0xb2,0xa0,0xf5,0x3f,
+	0x41,0x6d,0x9f,0x90,0x7e,0x55,0xcf,0xf8,
+};
+
+/* origin is the two hashes concatenated, name first, with either half
+ * omitted when that half is not configured. Both ends of an interface
+ * derive the key from strings a human typed, so nothing on the wire
+ * says which of the four shapes was used.
+ * RNS/Reticulum.py:958. */
+static size_t ifac_origin(const struct blob *netname, const struct blob *netkey,
+                          uint8_t *out)
+{
+	size_t n = 0;
+
+	if (!netname->absent) {
+		sha256(netname->data, netname->len, out);
+		n += 32;
+	}
+	if (!netkey->absent) {
+		sha256(netkey->data, netkey->len, out + n);
+		n += 32;
+	}
+	return n;
+}
+
+static void ifac_key(const uint8_t *origin, size_t originlen, uint8_t key[KEYSIZE])
+{
+	uint8_t hash[32];
+
+	sha256(origin, originlen, hash);
+	hkdf_sha256(hash, sizeof hash, ifac_salt, sizeof ifac_salt, NULL, 0,
+	            key, KEYSIZE);
+}
+
 /* The mask covers the whole frame except the access code itself, which
  * has to be readable before the mask it keys can be generated. Both
  * header bytes are masked; the IFAC flag is put back afterwards.
@@ -1331,37 +1369,43 @@ static void dump_ifac(struct blob *b, int nblobs)
 {
 	static uint8_t unmasked[MAXBLOB], packet[MAXBLOB];
 	const uint8_t *ifac;
-	uint8_t expected[SIGLEN];
-	size_t ifac_size, plen;
+	uint8_t origin[KEYSIZE], key[KEYSIZE], expected[SIGLEN];
+	size_t originlen, ifac_size, plen;
 
-	if (nblobs != 3)
-		fatal("ifac: expected 3 blobs, got %d", nblobs);
-	if (b[0].len != KEYSIZE)
-		fatal("ifac: interface key is %zu bytes, expected %d", b[0].len, KEYSIZE);
-	if (b[1].len != 1)
-		fatal("ifac: access code size is %zu bytes, expected 1", b[1].len);
+	if (nblobs != 4)
+		fatal("ifac: expected 4 blobs, got %d", nblobs);
+	if (b[0].absent && b[1].absent)
+		fatal("ifac: neither a network name nor a passphrase");
+	if (b[2].len != 1)
+		fatal("ifac: access code size is %zu bytes, expected 1", b[2].len);
 
-	ifac_size = b[1].data[0];
+	ifac_size = b[2].data[0];
 	if (ifac_size > SIGLEN)
 		fatal("ifac: access code of %zu bytes exceeds the signature", ifac_size);
-	if (b[2].len <= 2 + ifac_size)
-		fatal("ifac: frame of %zu bytes holds no packet", b[2].len);
+	if (b[3].len <= 2 + ifac_size)
+		fatal("ifac: frame of %zu bytes holds no packet", b[3].len);
 
-	ifac = b[2].data + 2;
-	ifac_mask(ifac, ifac_size, b[0].data, b[2].data, b[2].len, unmasked);
+	originlen = ifac_origin(&b[0], &b[1], origin);
+	ifac_key(origin, originlen, key);
+
+	ifac = b[3].data + 2;
+	ifac_mask(ifac, ifac_size, key, b[3].data, b[3].len, unmasked);
 
 	/* The access code is not part of the packet, and the flag that
 	 * announced it is cleared before the signature is checked. */
-	plen = b[2].len - ifac_size;
+	plen = b[3].len - ifac_size;
 	packet[0] = unmasked[0] & 0x7f;
 	packet[1] = unmasked[1];
 	memcpy(packet + 2, unmasked + 2 + ifac_size, plen - 2);
 
-	ed25519_sign(b[0].data + KEYHALF, packet, plen, expected);
+	ed25519_sign(key + KEYHALF, packet, plen, expected);
 
-	field_hex("ifac_key", b[0].data, KEYSIZE);
+	field_blob("netname", &b[0]);
+	field_blob("netkey", &b[1]);
+	field_hex("ifac_origin", origin, originlen);
+	field_hex("ifac_key", key, KEYSIZE);
 	field("ifac_size", "%zu", ifac_size);
-	field("frame_length", "%zu", b[2].len);
+	field("frame_length", "%zu", b[3].len);
 	field_hex("ifac", ifac, ifac_size);
 	field_hex("packet", packet, plen);
 	field_hex("expected_ifac", expected + SIGLEN - ifac_size, ifac_size);
@@ -1579,21 +1623,34 @@ static void encode_linkproof(struct kv *f, int n)
 /* The one encoder that is not a concatenation. Going out, the flag is
  * set, the access code is inserted after the two header bytes, and the
  * same mask is applied. RNS/Transport.py:1081. */
+static void get_blob(struct kv *f, int n, const char *name, struct blob *b)
+{
+	const char *v = lookup(f, n, name);
+
+	b->len = 0;
+	b->absent = strcmp(v, "-") == 0;
+	if (!b->absent)
+		decode_hex(b, v, strlen(v), name);
+}
+
 static void encode_ifac(struct kv *f, int n)
 {
 	static uint8_t packet[MAXBLOB], frame[MAXBLOB], masked[MAXBLOB];
-	struct blob key, code, pkt;
+	struct blob netname, netkey, code, pkt;
+	uint8_t origin[KEYSIZE], key[KEYSIZE];
 	struct out o = { "", 0 };
-	size_t len;
+	size_t len, originlen;
 
-	decode_hex(&key, lookup(f, n, "ifac_key"), strlen(lookup(f, n, "ifac_key")), "ifac_key");
-	decode_hex(&code, lookup(f, n, "ifac"), strlen(lookup(f, n, "ifac")), "ifac");
-	decode_hex(&pkt, lookup(f, n, "packet"), strlen(lookup(f, n, "packet")), "packet");
+	get_blob(f, n, "netname", &netname);
+	get_blob(f, n, "netkey", &netkey);
+	get_blob(f, n, "ifac", &code);
+	get_blob(f, n, "packet", &pkt);
 
-	if (key.len != KEYSIZE)
-		fatal("ifac: interface key is %zu bytes, expected %d", key.len, KEYSIZE);
 	if (pkt.len < 2)
 		fatal("ifac: packet of %zu bytes has no header", pkt.len);
+
+	originlen = ifac_origin(&netname, &netkey, origin);
+	ifac_key(origin, originlen, key);
 
 	memcpy(packet, pkt.data, pkt.len);
 	len = pkt.len + code.len;
@@ -1603,10 +1660,11 @@ static void encode_ifac(struct kv *f, int n)
 	memcpy(frame + 2, code.data, code.len);
 	memcpy(frame + 2 + code.len, packet + 2, pkt.len - 2);
 
-	ifac_mask(code.data, code.len, key.data, frame, len, masked);
+	ifac_mask(code.data, code.len, key, frame, len, masked);
 	masked[0] |= 0x80;
 
-	emit_field(f, n, "ifac_key");
+	emit_field(f, n, "netname");
+	emit_field(f, n, "netkey");
 	put_byte(&o, (unsigned)code.len);
 	emit(&o);
 

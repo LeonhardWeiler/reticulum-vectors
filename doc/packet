@@ -312,11 +312,22 @@ unframed packet, made with an identity both ends derive from the
 network name and passphrase:
 
     origin      full_hash(netname) || full_hash(netkey)
-    key         hkdf(64, origin_hash, salt = IFAC_SALT)
+    key         hkdf(64, full_hash(origin), salt = IFAC_SALT)
     identity    Identity.from_bytes(key)
     code        identity.sign(packet)[-N:]
 
-Either half of origin is omitted when that half is not configured.
+Either half of origin is omitted when that half is not configured, and
+at least one must be present or the interface has no access code at
+all. Nothing on the wire says which of the three shapes was used, so
+the three are three vectors:
+
+    test/ifac/announce          a network name alone
+    test/ifac/passphrase        both, name first
+    test/ifac/passphrase-only   a passphrase alone
+
+The middle one is where the order can be got wrong, and the other two
+are what keeps a swap from looking like a different configuration.
+
 IFAC_SALT is a constant, RNS/Reticulum.py:150.
 
 The mask is hkdf over the frame length, keyed by the access code and
@@ -335,7 +346,12 @@ A decoder that treats bit 7 as reserved reads a masked frame as a
 packet: random flags, a random hop count, and a destination hash that
 matches nothing.
 
-test/ifac/announce is test/announce/minimal inside such a frame.
+Every ifac vector carries test/announce/minimal inside such a frame,
+and they differ only in the configuration that keys it.
+test/ifac/minimum-size is the same packet with a one-byte access code,
+which is IFAC_MIN_SIZE: the size changes where the packet starts and
+how much of the frame is masked, and nothing in the frame announces
+either.
 
 
 Vector format
@@ -396,32 +412,33 @@ Vector format: ifac
 
 kind: ifac, determinism: encode
 
-raw is three lines:
+raw is four lines:
 
-    line 1    the interface key, 64 bytes
-    line 2    the access code size, one byte
-    line 3    the frame as it appears on the wire
+    line 1    the network name, utf-8 bytes, or - if not configured
+    line 2    the passphrase, utf-8 bytes, or - if not configured
+    line 3    the access code size, one byte
+    line 4    the frame as it appears on the wire
 
-The size is a line of raw rather than a field of the packet because it
-is configuration. A receiver is told it; nothing on the wire says it.
+The first three are configuration rather than fields of the packet. A
+receiver is told all three; nothing on the wire says any of them.
 
-expect names the key, the size, the frame length, the access code the
-frame carries, the packet recovered from it, the access code that
-packet should have produced, and whether the two agree.
+expect names them, the origin, the key derived from it, the frame
+length, the access code the frame carries, the packet recovered from
+it, the access code that packet should have produced, and whether the
+two agree.
 
 The frame is what the reference produced: tools/gen hands the packet to
 Transport.transmit and writes down what came back. The key is not. RNS
 derives it inline in the constructor of a running instance and exposes
-no function to call, so tools/gen composes it from the same four RNS
-functions in the same order, with IFAC_SALT and the network name
-"reticulum-vectors".
+no function to call, so tools/gen composes it from the same three RNS
+functions in the same order.
 
     RNS/Reticulum.py:958-971
 
-That is the only value in the corpus assembled rather than captured,
-and it is written here because nothing can detect it. A different
-netname or netkey gives a different key and a different frame; the
-derivation above is what makes them agree, not this vector.
+The key is a field rather than a line of raw for that reason. cmd/dump
+derives it again from the two strings, sharing no code with tools/gen,
+and cmd/check diffs the results: a composed value nothing can check
+becomes a derived value two implementations agree on.
 
 Encode class: cmd/check masks the packet again and diffs the frame.
 The corpus therefore checks both directions of the mask, which is the
