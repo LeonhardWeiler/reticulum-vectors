@@ -877,6 +877,43 @@ static void dump_encrypted(struct blob *b, int nblobs)
 	print_plaintext(&t);
 }
 
+/* Destination type 1. The payload is a bare token under the shared
+ * symmetric key: no ephemeral key in front of it and no derivation
+ * behind it, so the two halves of the key are the key as configured.
+ * RNS/Destination.py:612. */
+static void dump_group(struct blob *b, int nblobs)
+{
+	struct header h;
+	struct token t;
+	enum reason r;
+	size_t got = 0, need = 0;
+
+	if (nblobs != 2)
+		fatal("group: expected 2 blobs, got %d", nblobs);
+	if (b[0].len != DERIVEDLEN)
+		fatal("group: group key is %zu bytes, expected %d", b[0].len, DERIVEDLEN);
+
+	field_blob("group_key", &b[0]);
+
+	if ((r = parse_header(b[1].data, b[1].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	if (h.payload_len < TOKEN_OVERHEAD) {
+		print_invalid(SHORT_PAYLOAD, h.payload_len, TOKEN_OVERHEAD);
+		return;
+	}
+
+	token_open(h.payload, h.payload_len, b[0].data, &t);
+
+	print_header(&h);
+	print_token(&t);
+	field_hex("signing_key", b[0].data, MACLEN);
+	field_hex("encryption_key", b[0].data + MACLEN, MACLEN);
+	print_plaintext(&t);
+}
+
 static void dump_announce(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -1574,6 +1611,19 @@ static void encode_encrypted(struct kv *f, int n)
 	emit(&o);
 }
 
+static void encode_group(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "group_key");
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "iv");
+	put_field(&o, f, n, "ciphertext");
+	put_field(&o, f, n, "hmac");
+	emit(&o);
+}
+
 static void encode_plain(struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1721,6 +1771,7 @@ static const struct {
 	{ "plain",       dump_plain,       encode_plain       },
 	{ "pathrequest", dump_pathrequest, encode_pathrequest },
 	{ "encrypted",   dump_encrypted,   encode_encrypted   },
+	{ "group",       dump_group,       encode_group       },
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },
 	{ "linkdata",    dump_linkdata,    encode_linkdata    },

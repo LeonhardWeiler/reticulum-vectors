@@ -1,10 +1,10 @@
 Encryption
 
-Byte layouts and derivations for packets addressed to a single
-destination. For what the layers are for, see upstream
+Byte layouts and derivations for packets addressed to a single or a
+group destination. For what the layers are for, see upstream
 docs/source/understanding.rst, section "Reaching the Destination".
 
-Vectors: test/encrypted/
+Vectors: test/encrypted/, test/group/
 
 See doc/packet for the header. Only the payload is described here.
 
@@ -110,8 +110,10 @@ The 64 derived bytes are split, signing key first:
     32      32    AES key
 
 A 64-byte key selects AES-256-CBC. Token also accepts a 32-byte key,
-which selects AES-128-CBC and halves both parts; identity encryption
-never produces one, and no vector here covers it.
+which selects AES-128-CBC and halves both parts. Identity encryption
+never produces one and neither does Token.generate_key, so the only way
+to reach that mode is to configure a group destination with a 32-byte
+key. No vector here covers it.
 
     RNS/Cryptography/Token.py:64
 
@@ -179,3 +181,46 @@ That is what cmd/check tests. It is also why the corpus carries no
 vector that asks an implementation to encrypt: the reference ships a
 token decryption vector and no token encryption vector for the same
 reason.
+
+
+Group destinations
+
+Destination type 1. The payload is a bare token and nothing else:
+
+    offset  size  field
+    0       16    initialisation vector
+    16      -     ciphertext, a multiple of 16 bytes
+    -32     32    HMAC-SHA256
+
+    RNS/Destination.py:612
+
+There is no ephemeral key, because there is no key agreement, and no
+HKDF, because there is nothing to derive from. The key is configuration
+shared out of band, and the two halves of the token are the first and
+second halves of it as configured.
+
+    signing_key    = group_key[0:32]
+    encryption_key = group_key[32:64]
+
+That is the whole of what makes this type different, and it is a
+difference in the direction an implementation is least likely to guess:
+the same three fields, keyed by a value that went through no function.
+
+An outbound group destination still needs an identity, and its hash is
+derived exactly as a single destination's is. The identity plays no
+part in the encryption.
+
+    RNS/Destination.py:620
+
+Vectors: test/group/minimal and test/group/altered-hmac.
+
+kind: group, determinism: encode
+
+raw is two lines:
+
+    line 1    the group key, 64 bytes
+    line 2    the complete packet
+
+expect opens with the key, then the header fields, the three parts of
+the token, the two halves of the key, and the plaintext. There is no
+shared_key field: nothing was agreed.

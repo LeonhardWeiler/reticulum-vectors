@@ -1,0 +1,3 @@
+source             constructed by tools/gen from group/minimal
+determinism        encode
+purpose            last byte of the token hmac altered; nothing is decrypted

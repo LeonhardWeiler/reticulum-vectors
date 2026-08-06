@@ -45,6 +45,7 @@ from. Each is the line of raw named in the kind's own document.
     signer_public      hex      linkproof, proof: the signer's 64-byte public key
     proved_packet      hex      proof: the packet being proved
     private_key        hex      keyset, sign: the 64-byte identity private key
+    group_key          hex      group: the 64-byte shared symmetric key
     netname            hex, -   ifac: the network name the key comes from
     netkey             hex, -   ifac: the passphrase it comes from
 
@@ -150,10 +151,11 @@ takes at most 16 bytes of tag, so it is shorter than wanted_hash || tag
 whenever the tag is longer than that.
 
 
-Token: encrypted packets and link data
+Token: encrypted packets, group packets and link data
 
-See doc/encryption for the destination case and doc/link for the link
-case. The token is the same construction; only the key differs.
+See doc/encryption for the destination and group cases and doc/link for
+the link case. The token is the same construction; only the key differs,
+and for a group packet it is not derived at all.
 
     ephemeral_public   hex      encrypted only: 32 bytes, in the packet
     ratchet_public     hex, -   encrypted only: derived from ratchet_private
@@ -163,8 +165,10 @@ case. The token is the same construction; only the key differs.
     iv                 hex      16 bytes
     ciphertext         hex      a multiple of 16 bytes
     hmac               hex      32 bytes, over iv || ciphertext
-    shared_key         hex, -   the X25519 output, 32 bytes
-    signing_key        hex, -   first half of the 64 derived bytes
+    shared_key         hex, -   the X25519 output, 32 bytes; group
+                                packets have none and carry no such field
+    signing_key        hex, -   first half of the 64 derived bytes, or
+                                of group_key, which is not derived
     encryption_key     hex, -   second half
     hmac_valid         keyword  yes, no, -
     plaintext_length   decimal  bytes, or - if nothing was decrypted

@@ -3,7 +3,7 @@ Conformance of independent implementations
 Run on 2026-08-06 against the 52 vectors test/ held at that date,
 through the harnesses in conformance/.
 
-Twenty-two vectors have been added since, and no row below covers them.
+Twenty-four vectors have been added since, and no row below covers them.
 The rows are left at what was measured rather than restated against a
 corpus they were not run on.
 
@@ -40,12 +40,18 @@ corpus they were not run on.
                                   will decrypt to a plaintext it does
                                   not decompose
 
-Four of the eleven that are not new kinds are expected to change rows
-that pass today. The hop boundary separates three kinds of failure that
-currently look alike (finding 1), and the two in-transport vectors
-reach code no harness has been asked for. The six path request vectors
-are a kind no harness implements, so they will be skipped rather than
-failed, and so are the three new ifac vectors.
+    group/minimal                 a destination type nothing here
+    group/altered-hmac            implements
+
+Four of the eleven that fall under a kind a harness already implements
+are expected to change rows that pass today. The hop boundary separates
+three kinds of failure that currently look alike (finding 1), and the
+two in-transport vectors reach code no harness has been asked for. The
+path request and group vectors are kinds no harness implements, so they
+will be skipped rather than failed, and so are the three new ifac
+vectors. The two channel vectors are the exception among the new ones:
+they are linkdata, which four harnesses do implement, and they will
+fail on the four envelope fields rather than be skipped.
 
 test/ifac/announce also changed shape: its raw now carries the network
 name and passphrase rather than the derived key, so a harness that

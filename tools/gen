@@ -327,8 +327,8 @@ def hexf(b):
 # its raw carries a 950-byte message that expect records only by its
 # digest, so the vector can be decoded and not rebuilt.
 ENCODABLE = ("identity", "keyset", "destination", "announce", "plain",
-             "pathrequest", "encrypted", "linkrequest", "linkproof", "linkdata",
-             "proof", "ifac")
+             "pathrequest", "encrypted", "group", "linkrequest", "linkproof",
+             "linkdata", "proof", "ifac")
 
 
 def determinism(kind, expect):
@@ -1885,6 +1885,101 @@ def describe_encrypted(raw, private, ratchet_private):
     return lines
 
 
+def describe_group(raw, group_key):
+    """A third payload shape, and the one with no key agreement in it.
+
+    The group key is the token key: no ephemeral key is sent, no HKDF
+    runs, and the two halves are the key as it was configured. An
+    implementation that derives here decrypts nothing, and one that
+    does not derive for test/encrypted decrypts nothing there.
+    """
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    import hmac as _hmac
+
+    echo = [field("group_key", group_key.hex())]
+
+    lines, h = describe_header(raw)
+    lines = echo + lines
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) < TOKEN_OVERHEAD:
+        return echo + invalid("short-payload",
+                              ("payload_length", len(payload)),
+                              ("minimum_length", TOKEN_OVERHEAD))
+
+    iv         = payload[:16]
+    ciphertext = payload[16:-32]
+    mac        = payload[-32:]
+
+    signing_key, encryption_key = group_key[:32], group_key[32:]
+    mac_ok = _hmac.compare_digest(
+        mac, _hmac.new(signing_key, iv + ciphertext, hashlib.sha256).digest())
+
+    plaintext = None
+    if mac_ok and len(ciphertext) > 0 and len(ciphertext) % 16 == 0:
+        dec = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
+        padded = dec.update(ciphertext) + dec.finalize()
+        n = padded[-1]
+        if 0 < n <= 16 and n <= len(padded):
+            plaintext = padded[:len(padded) - n]
+
+    return lines + [
+        field("iv",               iv.hex()),
+        field("ciphertext",       ciphertext.hex()),
+        field("hmac",             mac.hex()),
+        field("signing_key",      signing_key.hex()),
+        field("encryption_key",   encryption_key.hex()),
+        field("hmac_valid",       "yes" if mac_ok else "no"),
+        field("plaintext_length", "-" if plaintext is None else "%d" % len(plaintext)),
+        field("plaintext",        plaintext.hex() if plaintext else "-"),
+    ]
+
+
+def gen_group(RNS, w):
+    """Destination type 1, the one with a key nobody negotiates.
+
+    An outbound group destination still needs an identity, because its
+    hash is derived exactly as a single destination's is. The identity
+    then plays no part in the encryption: the payload is a bare token
+    under the shared symmetric key, with no ephemeral key in front of
+    it and no derivation behind it.
+
+        RNS/Destination.py:612
+    """
+    identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[1][0]))
+    plaintext = b"reticulum"
+
+    with pinned(RNS, "group"):
+        destination = RNS.Destination(identity, RNS.Destination.OUT,
+                                      RNS.Destination.GROUP,
+                                      "rns_unit_tests", "group")
+        destination.create_keys()
+        group_key = destination.get_private_key()
+
+        packet = RNS.Packet(destination, plaintext)
+        packet.pack()
+
+    # The reference must recover what it encrypted, and the key must be
+    # the token key rather than something derived from it.
+    assert destination.decrypt(packet.ciphertext) == plaintext
+    assert len(group_key) == KEYSIZE
+    assert packet.raw[19:] == packet.ciphertext
+
+    w.vector("group", "minimal",
+        "nine bytes under a group key, no ephemeral key and no derivation",
+        [group_key.hex(), packet.raw.hex()],
+        describe_group(packet.raw, group_key))
+
+    altered = packet.raw[:-1] + bytes([packet.raw[-1] ^ 0x01])
+    w.vector("group", "altered-hmac",
+        "last byte of the token hmac altered; nothing is decrypted",
+        [group_key.hex(), altered.hex()],
+        describe_group(altered, group_key),
+        source="constructed by tools/gen from group/minimal")
+
+
 def private_to_public(private):
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -1982,6 +2077,7 @@ def main():
         gen_proof(RNS, w, verify)
         gen_ifac(RNS, w, announce_minimal)
         gen_encrypted(RNS, w)
+        gen_group(RNS, w)
 
         session = link_session(RNS, "link")
         gen_linkrequest(RNS, w, session)
