@@ -9,7 +9,7 @@ records it: a count says how many vectors passed, and the checksum says
 which corpus they were. Two vectors have since changed shape without
 changing the count.
 
-Twenty-four vectors have been added since, and no row below covers them.
+Twenty-six vectors have been added since, and no row below covers them.
 The rows are left at what was measured rather than restated against a
 corpus they were not run on.
 
@@ -49,6 +49,9 @@ corpus they were not run on.
     group/minimal                 a destination type nothing here
     group/altered-hmac            implements
 
+    proof/link-initiator          a delivery proof on a link, and the
+    proof/link-responder          two keys the two ends sign with
+
 Four of the eleven that fall under a kind a harness already implements
 are expected to change rows that pass today. The hop boundary separates
 three kinds of failure that currently look alike (finding 1), and the
@@ -57,7 +60,10 @@ path request and group vectors are kinds no harness implements, so they
 will be skipped rather than failed, and so are the three new ifac
 vectors. The two channel vectors are the exception among the new ones:
 they are linkdata, which four harnesses do implement, and they will
-fail on the four envelope fields rather than be skipped.
+fail on the four envelope fields rather than be skipped. So are the two
+link delivery proofs: they are kind proof, which every harness
+implements, and every one of them will verify against the wrong key,
+because until now there was only one key it could be.
 
 test/ifac/announce also changed shape: its raw now carries the network
 name and passphrase rather than the derived key, so a harness that

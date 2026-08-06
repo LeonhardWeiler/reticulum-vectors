@@ -149,8 +149,12 @@ Three of the four parts are not in the packet.
                        position it occupies there
 
 The signature is made with the identity key of the destination, not
-with the link's own Ed25519 key. The link key signs packet proofs
-later; it does not sign the link request proof.
+with a key drawn for the link. That is not a rule about link request
+proofs; it is a rule about the responder. Link.__init__ gives the
+initiator a fresh Ed25519 key and gives the responder the identity key
+of the destination it owns, so the responder signs everything with the
+identity and the initiator signs everything with the link key. See the
+section on delivery proofs below.
 
     RNS/Link.py:368#signed_data, RNS/Link.py:412#signed_data,
     RNS/Link.py:407#peer_sig_pub_bytes
@@ -204,7 +208,7 @@ than 80.
 The context byte says what the plaintext holds. One context is not
 encrypted at all:
 
-    0x00   none            application data
+    0x00   none            application data, and delivery proofs
     0x0e   channel         a channel envelope
     0xfa   keepalive       one byte, in clear, not a token: 0xff from
                            the initiator and 0xfe in reply
@@ -216,7 +220,54 @@ encrypted at all:
     RNS/Link.py:1126#keepalive_packet
 
 A decoder that treats every packet on a link as encrypted fails on
-keepalives.
+keepalives, and on delivery proofs.
+
+0xfd is defined as LINKPROOF and no packet carries it. Nothing in the
+reference sets that context, and the corpus has no vector for it
+because there is nothing to record.
+
+    RNS/Packet.py:90#LINKPROOF
+
+
+Delivery proofs on a link
+
+Packet type 3, destination type link, context 0x00, not encrypted. The
+address field is the link id, the same as every other packet on the
+link, and not the hash of the packet being proved; that is the whole
+difference from a delivery proof to a destination, which doc/packet
+describes.
+
+    offset  size  field
+    0       32    the hash of the packet being proved
+    32      64    Ed25519 signature over that hash
+
+Always the explicit form. prove_packet has the implicit branch
+commented out, so 64 bytes never appears on a link even though
+PacketReceipt would read it.
+
+    RNS/Link.py:378#prove_packet
+
+The key that signs is not the same at the two ends:
+
+    initiator   the Ed25519 key it drew for this link, whose public
+                half is in the link request
+    responder   the identity key of the destination, whose public half
+                is in an announce
+
+    RNS/Link.py:276#X25519PrivateKey, RNS/Link.py:284#X25519PrivateKey
+
+Nothing in a proof says which. A receiver knows because it knows which
+end it is: each holds one peer_sig_pub, set when the link was
+established, and verifies everything against it.
+
+    RNS/Link.py:326#load_peer, RNS/Link.py:407#peer_sig_pub_bytes
+
+test/proof/link-initiator and test/proof/link-responder are the two
+directions over one link. An implementation that verifies both against
+the same key passes neither, and one that verifies them against the
+wrong key each passes neither; they are two vectors because one of them
+alone could be passed by an implementation that always reaches for the
+identity.
 
 
 Channel

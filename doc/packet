@@ -175,6 +175,9 @@ The signature is over the packet hash, never over the proof packet.
 test/proof/implicit and test/proof/explicit carry the two forms of the
 same proof, so their signatures are identical.
 
+A proof for a packet on a link is the same packet type addressed
+differently and signed by a different key. See doc/link.
+
     RNS/Identity.py:942#prove
 
 

@@ -1299,12 +1299,13 @@ static void dump_proof(struct blob *b, int nblobs)
 	size_t got = 0, need = 0;
 	const uint8_t *signature, *signer;
 	uint8_t packet_hash[32];
-	int explicit_form;
+	int explicit_form, on_link;
 
 	if (nblobs != 3)
 		fatal("proof: expected 3 blobs, got %d", nblobs);
-	if (b[1].len != KEYSIZE)
-		fatal("proof: signer key is %zu bytes, expected %d", b[1].len, KEYSIZE);
+	if (b[1].len != KEYSIZE && b[1].len != KEYHALF)
+		fatal("proof: signer key is %zu bytes, expected %d or %d",
+		      b[1].len, KEYSIZE, KEYHALF);
 
 	field_blob("proved_packet", &b[0]);
 	field_blob("signer_public", &b[1]);
@@ -1328,7 +1329,13 @@ static void dump_proof(struct blob *b, int nblobs)
 
 	packet_hash_of(b[0].data, b[0].len, &ph, packet_hash);
 	signature = explicit_form ? h.payload + 32 : h.payload;
-	signer    = b[1].data + KEYHALF;
+
+	/* On a link the proof is addressed to the link id rather than to
+	 * the hash it proves, and the key that verifies it is a single
+	 * Ed25519 public rather than the two halves of an identity. Which
+	 * of the two applies is in the flags byte and nowhere else. */
+	on_link = h.destination_type == 3;
+	signer  = on_link ? b[1].data : b[1].data + KEYHALF;
 
 	print_header(&h);
 	field("form", "%s", explicit_form ? "explicit" : "implicit");
@@ -1339,9 +1346,16 @@ static void dump_proof(struct blob *b, int nblobs)
 		field("proof_hash", "-");
 	field("hash_match", "%s",
 	      !explicit_form || memcmp(h.payload, packet_hash, 32) == 0 ? "yes" : "no");
-	field_hex("proof_destination", packet_hash, ADDRLEN);
-	field("destination_match", "%s",
-	      memcmp(h.destination_hash, packet_hash, ADDRLEN) == 0 ? "yes" : "no");
+	if (on_link) {
+		field_hex("link_id", ph.destination_hash, ADDRLEN);
+		field("link_id_match", "%s",
+		      memcmp(h.destination_hash, ph.destination_hash, ADDRLEN) == 0
+		      ? "yes" : "no");
+	} else {
+		field_hex("proof_destination", packet_hash, ADDRLEN);
+		field("destination_match", "%s",
+		      memcmp(h.destination_hash, packet_hash, ADDRLEN) == 0 ? "yes" : "no");
+	}
 	field_hex("signature", signature, SIGLEN);
 	field_hex("signer_ed25519", signer, KEYHALF);
 	field("signature_valid", "%s",

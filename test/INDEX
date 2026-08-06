@@ -69,6 +69,8 @@ plain/payload
 proof/explicit
 proof/implicit
 proof/invalid-length
+proof/link-initiator
+proof/link-responder
 proof/proved-in-transport
 sign/upstream
 signature/altered

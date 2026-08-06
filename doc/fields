@@ -42,7 +42,8 @@ from. Each is the line of raw named in the kind's own document.
     ratchet_private    hex, -   encrypted: the 32-byte ratchet scalar, or -
     link_request       hex      linkproof, linkdata: the request packet
     responder_private  hex      linkdata: the responder's 32-byte link scalar
-    signer_public      hex      linkproof, proof: the signer's 64-byte public key
+    signer_public      hex      linkproof, proof: the signer's public key,
+                                64 bytes, or 32 for a proof on a link
     proved_packet      hex      proof: the packet being proved
     private_key        hex      keyset, sign: the 64-byte identity private key
     group_key          hex      group: the 64-byte shared symmetric key
@@ -228,17 +229,26 @@ why the vector is given the request and the identity key.
 
 Delivery proof
 
-See doc/packet, section Proofs.
+See doc/packet, section Proofs, and doc/link for the link case.
 
     form               keyword  implicit, explicit
     packet_hash        hex      32 bytes, computed from proved_packet
     proof_hash         hex, -   explicit form only: the hash it carries
     hash_match         keyword  yes, no; yes for the implicit form
-    proof_destination  hex      packet_hash[0:16], the address it should have
-    destination_match  keyword  yes, no
+    proof_destination  hex      packet_hash[0:16], the address it should
+                                have; not on a link
+    destination_match  keyword  yes, no; not on a link
+    link_id            hex      on a link only: the address it should
+                                have, taken from the proved packet
+    link_id_match      keyword  on a link only: yes, no
     signature          hex      64 bytes, over packet_hash
     signer_ed25519     hex      32 bytes
     signature_valid    keyword  yes, no
+
+A proof addressed to a link carries link_id and link_id_match where one
+addressed to a destination carries proof_destination and
+destination_match. destination_type says which, and signer_public is 32
+bytes rather than 64 in that case, because only one key verifies it.
 
 
 Interface access code

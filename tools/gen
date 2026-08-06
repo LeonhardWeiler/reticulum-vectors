@@ -724,7 +724,26 @@ def describe_proof(proved_raw, signer_public, raw, verify):
     explicit    = len(payload) == ADDRLEN * 2 + SIGLEN
     packet_hash = hashlib.sha256(hashable_part(proved_raw, None)).digest()
     signature   = payload[ADDRLEN*2:] if explicit else payload
-    signer      = signer_public[KEYHALF:]
+
+    # On a link the proof is addressed to the link id rather than to the
+    # hash it proves, and the key that verifies it is a single Ed25519
+    # public rather than the two halves of an identity. Which of the two
+    # applies is in the flags byte and nowhere else.
+    on_link = h["destination_type"] == 3
+    signer  = signer_public if on_link else signer_public[KEYHALF:]
+
+    if on_link:
+        _, ph = describe_header(proved_raw)
+        addressed = [
+            field("link_id",       ph["dest_hash"].hex()),
+            field("link_id_match", "yes" if h["dest_hash"] == ph["dest_hash"] else "no"),
+        ]
+    else:
+        addressed = [
+            field("proof_destination", packet_hash[:ADDRLEN].hex()),
+            field("destination_match",
+                  "yes" if h["dest_hash"] == packet_hash[:ADDRLEN] else "no"),
+        ]
 
     return lines + [
         field("form",             "explicit" if explicit else "implicit"),
@@ -732,8 +751,7 @@ def describe_proof(proved_raw, signer_public, raw, verify):
         field("proof_hash",       payload[:ADDRLEN*2].hex() if explicit else "-"),
         field("hash_match",       "yes" if not explicit
                                   else ("yes" if payload[:ADDRLEN*2] == packet_hash else "no")),
-        field("proof_destination", packet_hash[:ADDRLEN].hex()),
-        field("destination_match", "yes" if h["dest_hash"] == packet_hash[:ADDRLEN] else "no"),
+    ] + addressed + [
         field("signature",        signature.hex()),
         field("signer_ed25519",   signer.hex()),
         field("signature_valid",  "yes" if verify(signer, signature, packet_hash) else "no"),
@@ -948,7 +966,8 @@ def describe_header(raw):
         field("payload_length",   "%d" % len(payload)),
     ]
     return lines, {"payload": payload, "context_flag": context_flag,
-                   "dest_hash": dest_hash, "context": context}
+                   "dest_hash": dest_hash, "context": context,
+                   "destination_type": destination_type}
 
 
 def describe_announce(raw, verify):
@@ -1778,6 +1797,64 @@ def gen_linkdata(RNS, w, verify, session):
         describe_linkdata(request_raw, responder_private, altered, verify),
         source="constructed by tools/gen from linkdata/minimal")
 
+    return link, sent[0]
+
+
+def gen_linkpacketproof(RNS, w, verify, session, link, proved):
+    """A delivery proof on a link, which the two ends sign differently.
+
+    Link.__init__ gives the initiator a fresh Ed25519 key and gives the
+    responder the identity key of the destination, RNS/Link.py:276#X25519PrivateKey
+    and RNS/Link.py:284#X25519PrivateKey. prove_packet signs with
+    whichever of the two the end holds, so a proof from the initiator
+    verifies under a key that is in the link request and a proof from
+    the responder verifies under a key that is in an announce. Nothing
+    in either packet says which.
+
+    Neither is encrypted, and both are the 96-byte explicit form:
+    prove_packet has the implicit branch commented out.
+
+        RNS/Packet.py:199#PROOF, RNS/Link.py:378#prove_packet
+    """
+    with pinned(RNS, "linkpacketproof"):
+        # The responder proves the initiator's packet, and then the
+        # initiator proves one of the responder's, so that both keys are
+        # exercised over the same link.
+        with captured(RNS) as sent:
+            session["link"].prove_packet(proved)
+            RNS.Packet(session["link"], b"reticulum").send()
+        from_responder = sent[0]
+        responder_data = sent[1]
+
+        with captured(RNS) as sent:
+            link.prove_packet(responder_data)
+        from_initiator = sent[0]
+
+    cases = [
+        ("link-responder", proved, session["identity"].get_public_key()[KEYHALF:],
+         from_responder,
+         "the responder proves; the signer is the identity of the destination"),
+        ("link-initiator", responder_data, link.sig_pub_bytes, from_initiator,
+         "the initiator proves; the signer is the key it drew for this link"),
+    ]
+
+    for name, packet, signer, proof, purpose in cases:
+        assert len(proof.raw[19:]) == 32 + SIGLEN
+        assert len(signer) == KEYHALF
+
+        described = describe_proof(packet.raw, signer, proof.raw, verify)
+        assert lookup_field(described, "signature_valid") == "yes"
+
+        w.vector("proof", name, purpose,
+            [packet.raw.hex(), signer.hex(), proof.raw.hex()],
+            described)
+
+    # The key each end holds for the other is the key the other signs
+    # with, and they are not the same key.
+    assert session["link"].sig_pub_bytes != link.sig_pub_bytes
+    assert link.peer_sig_pub_bytes == session["identity"].get_public_key()[KEYHALF:]
+    assert session["link"].peer_sig_pub_bytes == link.sig_pub_bytes
+
 
 def lookup_field(lines, name):
     for line in lines:
@@ -2104,7 +2181,8 @@ def main():
         session = link_session(RNS, "link")
         gen_linkrequest(RNS, w, session)
         gen_linkproof(RNS, w, verify, session)
-        gen_linkdata(RNS, w, verify, session)
+        link, proved = gen_linkdata(RNS, w, verify, session)
+        gen_linkpacketproof(RNS, w, verify, session, link, proved)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
