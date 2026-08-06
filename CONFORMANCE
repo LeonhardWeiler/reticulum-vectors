@@ -1,24 +1,24 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 94 vectors test/ held at that date,
+Run on 2026-08-07 against the 102 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 4048137228
+    corpus 453359467
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
 corpus; two vectors changed shape without changing the count between
-this run and the last.
+two of the runs below.
 
-The rows below were measured while it read 678091306, and it has moved
-twice since for reasons that do not touch them. First it was wrong: it
-was taken over a shell glob, a glob is ordered by the locale of whoever
-runs it, and the same corpus fingerprinted as 678091306 under C and as
-4275070876 under en_US.UTF-8. It is taken over test/INDEX now and is
-the same everywhere. Then group/zero-padding was added, which every
-harness skips, so the rows are unchanged and only the skip count is
-one higher.
+It has moved three times, and the first was a defect: it was taken over
+a shell glob, a glob is ordered by the locale of whoever runs it, and
+the same corpus fingerprinted as 678091306 under C and as 4275070876
+under en_US.UTF-8. It is taken over test/INDEX now and is the same
+everywhere. Then group/zero-padding was added, which every harness
+skips: 4048137228, rows unchanged, one more skipped. Then the eight
+rejection vectors below were added, which is the first corpus change
+since this file existed that moved every row.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
@@ -26,27 +26,27 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the 84 vectors of the encode class, and no
+from expect for the 86 vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
 what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  67 / 78  22 / 31
-    rsReticulum         07ca721   2026-08-02  63 / 78  19 / 31
-    microReticulum      40fa628   2026-07-20  50 / 78  11 / 31
-    Reticulum-rs        be7a7fc   2026-07-31  50 / 78   9 / 31
-    rns.js              d4602ca   2025-02-10  39 / 78   2 / 31
-    sgiath/reticulum    0c4904e   2026-07-09  33 / 78   2 / 31
+    go-reticulum        06621cc   2026-04-28  70 / 83  23 / 34
+    rsReticulum         07ca721   2026-08-02  67 / 83  21 / 34
+    microReticulum      40fa628   2026-07-20  54 / 83  13 / 34
+    Reticulum-rs        be7a7fc   2026-07-31  53 / 83  10 / 34
+    rns.js              d4602ca   2025-02-10  41 / 83   2 / 34
+    sgiath/reticulum    0c4904e   2026-07-09  34 / 83   2 / 34
 
-Out of 78, not 94: every harness exits 77 for five kinds, and those
-sixteen vectors are skipped rather than counted against anyone.
+Out of 83, not 102: every harness exits 77 for five kinds, and those
+nineteen vectors are skipped rather than counted against anyone.
 
-    plain           2 vectors
+    plain           3 vectors
     pathrequest     6
-    group           3
+    group           4
     ifac            4
-    resourceproof   1
+    resourceproof   2
 
 The link column is every vector of the three link kinds plus the two
 delivery proofs made on a link, which are filed under proof. Eleven of
@@ -60,9 +60,29 @@ Reticulum-rs) decrypt the token correctly and print the plaintext, and
 then have nothing to say about its length; the other three do not reach
 that far. See the finding below.
 
-No failure in this run is a harness's own. Four were. They are
-recorded here because a harness is evidence and a change to one changes
-what the numbers mean, and every row moved:
+Every count moved when it grew from 94 to 102. The eight added are
+rejections, one per rule the corpus had no vector for, and five of them
+are counted here; the other three are of kinds every harness skips.
+
+    announce/no-header             passed by five, failed by one
+    encrypted/short-payload        passed by all six
+    linkdata/short-payload         failed by all six, finding 23
+    linkproof/invalid-length       passed by four
+    linkrequest/unnamed-mode       failed by four, finding 24
+
+    group/short-payload            skipped
+    plain/unnamed-context          skipped
+    resourceproof/invalid-length   skipped
+
+Every row gains, because a corpus that asked six times whether an
+implementation refuses now asks eleven, and most of the new answers
+were already right. Two new failures are new findings, 23 and 24. The
+rest fall under findings that were already here: announce/no-header
+under finding 18, linkproof/invalid-length under findings 10 and 7.
+
+Six failures in this run were a harness's own, all six on one vector.
+Four entries below predate it. They are recorded here because a harness
+is evidence and a change to one changes what the numbers mean:
 
     go-reticulum      60 -> 62      microReticulum    47 -> 49
     rsReticulum       57 -> 58      rns.js            37 -> 39
@@ -105,11 +125,35 @@ what the numbers mean, and every row moved:
                                    now say how far the defect reaches.
                                    No count moved.
 
-The first three were named in the previous run and left standing. That
-was the wrong call twice over: a footnote saying the evidence is wrong
-is not evidence, and the fourth was invisible for as long as the third
-hid it. A harness fault is fixed and its effect on the numbers is
-written down, which is what the four entries above are.
+    linkdata/short-payload         All six harnesses cut the token into
+                                   iv, ciphertext and hmac themselves,
+                                   because not one of the six exports
+                                   the three, and all six took the
+                                   length for granted. Two panicked on a
+                                   slice, two raised and printed one
+                                   error line in place of every field,
+                                   and two computed an hmac that
+                                   overlapped its own ciphertext out of
+                                   a payload too short to hold both.
+                                   Every one now prints "-" for what it
+                                   cannot cut and stops there. The
+                                   vector still fails in all six, and it
+                                   now fails on what the implementation
+                                   does not report rather than on what
+                                   the harness did. No count moved.
+
+The first three were named in the run before last and left standing.
+That was the wrong call twice over: a footnote saying the evidence is
+wrong is not evidence, and the fourth was invisible for as long as the
+third hid it. A harness fault is fixed and its effect on the numbers is
+written down, which is what the five entries above are.
+
+The fifth is worth reading twice. Six harnesses, six languages, six
+authors, and every one of them made the same assumption in the same
+place: that a packet on a link carries at least a token. A vector found
+it in six programs at once because it was the first one to ask. What
+the implementations behind them do is finding 23, and it is a milder
+sentence.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot
@@ -660,9 +704,10 @@ is why the backend is part of the pin. See doc/identity, section
 Canonical signatures.
 
 
-Finding 18: rns.js names the wrong rejection for a short header
+Finding 18: two implementations name the wrong numbers for a short header
 
-Affects rns.js. Vector test/announce/short-header.
+Affects rns.js and sgiath/reticulum. Vectors test/announce/short-header
+and test/announce/no-header.
 
 Eighteen bytes is one short of a header 1 header, and nothing about the
 packet can be read, not even the context byte. rns.js reports
@@ -671,6 +716,14 @@ reads a header out of bytes that do not hold one and then measures what
 is left. The rejection names the wrong rule, which is the reason the
 corpus records the numbers behind a rejection rather than a single
 word.
+
+One byte is the other threshold, and it is the only one that is not a
+header length: how long a header has to be follows from the header type
+bit, which is in the byte that is missing. sgiath/reticulum answers 19,
+the header 1 length, for a packet of one byte. It is the same defect at
+the other end of the same rule, and its harness makes the distinction
+its implementation does not: it guards on two bytes and then reports
+nineteen. The other five answer 2.
 
 
 Finding 19: four of six read nothing a request or a response carries
@@ -793,3 +846,80 @@ which this corpus publishes. It is not a remote defect in any of the
 six; it is an unchecked length in a decoder, and where the decoder runs
 on a device with no memory protection the difference matters less than
 it reads.
+
+
+Finding 23: a link data payload too short for a token names no rule
+
+Affects all six. Vector test/linkdata/short-payload, added 2026-08-07.
+
+Finding 22 is a plaintext too short for the context byte that named it.
+This is the layer above: a payload of 47 bytes cannot hold an iv and an
+hmac, so it is not a token at all, and expect names that rule rather
+than decomposing it. Every one of the six fails the vector, and none of
+the six accepts the packet.
+
+What each implementation does is drop it, through the hmac and not
+through a length. Handed the payload, all six derive the link keys,
+verify an hmac over bytes that are not a token, get no match, and
+report no plaintext. python-rns does the same: Token.verify_hmac raises
+only at 32 bytes or fewer
+(RNS/Cryptography/Token.py:78#Cannot) and returns False above that,
+so a 47-byte payload is refused by a failing hmac there too. On
+behaviour the six and the reference agree.
+
+The disagreement is in what is reported, which is what the corpus
+measures, and it is the same sentence as finding 22: the packet is
+dropped and nothing says why. Read this row as a reporting difference
+and not as an accepted packet.
+
+The vector is worth the eight lines it costs anyway, because of where
+it landed first. All six harnesses cut the token into iv, ciphertext
+and hmac by hand, none of the six implementations exporting the three,
+and all six cuts assumed a payload long enough to hold them:
+
+    go-reticulum      slice out of range, caught by its own recover,
+                      which printed one error line for every field
+    rsReticulum       panic, slice index starts at 16 but ends at 15
+    Reticulum-rs      panic, the same slice
+    sgiath/reticulum  binary_part raised, and the rescue did the same
+                      as go-reticulum's recover
+    microReticulum    size() - 48 wrapped round; printed a 31-byte
+                      ciphertext and a 32-byte hmac out of a 47-byte
+                      payload, overlapping by 16, both still inside it
+    rns.js            slice() clamps rather than throwing; the same
+                      overlap
+
+Six harnesses, six languages, six authors, one assumption. Every one is
+fixed above, and no count moved: the fixes changed six crashes and
+misreadings into six honest dashes, which fail the vector for the
+reason the finding names.
+
+
+Finding 24: a link request mode of zero is read as the default
+
+Affects go-reticulum. Vector test/linkrequest/unnamed-mode.
+
+The mode is the top three bits of the link request's signalling word.
+python-rns reads them and returns what it read
+(RNS/Link.py:174#MODE_BYTEMASK). Only MODE_AES256_CBC, which is 1, is
+enabled (RNS/Link.py:133#ENABLED_MODES), and signalling_bytes refuses to
+emit any other (RNS/Link.py:149#ENABLED_MODES), so a request signalling
+MODE_AES128_CBC, which is 0, is one the reference reads as 0 and will
+not produce.
+
+go-reticulum reads the same three bits and then replaces a zero with
+the default:
+
+    link.go:2792    if modeBits == 0 { return linkDefaultMode }
+
+linkDefaultMode is MODE_AES256_CBC. A request that signalled AES-128 is
+therefore recorded as having signalled AES-256, and the one value that
+would have caused the reference to decline is the one value
+go-reticulum cannot see. It is the mode the reference numbers 0 and the
+Go port numbers 0 as well; the collision is with the port's own
+LinkModeDefault sentinel, which is -1 everywhere except here.
+
+microReticulum and rsReticulum print the byte and pass. Reticulum-rs
+and sgiath/reticulum read no signalling at all and print "-", which is
+finding 14 and not this one. rns.js drops every link request, which is
+finding 10.

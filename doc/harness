@@ -78,7 +78,7 @@ Six rules
    code, and it runs:
 
        DUMP=conformance/example/dump.py ENCODE=no cmd/check
-       5 passed, 0 failed, corpus 4048137228, 89 skipped: announce ...
+       5 passed, 0 failed, corpus 453359467, 97 skipped: announce ...
 
    It calls no implementation, which is the one thing it does that a
    real harness must not do. Everything else about it is the shape to
