@@ -1,0 +1,17 @@
+flags              02
+header_type        1
+context_flag       unset
+transport_type     broadcast
+destination_type   single
+packet_type        linkrequest
+hops               0
+transport_id       -
+destination_hash   fb48da0e82e6e01ba0c014513f74540d
+context            none
+payload_length     67
+x25519_public      81f99971cea5d4f00a482aff12a81a1c147931cbe62db76af871dad98c1bca1d
+ed25519_public     3363b3379fb081b26099d2e70b39f951362d6f0fa3cfce312fb06fd5f1b20cef
+signalling         0001f4
+mode               00
+mtu                500
+link_id            4be2a2dc5ff0321315222d5deca76937

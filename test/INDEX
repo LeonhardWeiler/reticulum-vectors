@@ -73,6 +73,7 @@ linkrequest/in-transport
 linkrequest/invalid-length
 linkrequest/no-signalling
 linkrequest/signalling
+linkrequest/unnamed-mode
 pathrequest/ambiguous
 pathrequest/long-tag
 pathrequest/short
@@ -81,6 +82,7 @@ pathrequest/tagless
 pathrequest/transport
 plain/empty
 plain/payload
+plain/unnamed-context
 proof/explicit
 proof/implicit
 proof/invalid-length

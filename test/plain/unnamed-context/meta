@@ -1,0 +1,3 @@
+source             constructed by tools/gen from plain/payload
+determinism        encode
+purpose            a context byte this format has no name for, which prints as hex

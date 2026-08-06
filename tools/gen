@@ -1246,6 +1246,7 @@ def gen_plain(RNS, w):
     wanted = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
     destination_hash = RNS.Destination.hash(wanted, "rns_unit_tests", "link", "establish")
 
+    made = {}
     cases = [
         ("payload", (RNS.Transport.APP_NAME, "path", "request"),
          destination_hash + bytes.fromhex("0102030405060708090a"),
@@ -1270,6 +1271,23 @@ def gen_plain(RNS, w):
         w.vector("plain", name, purpose,
             [packet.raw.hex()],
             describe_plain(packet.raw))
+        made[name] = packet.raw
+
+    # The context byte of a cache request, RNS/Packet.py:80#CACHE_REQUEST.
+    # The reference defines the name and this corpus does not, because
+    # no vector carries such a packet, so the byte prints as two hex
+    # digits. That fallback is the one place a value form depends on the
+    # value, doc/fields says so, and until this vector no vector
+    # exercised it: all the others carry a byte the format has a name
+    # for. It is a plain packet because the fallback is in the header
+    # and a plain packet is the shortest thing with one.
+    base = made["payload"]
+    unnamed = base[:HEADER1LEN-1] + bytes([0x08]) + base[HEADER1LEN:]
+    w.vector("plain", "unnamed-context",
+        "a context byte this format has no name for, which prints as hex",
+        [unnamed.hex()],
+        describe_plain(unnamed),
+        source="constructed by tools/gen from plain/payload")
 
 
 def describe_pathrequest(raw):
@@ -1643,6 +1661,24 @@ def gen_linkrequest(RNS, w, session):
         "66-byte payload, neither of the two accepted lengths",
         [short.hex()],
         describe_linkrequest(short),
+        source="constructed by tools/gen from linkrequest/signalling")
+
+    # MODE_AES128_CBC, which the reference defines and does not enable:
+    # signalling_bytes raises on any mode outside ENABLED_MODES
+    # (RNS/Link.py:133#ENABLED_MODES), so no request it emits carries
+    # this one, and the format has no name for it. The mode is the top
+    # three bits of the signalling word. The signalling bytes are
+    # trimmed before the link id is taken, so this opens the same link
+    # as linkrequest/signalling and differs from it in one field.
+    modeless = raw[:-SIGNALLEN] + bytes([raw[-SIGNALLEN] & 0x1f]) + raw[-SIGNALLEN+1:]
+    assert lookup_field(describe_linkrequest(modeless), "link_id") == link_id.hex()
+    assert lookup_field(describe_linkrequest(modeless), "mode") == "00"
+    assert RNS.Link.MODE_AES128_CBC not in RNS.Link.ENABLED_MODES
+
+    w.vector("linkrequest", "unnamed-mode",
+        "a mode the reference defines and does not enable, which prints as hex",
+        [modeless.hex()],
+        describe_linkrequest(modeless),
         source="constructed by tools/gen from linkrequest/signalling")
 
     # The same request after a transport node rewrote it. The link id is

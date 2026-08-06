@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkrequest/signalling
+determinism        encode
+purpose            a mode the reference defines and does not enable, which prints as hex

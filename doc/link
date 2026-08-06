@@ -24,6 +24,15 @@ reference emits carries a different mode.
 
     RNS/Link.py:133#ENABLED_MODES, RNS/Link.py:148#signalling_bytes
 
+The decoder is the other way round: mode_from_lr_packet returns the
+three bits it read, whatever they are, and the refusal happens later.
+So a request signalling a mode with no name here decodes, and mode
+prints as two hex digits rather than a keyword.
+test/linkrequest/unnamed-mode carries MODE_AES128_CBC, which the
+reference defines, does not enable and will not emit.
+
+    RNS/Link.py:174#MODE_BYTEMASK
+
 
 Link request
 

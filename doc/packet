@@ -44,6 +44,15 @@ The transport id is inserted before the destination hash, not after.
 
     RNS/Packet.py:177#pack, RNS/Packet.py:242#unpack
 
+The context byte names what the payload holds, and which names exist
+depends on the packet type; doc/fields lists every one this format has
+a name for. It has a name only where a vector carries that byte, so
+values the reference defines and no vector uses print as two hex digits
+rather than as a keyword. test/plain/unnamed-context carries
+CACHE_REQUEST for that reason.
+
+    RNS/Packet.py:80#CACHE_REQUEST
+
 
 Flags
 
