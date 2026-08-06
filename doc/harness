@@ -64,7 +64,7 @@ Six rules
 
    This is what makes a harness worth writing before it is finished.
    Four kinds on the first day is a result; the alternative, requiring
-   all fifteen before anything can be measured, is why a new decoder
+   every kind before anything can be measured, is why a new decoder
    starts with nothing to show.
 
 4. One kind is a start.
@@ -109,10 +109,9 @@ Six rules
 
 What to expect it to cost
 
-The six harnesses in conformance/ are 500 to 880 lines each, in six
+The six harnesses in conformance/ run from 529 lines to 959, in six
 languages, and every one of them covers announce and the link kinds.
-The smallest, conformance/rns.js/dump.js, is 496 lines and is the one
-to read first.
+The smallest, conformance/rns.js/dump.js, is the one to read first.
 
 Most of that length is neither parsing nor cryptography. It is
 reaching past an API that was written for an application rather than

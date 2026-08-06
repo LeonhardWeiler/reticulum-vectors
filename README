@@ -41,14 +41,15 @@ be.
 
 Every private key here is public
 
-Twenty-four vectors carry a private key: all of test/keyset/ and
-test/sign/, the recipient key in test/encrypted/, the responder's link
-key in test/linkdata/, and the interface key in test/ifac/, which is
-derived rather than given and no less public for it. Six of them are
-lifted from the upstream test suite and the rest are generated from a
-fixed seed or derived from a published network name and passphrase.
-They are published, in this repository, on purpose, because a
-decryption vector cannot be checked without one.
+Five kinds carry a private key in every one of their vectors:
+test/keyset/ and test/sign/ carry an identity key, test/encrypted/ the
+recipient's, test/linkdata/ the responder's link key, and test/ifac/
+the interface key, which is derived rather than given and no less
+public for it. The ones named upstream are lifted from the upstream
+test suite; the rest are generated from a fixed seed or derived from a
+published network name and passphrase. They are published, in this
+repository, on purpose, because a decryption vector cannot be checked
+without one.
 
 Never load one into anything that talks to a network. An identity built
 from a key in this corpus can be impersonated by anyone who has read
@@ -197,7 +198,7 @@ A decoder passes this vector when
 
     my-decoder pathrequest test/pathrequest/tagged/raw
 
-prints those seventeen lines, in that order, byte for byte. The
+prints those sixteen lines, in that order, byte for byte. The
 determinism class is encode, so cmd/check also runs
 
     my-decoder -e pathrequest test/pathrequest/tagged/expect

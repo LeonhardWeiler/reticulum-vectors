@@ -412,5 +412,5 @@ either kind.
 
 expect opens with those input lines, as link_request and either
 signer_public or responder_private, so that it holds every byte of raw.
-test/linkrequest/invalid-length is decode class; the other fourteen
-link vectors are encode class and cmd/check rebuilds all three lines.
+test/linkrequest/invalid-length is decode class; every other link
+vector is encode class and cmd/check rebuilds all three lines.
