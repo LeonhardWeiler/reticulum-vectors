@@ -103,7 +103,14 @@ def main():
 
             if target not in cache:
                 full = os.path.join(args.checkout, target)
-                cache[target] = open(full).read().split("\n") \
+                # Named, because this is the one input the corpus does
+                # not control. Without it the encoding is the locale's,
+                # and a citation check that passes here and fails on
+                # another machine has checked nothing. Anchors are
+                # ASCII, so a byte that is not UTF-8 can be replaced
+                # rather than raised: it cannot be part of one.
+                cache[target] = open(full, encoding="utf-8",
+                                     errors="replace").read().split("\n") \
                     if os.path.isfile(full) else None
 
             lines = cache[target]
