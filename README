@@ -116,10 +116,22 @@ against it:
     make verify
 
 additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change, and checks that
-every RNS line cited by doc/ and by the programs still names the line it
-claims. That is the evidence behind the source line in every meta file.
-It needs Python and the checkout; cmd/check alone needs neither.
+implementation and fails if a single byte would change, and checks
+every RNS citation in doc/, in the programs and in the meta files.
+
+A citation carries the line and a piece of what is on it:
+
+    RNS/Packet.py:348#get_hashable_part
+
+The anchor is checked for identity, not for plausibility. It must
+appear on the line named, and when it does not, tools/cite prints the
+lines it does appear on. Both halves are needed: a line number alone
+slides silently when the pin moves, and an anchor alone would name a
+function rather than the rule inside it.
+
+That, and the regeneration, is the evidence behind the source line in
+every meta file. It needs Python and the checkout; cmd/check alone
+needs neither.
 
 
 Vector format

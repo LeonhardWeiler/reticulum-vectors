@@ -34,7 +34,7 @@ PIN_COMMIT  = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
 # pin that names only a version and a commit does not identify what was
 # observed. It is named here and recorded in every meta file.
 #
-#     RNS/Cryptography/Provider.py:35
+#     RNS/Cryptography/Provider.py:35#PROVIDER_PYCA
 PIN_BACKEND      = 0x02             # PROVIDER_PYCA
 PIN_BACKEND_NAME = "openssl backend"
 
@@ -197,7 +197,7 @@ def pinned(RNS, tag):
     Both are patched on RNS rather than on os.urandom. Patching
     os.urandom is not enough: under the openssl backend
     _generate_ratchet reaches X25519PrivateKey.generate in PyCA
-    (RNS/Cryptography/Proxies.py:43), which draws from OpenSSL's own
+    (RNS/Cryptography/Proxies.py:43#generate), which draws from OpenSSL's own
     generator and never touches os.urandom.
     """
     rng = DetRandom(tag)
@@ -224,9 +224,10 @@ def pinned(RNS, tag):
     # initialisation vector from it directly.
     identity_mod.X25519PrivateKey = pinned_keyclass(real_x25519, rng)
 
-    # RNS.Link imports both key classes for itself (RNS/Link.py:31) and
-    # draws a fresh pair for every link end (RNS/Link.py:276, :284), so
-    # the same shim is installed there.
+    # RNS.Link imports both key classes for itself
+    # (RNS/Link.py:31#Ed25519PrivateKey) and draws a fresh pair for
+    # every link end (RNS/Link.py:276#X25519PrivateKey, :284), so the
+    # same shim is installed there.
     link_mod.X25519PrivateKey  = pinned_keyclass(real_lx25519, rng)
     link_mod.Ed25519PrivateKey = pinned_keyclass(real_led, rng)
     try:
@@ -258,7 +259,7 @@ def stub_transport(RNS, tmpdir):
     RNS.Reticulum.storagepath = tmpdir
     # The constructor sets this and nothing else does, so without an
     # instance the attribute does not exist at all and every reader of
-    # it raises. RNS/Reticulum.py:254.
+    # it raises. RNS/Reticulum.py:254#__transport_enabled.
     RNS.Reticulum._Reticulum__transport_enabled = False
 
 
@@ -606,11 +607,11 @@ def gen_proof(RNS, w, verify):
 
     A proof is what a receiver sends back for a data packet it accepted.
     It is addressed not to a destination but to the first 16 bytes of
-    the proved packet's hash (RNS/Packet.py:378), which is how the
+    the proved packet's hash (RNS/Packet.py:378#get_hash), which is how the
     sender recognises the answer to its own packet.
 
     Both accepted forms are recorded. The reference emits the implicit
-    one by default and accepts either (RNS/Packet.py:481).
+    one by default and accepts either (RNS/Packet.py:481#EXPL_LENGTH).
     """
     private   = bytes.fromhex(UPSTREAM_KEYS[0][0])
     recipient = RNS.Identity.from_bytes(private)
@@ -631,7 +632,8 @@ def gen_proof(RNS, w, verify):
 
     # prove() reads the setting through Reticulum.should_use_implicit_proof,
     # which is what a config file sets. gen starts no instance, so the
-    # class attribute is set here instead. RNS/Reticulum.py:259.
+    # class attribute is set here instead.
+    # RNS/Reticulum.py:259#__use_implicit_proof.
     forms = [
         ("implicit", True,
          "the 64-byte form the reference emits by default"),
@@ -686,7 +688,8 @@ def gen_proof(RNS, w, verify):
         "the proved packet at three hops in header 2; the proof is unchanged and still verifies",
         [relayed.hex(), recipient.get_public_key().hex(), made["implicit"].raw.hex()],
         described,
-        source="constructed by tools/gen from proof/implicit, per RNS/Transport.py:1369")
+        source="constructed by tools/gen from proof/implicit, "
+               "per RNS/Transport.py:1369#HEADER_2")
 
 
 def describe_proof(proved_raw, signer_public, raw, verify):
@@ -729,12 +732,13 @@ def describe_proof(proved_raw, signer_public, raw, verify):
 def ifac_key(RNS, netname, netkey):
     """The interface identity, composed here rather than called.
 
-    RNS/Reticulum.py:958-971 derives it inline in the constructor of a
-    running instance and exposes no function to call. Every step is an
-    RNS function called with RNS constants, but the order is this
-    program's, and the order is exactly what a foreign implementation
-    can get wrong: origin is a concatenation of two hashes, and neither
-    half is present when that half is not configured.
+    RNS/Reticulum.py:958#ifac_netname to :971 derives it inline in the
+    constructor of a running instance and exposes no function to call.
+    Every step is an RNS function called with RNS constants, but the
+    order is this program's, and the order is exactly what a foreign
+    implementation can get wrong: origin is a concatenation of two
+    hashes, and neither half is present when that half is not
+    configured.
 
     That is why netname and netkey are lines of raw and the key is a
     field: cmd/dump derives it again, from the same two strings and
@@ -766,13 +770,13 @@ IFACS = [
 def gen_ifac(RNS, w, announce_raw_bytes):
     """The one transformation of the header that happens below Packet.
 
-    Packet.unpack never reads bit 7 (RNS/Packet.py:243). Transport does,
-    on the way out and on the way in, and a frame on an interface with a
-    named network or a passphrase does not look like a packet at all
-    until it is unmasked.
+    Packet.unpack never reads bit 7 (RNS/Packet.py:250#header_type).
+    Transport does, on the way out and on the way in, and a frame on an
+    interface with a named network or a passphrase does not look like a
+    packet at all until it is unmasked.
 
-    The masking is not composed: the frame is what RNS/Transport.py:1069
-    produced, through Transport.transmit.
+    The masking is not composed: the frame is what
+    RNS/Transport.py:1069#transmit produced, through Transport.transmit.
     """
     for name, netname, netkey, size, purpose in IFACS:
         origin, key = ifac_key(RNS, netname, netkey)
@@ -826,7 +830,7 @@ CONTEXTS     = {0x00: "none", 0x0b: "path_response", 0x0e: "channel",
                 0xfa: "keepalive", 0xfb: "link_identify", 0xfc: "link_close",
                 0xfd: "link_proof", 0xfe: "link_rtt", 0xff: "link_request_proof"}
 
-# Only MODE_AES256_CBC is enabled at the pin, RNS/Link.py:133.
+# Only MODE_AES256_CBC is enabled at the pin, RNS/Link.py:133#ENABLED_MODES.
 LINK_MODES   = {0x01: "aes256_cbc"}
 
 KEYSIZE     = 64
@@ -836,13 +840,13 @@ SIGLEN      = 64
 RATCHETLEN  = 32
 ADDRLEN     = 16
 KEYHALF     = 32
-TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:50, iv plus hmac
+TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:50#TOKEN_OVERHEAD
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
-ECPUBSIZE   = 64        # RNS/Link.py:70, the two public keys together
-SIGNALLEN   = 3         # RNS/Link.py:80, LINK_MTU_SIZE
-MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144
-MODE_DEFAULT = 0x01     # RNS/Link.py:134
-ENVELOPELEN  = 6        # RNS/Channel.py:133, three big-endian shorts
+ECPUBSIZE   = 64        # RNS/Link.py:70#ECPUBSIZE, both public keys
+SIGNALLEN   = 3         # RNS/Link.py:80#LINK_MTU_SIZE, LINK_MTU_SIZE
+MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144#MTU_BYTEMASK
+MODE_DEFAULT = 0x01     # RNS/Link.py:134#MODE_DEFAULT
+ENVELOPELEN  = 6        # RNS/Channel.py:133#MSGTYPE, three big-endian shorts
 
 
 # The Ed25519 group order, RFC 8032 section 5.1.
@@ -1003,7 +1007,7 @@ def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag,
 
 def transport_insert(raw, hops, transport_id):
     """Rewrite a header 1 packet as a header 2 packet in transport,
-    exactly as Transport.mangle_hops does at RNS/Transport.py:1369."""
+    exactly as Transport.mangle_hops does at RNS/Transport.py:1369#HEADER_2."""
     flags = raw[0] | (0x01 << 6) | (0x01 << 4)
     return bytes([flags, hops]) + transport_id + raw[2:]
 
@@ -1027,7 +1031,8 @@ def gen_announce(RNS, w, tmpdir, verify):
     derived = [
         ("in-transport", transport_insert(base, 1, transport_id),
          "header 2, one hop, transport id inserted",
-         "constructed by tools/gen from announce/minimal, per RNS/Transport.py:1369"),
+         "constructed by tools/gen from announce/minimal, "
+         "per RNS/Transport.py:1369#HEADER_2"),
 
         ("destination-mismatch", base[:2] + bytes(ADDRLEN) + base[2+ADDRLEN:],
          "destination hash replaced with zeroes; the announce decodes but does not match",
@@ -1098,7 +1103,7 @@ def gen_plain(RNS, w):
     """Packets to a plain destination, which are not encrypted at all.
 
     Destination.encrypt returns the plaintext unchanged for this type
-    (RNS/Destination.py:603), so there is no ephemeral key, no token and
+    (RNS/Destination.py:603#PLAIN), so there is no ephemeral key, no token and
     no padding: the payload is the data. The type had no vectors, and it
     is the one every transport node has to handle whether or not it ever
     encrypts anything, because path requests are addressed to one.
@@ -1141,7 +1146,7 @@ def gen_plain(RNS, w):
 
 def describe_pathrequest(raw):
     """Which fields a path request carries is decided by how long it is,
-    and by nothing else. RNS/Transport.py:2965.
+    and by nothing else. RNS/Transport.py:2965#TRUNCATED_HASHLENGTH.
     """
     lines, h = describe_header(raw)
     if h is None:
@@ -1184,7 +1189,8 @@ def gen_pathrequest(RNS, w):
     would hold. request_path reads both and neither is a value the
     corpus asserts anything about; the bytes are the reference's.
 
-        RNS/Transport.py:2871, RNS/Reticulum.py:1762
+        RNS/Transport.py:2871#transport_enabled
+        RNS/Reticulum.py:1762#__transport_enabled
     """
     wanted = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
     destination_hash = RNS.Destination.hash(wanted, "rns_unit_tests", "link", "establish")
@@ -1255,7 +1261,7 @@ def handler_reads(RNS, data):
     means it made no call: the payload named no destination, or named
     one with no tag.
 
-        RNS/Transport.py:2959
+        RNS/Transport.py:2959#TRUNCATED_HASHLENGTH
     """
     real_request = RNS.Transport.path_request
     seen = []
@@ -1281,7 +1287,7 @@ def handler_reads(RNS, data):
 
 
 def hashable_part(raw, payload_len=None):
-    """The bytes a packet is hashed over, RNS/Packet.py:348.
+    """The bytes a packet is hashed over, RNS/Packet.py:348#get_hashable_part.
 
     The low four flag bits and the hop count are excluded so that a
     packet keeps its hash while it travels. That much is the packet
@@ -1289,8 +1295,8 @@ def hashable_part(raw, payload_len=None):
 
     A link id is the same hash with any signalling bytes chopped off
     the end first, so that signalling the MTU does not change the
-    identity of the link (RNS/Link.py:336). Pass the payload length to
-    get that; leave it out for the packet hash.
+    identity of the link (RNS/Link.py:336#link_id_from_lr_packet). Pass
+    the payload length to get that; leave it out for the packet hash.
     """
     header_type = (raw[0] & 0b01000000) >> 6
     part = bytes([raw[0] & 0x0f]) + (raw[2+ADDRLEN:] if header_type else raw[2:])
@@ -1306,7 +1312,7 @@ def describe_signalling(signalling):
     A link request and the proof that answers it carry the same three
     bytes in different positions and read them the same way. None means
     the shorter form, where the mode falls back to the default and the
-    mtu has no fallback at all. RNS/Link.py:148.
+    mtu has no fallback at all. RNS/Link.py:148#signalling_bytes.
     """
     if signalling is None:
         mode, mtu = MODE_DEFAULT, None
@@ -1367,13 +1373,14 @@ def captured(RNS):
 def link_session(RNS, tag):
     """Establish one link, far enough to produce packets from both ends.
 
-    The request is assembled as Link.__init__ does at RNS/Link.py:304.
-    The initiator half of that constructor reaches for a running
-    instance three lines earlier, so the four lines that produce bytes
-    are run here instead. The responder is then built as
-    validate_request builds it at RNS/Link.py:189, up to and including
-    prove; what follows there registers the link and starts a watchdog,
-    and produces no bytes.
+    The request is assembled as Link.__init__ does at
+    RNS/Link.py:304#initiator. The initiator half of that constructor
+    reaches for a running instance three lines earlier, so the four
+    lines that produce bytes are run here instead. The responder is then
+    built as validate_request builds it at
+    RNS/Link.py:189#peer_sig_pub_bytes, up to and including prove; what
+    follows there registers the link and starts a watchdog, and produces
+    no bytes.
 
     Everything that shapes a byte is the reference's own: the key
     classes Link resolves, its signalling encoder, its handshake, its
@@ -1430,12 +1437,12 @@ def link_session(RNS, tag):
 
 def initiator_link(RNS, session):
     """The initiator half, as validate_proof completes it at
-    RNS/Link.py:405.
+    RNS/Link.py:405#initiator.
 
     Link.__init__ draws keys of its own, and the initiator's are already
     fixed by the request it sent, so the object is built through the
     inert constructor and then given those keys. Status is set to
-    ACTIVE, which is what validate_proof does at RNS/Link.py:424 once
+    ACTIVE, which is what validate_proof does at RNS/Link.py:424#ACTIVE once
     the signature checks out, and what identify requires.
     """
     proof_data = session["proof"].data
@@ -1478,8 +1485,8 @@ def gen_linkrequest(RNS, w, session):
         describe_linkrequest(raw))
 
     # Without signalling is the shorter form validate_request still
-    # accepts at RNS/Link.py:187. It opens the same link: the signalling
-    # bytes are excluded from the link id.
+    # accepts at RNS/Link.py:187#LINK_MTU_SIZE. It opens the same link:
+    # the signalling bytes are excluded from the link id.
     unsignalled = raw[:-SIGNALLEN]
     w.vector("linkrequest", "no-signalling",
         "the 64-byte form; same link id, mode falls back to the default",
@@ -1509,7 +1516,8 @@ def gen_linkrequest(RNS, w, session):
         "header 2, one hop; the same link id as linkrequest/signalling",
         [relayed.hex()],
         describe_linkrequest(relayed),
-        source="constructed by tools/gen from linkrequest/signalling, per RNS/Transport.py:1369")
+        source="constructed by tools/gen from linkrequest/signalling, "
+               "per RNS/Transport.py:1369#HEADER_2")
 
 
 def describe_linkproof(request_raw, identity_public, raw, verify):
@@ -1582,7 +1590,8 @@ def gen_linkproof(RNS, w, verify, session):
         blobs + [raw.hex()],
         describe_linkproof(request_raw, public, raw, verify))
 
-    # The 96-byte form validate_proof also accepts, at RNS/Link.py:405.
+    # The 96-byte form validate_proof also accepts, at
+    # RNS/Link.py:405#initiator.
     # The reference never emits it: prove always signals. Removing the
     # bytes removes them from the signed material too, so the signature
     # no longer verifies, which is the point of the vector.
@@ -1631,7 +1640,7 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     ]
 
     # Keepalives carry no data and are the one link packet the
-    # reference does not encrypt. RNS/Packet.py:206.
+    # reference does not encrypt. RNS/Packet.py:206#KEEPALIVE.
     if h["context"] == 0xfa:
         return lines + [
             field("encrypted",        "no"),
@@ -1662,7 +1671,7 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
 
     # A channel envelope is six bytes of big-endian header and then the
     # message. The length it declares is not read back: Envelope.unpack
-    # takes everything after the six bytes. RNS/Channel.py:118.
+    # takes everything after the six bytes. RNS/Channel.py:118#unpack.
     if h["context"] == 0x0e and plaintext is not None and len(plaintext) >= ENVELOPELEN:
         lines += [
             field("msgtype",        plaintext[:2].hex()),
@@ -1673,7 +1682,7 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
 
     # An identify proof names the initiator, which nothing else on a
     # link does. Its signature covers the link id, so it cannot be
-    # replayed onto another link. RNS/Link.py:464.
+    # replayed onto another link. RNS/Link.py:464#signed_data.
     if h["context"] == 0xfb and plaintext is not None and len(plaintext) == KEYSIZE + SIGLEN:
         identity_public = plaintext[:KEYSIZE]
         signature       = plaintext[KEYSIZE:]
@@ -1705,7 +1714,8 @@ def gen_linkdata(RNS, w, verify, session):
     rtt = 0.0625
 
     # Channel.send is the sequence counter, a retry ring and a watchdog
-    # around the two lines that make bytes, RNS/Channel.py:507. Those
+    # around the two lines that make bytes,
+    # RNS/Channel.py:507#reserved_sequence. Those
     # two are run here for the same reason link_session runs four lines
     # of Link.__init__: the rest reaches for an instance and produces
     # nothing. The envelope and the packet are still the reference's.
@@ -1766,7 +1776,7 @@ def lookup_field(lines, name):
 
 
 def hkdf_sha256(length, ikm, salt, context=b""):
-    """RFC 5869, which is what RNS/Cryptography/HKDF.py:35 implements."""
+    """RFC 5869, which is what RNS/Cryptography/HKDF.py:35#hkdf implements."""
     import hmac as _hmac
 
     def mac(key, data):
@@ -1804,7 +1814,7 @@ def token_open(payload, key):
     still laid out, because its three parts are in the packet, but no
     verdict about it can be reached.
 
-        RNS/Cryptography/Token.py:100
+        RNS/Cryptography/Token.py:100#decrypt
     """
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     import hmac as _hmac
@@ -1874,7 +1884,7 @@ def describe_encrypted(raw, private, ratchet_private):
     identity_hash = hashlib.sha256(public_key).digest()[:ADDRLEN]
 
     # The salt is always the recipient's identity hash, including when
-    # the shared secret came from a ratchet. RNS/Identity.py:841.
+    # the shared secret came from a ratchet. RNS/Identity.py:841#get_salt.
     if ratchet_private is not None:
         agree_with = ratchet_private
         ratchet_public = X25519PrivateKey.from_private_bytes(ratchet_private) \
@@ -1946,7 +1956,7 @@ def gen_group(RNS, w):
     under the shared symmetric key, with no ephemeral key in front of
     it and no derivation behind it.
 
-        RNS/Destination.py:612
+        RNS/Destination.py:612#GROUP
     """
     identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[1][0]))
     plaintext = b"reticulum"

@@ -12,17 +12,17 @@ are described here.
 
 Constants
 
-    ECPUBSIZE            64 bytes   RNS/Link.py:70, the two public keys
-    LINK_MTU_SIZE         3 bytes   RNS/Link.py:80
-    MTU_BYTEMASK       0x1fffff     RNS/Link.py:144
-    MODE_BYTEMASK          0xe0     RNS/Link.py:145
-    MODE_DEFAULT           0x01     RNS/Link.py:134, AES-256-CBC
+    ECPUBSIZE       64 bytes   RNS/Link.py:70#ECPUBSIZE, both public keys
+    LINK_MTU_SIZE    3 bytes   RNS/Link.py:80#LINK_MTU_SIZE
+    MTU_BYTEMASK  0x1fffff     RNS/Link.py:144#MTU_BYTEMASK
+    MODE_BYTEMASK     0xe0     RNS/Link.py:145#MODE_BYTEMASK
+    MODE_DEFAULT      0x01     RNS/Link.py:134#MODE_DEFAULT, AES-256-CBC
 
 Only MODE_AES256_CBC is enabled at this pin. ENABLED_MODES holds that
 one value, and signalling_bytes raises on any other, so no packet the
 reference emits carries a different mode.
 
-    RNS/Link.py:133, RNS/Link.py:148
+    RNS/Link.py:133#ENABLED_MODES, RNS/Link.py:148#signalling_bytes
 
 
 Link request
@@ -31,7 +31,7 @@ Packet type 2, destination type single, context 0x00. The destination
 hash is the hash of the destination being linked to. The payload is
 not encrypted.
 
-    RNS/Packet.py:193
+    RNS/Packet.py:193#LINKREQUEST
 
     offset  size  field
     0       32    initiator X25519 public key
@@ -42,12 +42,12 @@ Both keys are drawn fresh for every link. The Ed25519 key is not the
 initiator's identity key: a link is anonymous until the initiator
 identifies over it.
 
-    RNS/Link.py:284
+    RNS/Link.py:284#X25519PrivateKey
 
 Exactly two payload lengths are accepted, 64 and 67. Anything else is
 dropped without further examination.
 
-    RNS/Link.py:187
+    RNS/Link.py:187#LINK_MTU_SIZE
 
 
 Signalling
@@ -59,14 +59,15 @@ reference always sends them.
     23-21  3      mode
     20-0   21     mtu
 
-    RNS/Link.py:148
+    RNS/Link.py:148#signalling_bytes
 
 Absent, the mode decodes as MODE_DEFAULT, because mode_from_lr_packet
 returns that value rather than nothing. The MTU has no such fallback
 in the decoder: mtu_from_lr_packet returns nothing, and the receiver
 keeps the MTU its own Link was constructed with, 500 bytes.
 
-    RNS/Link.py:172, RNS/Link.py:154, RNS/Link.py:234
+    RNS/Link.py:172#mode_from_lr_packet, RNS/Link.py:154#mtu_from_lr_packet,
+    RNS/Link.py:234#Reticulum.MTU
 
 
 Link id
@@ -80,7 +81,7 @@ that is, the packet with the four high flag bits cleared and the hop
 count removed, so that the id survives a hop; and, for a packet in
 transport, with the transport id removed as well.
 
-    RNS/Packet.py:348
+    RNS/Packet.py:348#get_hashable_part
 
 Any signalling bytes are then chopped off the end. The initiator and
 the responder therefore agree on the link id whether or not the MTU
@@ -95,7 +96,7 @@ and is the half of it no other vector reaches: a request that arrived
 through a transport node must open the link its sender opened, or the
 two ends address different links from the first packet onward.
 
-    RNS/Link.py:336
+    RNS/Link.py:336#link_id_from_lr_packet
 
 The link id is not a hash of the public keys, and it is not derived
 from the destination hash alone. Two requests to the same destination
@@ -112,12 +113,12 @@ The destination type in the flags byte is set to link, 3, regardless
 of the destination the proof is about, and it is written from a
 constant rather than read from the destination.
 
-    RNS/Packet.py:170
+    RNS/Packet.py:170#LRPROOF
 
 The address field holds the link id, not a destination hash. It is
 written from destination.link_id, and the payload is not encrypted.
 
-    RNS/Packet.py:183
+    RNS/Packet.py:183#LRPROOF
 
     offset  size  field
     0       64    Ed25519 signature
@@ -131,7 +132,7 @@ sent, because that is all the initiator needs for the key agreement.
 Two payload lengths decode, 96 and 99. The reference emits only the
 99-byte form: prove always signals.
 
-    RNS/Link.py:366, RNS/Link.py:399
+    RNS/Link.py:366#prove, RNS/Link.py:399#LINK_MTU_SIZE
 
 
 Signed material
@@ -151,7 +152,8 @@ The signature is made with the identity key of the destination, not
 with the link's own Ed25519 key. The link key signs packet proofs
 later; it does not sign the link request proof.
 
-    RNS/Link.py:368, RNS/Link.py:412, RNS/Link.py:407
+    RNS/Link.py:368#signed_data, RNS/Link.py:412#signed_data,
+    RNS/Link.py:407#peer_sig_pub_bytes
 
 An initiator that verifies against a key it did not already hold
 proves nothing. The identity comes from an announce received earlier,
@@ -172,7 +174,8 @@ MODE_AES128_CBC, which is not enabled at this pin. The 64 bytes split
 into a 32-byte signing key and a 32-byte encryption key, exactly as
 doc/encryption describes for a token.
 
-    RNS/Link.py:348, RNS/Link.py:607, RNS/Link.py:610
+    RNS/Link.py:348#handshake, RNS/Link.py:607#get_salt,
+    RNS/Link.py:610#get_context
 
 The salt is the link id. It is not the identity hash, which is what a
 packet to a destination uses, and it is in no packet: a decoder that
@@ -182,7 +185,7 @@ private keys.
 The context is empty. get_context returns nothing, and hkdf turns
 that into an empty string rather than refusing it.
 
-    RNS/Cryptography/HKDF.py:50
+    RNS/Cryptography/HKDF.py:50#context
 
 
 Packets on the link
@@ -209,7 +212,8 @@ encrypted at all:
     0xfc   link close      the link id
     0xfe   link rtt        msgpack float, sent by the initiator
 
-    RNS/Packet.py:206, RNS/Link.py:800, RNS/Link.py:1126
+    RNS/Packet.py:206#KEEPALIVE, RNS/Link.py:800#keepalive_packet,
+    RNS/Link.py:1126#keepalive_packet
 
 A decoder that treats every packet on a link as encrypted fails on
 keepalives.
@@ -226,7 +230,7 @@ message, all three fields big endian:
     4       2     declared message length
     6       -     the message
 
-    RNS/Channel.py:133
+    RNS/Channel.py:133#MSGTYPE
 
 The sequence counts messages sent, modulo 65536, and is what the
 receiver orders and deduplicates by. It belongs to the channel and not
@@ -237,7 +241,7 @@ everything after offset 6 and does not compare it against the field, so
 a message whose length field disagrees with its length is delivered
 whole.
 
-    RNS/Channel.py:118
+    RNS/Channel.py:118#unpack
 
 The corpus carries the two vectors the reference can produce and none
 where the two disagree, because it cannot produce one: Envelope.pack
@@ -249,7 +253,7 @@ The message type is the message's own, not the channel's. 0xff00 is
 reserved for the stream messages RNS/Buffer.py sends; everything below
 0xf000 belongs to whatever registered it.
 
-    RNS/Channel.py:267
+    RNS/Channel.py:267#ME_INVALID_MSG_TYPE
 
 test/linkdata/channel and test/linkdata/channel-eof carry two stream
 messages, sequence 0 and 1. What is inside them is the message type's
@@ -263,7 +267,7 @@ Sent by the initiator only, over the established link.
     plaintext   identity public key (64) || signature (64)
     signed      link id || identity public key
 
-    RNS/Link.py:454
+    RNS/Link.py:454#identify
 
 The signature covers the link id, so an identify proof cannot be
 lifted onto another link. Nothing else on a link names either end: the

@@ -38,7 +38,7 @@ void hmac_sha256(const uint8_t *key, size_t keylen,
 	sha256(outer, BLOCK + HASH, out);
 }
 
-/* RNS/Cryptography/HKDF.py:35. An absent salt is 32 zero bytes and an
+/* RNS/Cryptography/HKDF.py:35#hkdf. An absent salt is 32 zero bytes and an
  * absent context is empty, which is what Identity passes. */
 void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
                  const uint8_t *salt, size_t saltlen,

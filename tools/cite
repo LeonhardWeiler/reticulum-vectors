@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 #
-# Check every RNS/...py:N citation in the corpus against the pinned
-# checkout.
+# Check every RNS/...py:N#anchor citation in the corpus against the
+# pinned checkout.
 #
 #     tools/cite [--checkout PATH]
 #
 # doc/ and the programs cite the reference by line, and nothing else
 # reads those numbers. Twelve of them had already slid by one or two
-# lines before this existed. A citation landing on a blank line or on a
-# comment is the shape that drift takes, and it is enough to catch.
+# lines before this existed, and five more named a line that was code
+# and not the rule they were cited for, which is the shape a citation
+# takes when it was wrong from the start rather than when it drifted.
+# Landing on a blank line or a comment caught neither kind.
+#
+# So a citation carries the line and a piece of what is on it. The
+# anchor is checked for identity rather than for plausibility: it must
+# appear on the line named. When it does not, this program finds the
+# lines it does appear on and prints them, so that repairing a citation
+# is reading a number rather than searching a file.
 
 import argparse
 import os
@@ -22,7 +30,12 @@ SOURCES = ["README", "CONFORMANCE", "Makefile", "cmd/check", "tools/gen",
            "tools/cite"]
 DIRS    = ["doc", "cmd"]
 
-CITE = re.compile(r"RNS/[A-Za-z0-9_/]+\.py:(\d+)")
+# The anchor is a chain of identifiers, so a sentence's full stop is not
+# part of it and Reticulum.MTU is. One without an anchor still matches,
+# and is an error: a check that can be left off is a check that will be.
+CITE   = re.compile(r"RNS/[A-Za-z0-9_/]+\.py:\d+"
+                    r"(?:#[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)?")
+PARTS  = re.compile(r"^(RNS/[A-Za-z0-9_/]+\.py):(\d+)#(.+)$")
 
 
 def sources():
@@ -35,6 +48,21 @@ def sources():
             path = os.path.join(ROOT, d, name)
             if os.path.isfile(path) and not name.endswith(".o"):
                 yield path
+    # A meta file's source line cites RNS where the vector was derived
+    # rather than captured. That is a provenance claim, and it is
+    # checked like every other citation.
+    for name in sorted(open(os.path.join(ROOT, "test", "INDEX"))):
+        yield os.path.join(ROOT, "test", name.strip(), "meta")
+
+
+def elsewhere(lines, anchor):
+    """Where the anchor is, so that a slid citation names its own fix."""
+    found = [str(n) for n, text in enumerate(lines, 1) if anchor in text]
+    if not found:
+        return "anchor is nowhere in the file"
+    if len(found) > 8:
+        return "anchor is on %d other lines" % len(found)
+    return "anchor is on line " + ", ".join(found)
 
 
 def main():
@@ -53,9 +81,14 @@ def main():
 
         for m in CITE.finditer(body):
             checked += 1
-            cited, line = m.group(0), int(m.group(1))
-            target = cited.rsplit(":", 1)[0]
+            cited = m.group(0)
             where = os.path.relpath(path, ROOT)
+
+            parts = PARTS.match(cited)
+            if parts is None:
+                bad.append((where, cited, "no anchor"))
+                continue
+            target, line, anchor = parts.group(1), int(parts.group(2)), parts.group(3)
 
             if target not in cache:
                 full = os.path.join(args.checkout, target)
@@ -67,15 +100,13 @@ def main():
                 bad.append((where, cited, "no such file in the checkout"))
             elif line > len(lines):
                 bad.append((where, cited, "past the end of a %d-line file" % len(lines)))
-            else:
-                text = lines[line-1].strip()
-                if text == "" or text.startswith("#"):
-                    bad.append((where, cited, "blank or comment"))
+            elif anchor not in lines[line-1]:
+                bad.append((where, cited, elsewhere(lines, anchor)))
 
     print("%d citations checked" % checked)
     if bad:
         for where, cited, why in bad:
-            print("    %-20s %-34s %s" % (where, cited, why))
+            print("    %-20s %-46s %s" % (where, cited, why))
         sys.exit(1)
 
 

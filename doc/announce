@@ -23,7 +23,7 @@ Payload
 Without a ratchet the payload is at least 148 bytes, with one at least
 180. Anything beyond the signature is app data.
 
-    RNS/Destination.py:302, RNS/Identity.py:511
+    RNS/Destination.py:302#announce_data, RNS/Identity.py:511#validate_announce
 
 
 Random hash
@@ -40,7 +40,7 @@ different bytes, which is why no announce vector can be produced a
 second time. It can still be rebuilt: expect records the ten bytes as
 they came out, so announce vectors are encode class.
 
-    RNS/Destination.py:283
+    RNS/Destination.py:283#get_random_hash
 
 
 Signed data
@@ -61,12 +61,13 @@ Every announce vector carries the assembled signed_data field followed
 by the signature_valid verdict. An implementation whose verification
 fails can compare its assembly before suspecting its curve code.
 
-test/announce/altered-signature is a valid announce with one signature byte altered.
-It decodes cleanly and its destination hash matches; only the
-signature fails. test/announce/destination-mismatch fails both checks, because the
-destination hash is part of the signed data.
+test/announce/altered-signature is a valid announce with one signature
+byte altered. It decodes cleanly and its destination hash matches; only
+the signature fails. test/announce/destination-mismatch fails both
+checks, because the destination hash is part of the signed data.
 
-    RNS/Destination.py:298 (sender), RNS/Identity.py:545 (receiver)
+    sender    RNS/Destination.py:298#signed_data
+    receiver  RNS/Identity.py:545#signed_data
 
 
 Validation
@@ -86,7 +87,7 @@ The announce carries the name hash but not the name. A receiver
 therefore learns which destination hash is claimed and can confirm it
 belongs to the announced key, but cannot recover the aspect names.
 
-    RNS/Identity.py:556, RNS/Identity.py:563
+    RNS/Identity.py:563#hash_material, RNS/Identity.py:566#expected_hash
 
 
 Ratchet
@@ -96,7 +97,7 @@ context flag in the header is set. A receiver that ignores the context
 flag will read the first 32 bytes of the ratchet as part of the
 signature and reject every ratchet announce.
 
-    RNS/Destination.py:287, RNS/Identity.py:525
+    RNS/Destination.py:287#_ratchet_public_bytes, RNS/Identity.py:525#FLAG_SET
 
 
 Reproducibility of the vectors
@@ -109,7 +110,7 @@ byte would change.
 Both sources are pinned on RNS itself. Pinning os.urandom is not
 enough and was wrong here for a while: under the openssl backend
 _generate_ratchet reaches X25519PrivateKey.generate in PyCA
-(RNS/Cryptography/Proxies.py:43), which draws from OpenSSL's own
+(RNS/Cryptography/Proxies.py:43#generate), which draws from OpenSSL's own
 generator and never touches os.urandom, so the two ratchet vectors
 changed on every run while this section claimed they did not.
 

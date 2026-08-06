@@ -193,7 +193,7 @@ int aes256_cbc_decrypt(const uint8_t key[32], const uint8_t iv[16],
 	return 0;
 }
 
-/* RNS/Cryptography/PKCS7.py:41. */
+/* RNS/Cryptography/PKCS7.py:42#unpad. */
 int pkcs7_unpad(const uint8_t *in, size_t len, size_t *outlen)
 {
 	uint8_t n;

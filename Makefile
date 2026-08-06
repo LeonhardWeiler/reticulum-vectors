@@ -34,8 +34,8 @@ gen:
 # Every meta file claims a source, and doc/ cites the reference by line.
 # verify is the evidence for both: gen exits non-zero if regenerating
 # would change any committed byte, and cite exits non-zero if a citation
-# has slid off the line it names. Needs Python and the checkout; check
-# alone does not.
+# no longer names a line holding what it says is there. Needs Python and
+# the checkout; check alone does not.
 verify: check
 	tools/gen
 	tools/cite
