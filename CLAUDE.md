@@ -25,8 +25,9 @@ regenerated and differences are examined, not silently accepted.
 The backend belongs in the pin. python-rns ships two curve
 implementations and picks one at import time by what is installed, and
 they disagree on a non-canonical Ed25519 S and on a low-order X25519
-point. Three vectors turn on the difference; tools/gen refuses to run
-under the other backend.
+point. Vectors turn on the difference; tools/gen refuses to run under
+the other backend. Which vectors is not counted here: doc/identity and
+doc/encryption name them.
 
 ---
 
@@ -182,10 +183,10 @@ Nine documents. One C program. One shell script. Two tools that are
 not part of the contract, because a consumer runs neither.
 
 That accounts for what a consumer reads and not for what a clone holds:
-conformance/ is 4343 lines of harness in six languages, and it is the
-larger half of the repository. README says so in its layout, because a
-reader told that dump needs a C compiler and nothing else is entitled
-to be surprised by a clone that wants Go, Rust, Node and Elixir.
+conformance/ holds six harnesses in six languages, and it is the larger
+half of the repository. README says so in its layout, because a reader
+told that dump needs a C compiler and nothing else is entitled to be
+surprised by a clone that wants Go, Rust, Node and Elixir.
 
 ---
 
