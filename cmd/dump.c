@@ -1411,6 +1411,9 @@ static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
 	static uint8_t mask[MAXBLOB];
 	size_t i;
 
+	if (len > MAXBLOB)
+		fatal("frame of %zu bytes exceeds %d", len, MAXBLOB);
+
 	hkdf_sha256(ifac, ifac_size, key, KEYSIZE, NULL, 0, mask, len);
 
 	for (i = 0; i < len; i++) {
@@ -1731,12 +1734,17 @@ static void encode_ifac(struct kv *f, int n)
 
 	if (pkt.len < 2)
 		fatal("ifac: packet of %zu bytes has no header", pkt.len);
+	if (code.len > SIGLEN)
+		fatal("ifac: access code of %zu bytes exceeds the signature", code.len);
+
+	len = pkt.len + code.len;
+	if (len > MAXBLOB)
+		fatal("ifac: frame of %zu bytes exceeds %d", len, MAXBLOB);
 
 	originlen = ifac_origin(&netname, &netkey, origin);
 	ifac_key(origin, originlen, key);
 
 	memcpy(packet, pkt.data, pkt.len);
-	len = pkt.len + code.len;
 
 	frame[0] = packet[0] | 0x80;
 	frame[1] = packet[1];
