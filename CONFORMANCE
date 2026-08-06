@@ -3,7 +3,7 @@ Conformance of independent implementations
 Run on 2026-08-06 against the 52 vectors test/ held at that date,
 through the harnesses in conformance/.
 
-Nine vectors have been added since, and no row below covers them. The
+Eleven vectors have been added since, and no row below covers them. The
 rows are left at what was measured rather than restated against a
 corpus they were not run on.
 
@@ -20,6 +20,9 @@ corpus they were not run on.
     destination/empty-aspect      the empty byte string
     plain/path-request            a destination type with no vectors
     plain/empty                   until now
+
+    announce/short-header         two rejection rules that both
+    proof/invalid-length          decoders had and no vector carried
 
 Four of the nine are expected to change rows that pass today. The hop
 boundary separates three kinds of failure that currently look alike

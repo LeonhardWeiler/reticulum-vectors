@@ -40,7 +40,8 @@ skip=0
 skipped_kinds=
 
 err=$(mktemp) || exit 2
-trap 'rm -f "$err"' EXIT INT TERM
+documented=$(mktemp) || exit 2
+trap 'rm -f "$err" "$documented"' EXIT INT TERM
 
 # The corpus is what test/INDEX says it is. Counting what is present
 # and reporting it as a total is not a check: a copy of test/ with
@@ -57,6 +58,33 @@ differs=$(printf '%s\n' "$present" | diff "$index" - | sed -n 's/^[<>]/&/p')
 if [ -n "$differs" ]; then
 	echo "test/ and test/INDEX disagree:"
 	printf '%s\n' "$differs" | sed 's/^</    missing:/; s/^>/    unlisted:/'
+	exit 2
+fi
+
+# doc/fields is the index of every name expect can carry, and it is
+# checked in both directions: a name in a vector and not in the document
+# is undocumented, and a name in the document and in no vector is a
+# field that was removed and left behind. A document nothing reads
+# drifts exactly as a meta field nothing reads does.
+#
+# A documented name sits at a four-space indent followed by its form.
+# Continuation lines are indented further and do not match.
+fields="$root/doc/fields"
+if [ ! -f "$fields" ]; then
+	echo "no doc/fields; the format has no index" >&2
+	exit 2
+fi
+
+sed -n 's/^    \([a-z_][a-z0-9_]*\)   *[a-z-].*/\1/p' "$fields" |
+	LC_ALL=C sort -u > "$documented"
+used=$(cat "$root"/test/*/*/expect | awk 'NF > 0 { print $1 }' |
+       LC_ALL=C sort -u)
+
+differs=$(printf '%s\n' "$used" | diff "$documented" - | sed -n 's/^[<>]/&/p')
+if [ -n "$differs" ]; then
+	echo "test/ and doc/fields disagree:"
+	printf '%s\n' "$differs" |
+		sed 's/^</    documented, in no vector:/; s/^>/    undocumented:/'
 	exit 2
 fi
 

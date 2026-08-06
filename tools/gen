@@ -668,6 +668,16 @@ def gen_proof(RNS, w, verify):
     assert lookup_field(described, "destination_match") == "yes"
     assert lookup_field(described, "signature_valid") == "yes"
 
+    # Neither of the two accepted payload lengths. The reference reads
+    # 64 as implicit and 96 as explicit and drops everything else; this
+    # is the rejection that names both.
+    short = made["implicit"].raw[:-1]
+    w.vector("proof", "invalid-length",
+        "63-byte payload, neither of the two accepted lengths",
+        [proved.raw.hex(), recipient.get_public_key().hex(), short.hex()],
+        describe_proof(proved.raw, recipient.get_public_key(), short, verify),
+        source="constructed by tools/gen from proof/implicit")
+
     w.vector("proof", "proved-in-transport",
         "the proved packet at three hops in header 2; the proof is unchanged and still verifies",
         [relayed.hex(), recipient.get_public_key().hex(), made["implicit"].raw.hex()],
@@ -993,6 +1003,15 @@ def gen_announce(RNS, w, tmpdir, verify):
 
         ("short-payload", base[:-1],
          "one byte short of the minimum payload",
+         "constructed by tools/gen from announce/minimal"),
+
+        # One byte short of a header 1 header. Nothing about the packet
+        # can be read, not even the context byte, so the rejection names
+        # a length and not a payload. Until doc/fields was checked
+        # against test/, this rule was described in doc/packet with an
+        # example and carried by no vector.
+        ("short-header", base[:18],
+         "18 bytes, one short of a header 1 header",
          "constructed by tools/gen from announce/minimal"),
 
         ("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],

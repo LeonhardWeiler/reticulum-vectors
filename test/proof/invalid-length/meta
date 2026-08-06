@@ -1,0 +1,3 @@
+source             constructed by tools/gen from proof/implicit
+determinism        decode
+purpose            63-byte payload, neither of the two accepted lengths

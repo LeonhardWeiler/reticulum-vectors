@@ -1,0 +1,255 @@
+Fields
+
+Every name that can appear in an expect file, what it holds, and which
+kinds carry it. The other documents describe the objects; this one is
+the index a harness author reads first.
+
+cmd/check enforces it in both directions. A name that appears in an
+expect file and not here fails, and so does a name here that no vector
+carries. A field nothing reads is a field that drifts, and a document
+nothing reads is the same thing.
+
+
+Value forms
+
+Four, and no others.
+
+        hex        a byte string, lower case, no separators, never empty
+        decimal    a count or a length, no sign, no padding
+        keyword    one word from a set fixed per field, listed below
+        -          absent, empty, or not determined
+
+The three meanings of "-" are told apart by the field, not by the
+value. An optional part of a packet that is not present is "-". An
+empty byte string is "-", because hex cannot spell one and a name
+followed by nothing is a line that cannot be told from a truncated one.
+A verdict that was never reached is "-", which is what happens when no
+key agreement was possible; see doc/encryption.
+
+Names are at most 18 characters, which is the column the value starts
+in. A wider name would shift the value and two decoders that pad alike
+would still compare equal, so both cmd/dump and tools/gen refuse one.
+
+
+Echoed inputs
+
+raw carries more than the object for six kinds, because the object
+cannot be read without it. expect echoes those lines so that it holds
+every byte of raw and the encode direction has something to rebuild
+from. Each is the line of raw named in the kind's own document.
+
+    recipient_private  hex      encrypted: the 64-byte identity private key
+    ratchet_private    hex, -   encrypted: the 32-byte ratchet scalar, or -
+    link_request       hex      linkproof, linkdata: the request packet
+    responder_private  hex      linkdata: the responder's 32-byte link scalar
+    signer_public      hex      linkproof, proof: the signer's 64-byte public key
+    proved_packet      hex      proof: the packet being proved
+    private_key        hex      keyset, sign: the 64-byte identity private key
+    ifac_key           hex      ifac: the 64-byte interface key
+
+
+Header
+
+Carried by every kind whose raw is a whole packet: announce, plain,
+encrypted, linkrequest, linkproof, linkdata, proof. See doc/packet.
+
+    flags              hex      the flags byte, one byte
+    header_type        decimal  1 or 2, the human-facing numbering
+    context_flag       keyword  set, unset
+    transport_type     keyword  broadcast, transport, relay, tunnel
+    destination_type   keyword  single, group, plain, link
+    packet_type        keyword  data, announce, linkrequest, proof
+    hops               decimal  the hop count, below 128
+    transport_id       hex, -   header 2 only, otherwise -
+    destination_hash   hex      the address field, 16 bytes
+    context            keyword  none, path_response, keepalive,
+                                link_identify, link_close, link_proof,
+                                link_rtt, link_request_proof
+    payload_length     decimal  bytes after the header
+
+context falls back to hex for a byte with no name. It is the one field
+whose form depends on the value.
+
+The address field is called destination_hash for every kind, and for
+two kinds it is not a destination hash: a link request proof carries
+the link id there and a delivery proof carries the first 16 bytes of a
+packet hash. link_id_match and destination_match are the fields that
+say so.
+
+
+Identity and destination
+
+    public_key         hex      64 bytes, X25519 half then Ed25519 half
+    x25519_public      hex      32 bytes
+    ed25519_public     hex      32 bytes
+    x25519_private     hex      32 bytes, the raw scalar, unclamped
+    ed25519_private    hex      32 bytes, an RFC 8032 seed
+    identity_hash      hex      SHA-256(public_key)[0:16]
+    name               hex      the full destination name, utf-8 bytes
+    app_name           hex      the first component
+    aspect             hex, -   one component, repeated; - when empty
+    name_hash          hex      SHA-256(name)[0:10]
+    destination_hash   hex      SHA-256(name_hash || identity_hash)[0:16]
+
+aspect is the one repeated name in the format. The number of lines is
+the number of components after the first, and their order is the order
+in the name.
+
+identity_hash appears in six kinds and means the same thing in all of
+them: the hash of a public key. In an announce it is derived from the
+announced key; in an encrypted packet it is derived from the recipient
+key and is the salt of the derivation. See doc/announce, doc/encryption.
+
+
+Announce
+
+See doc/announce.
+
+    public_key         hex      the announced identity key
+    name_hash          hex      10 bytes; the name itself is not sent
+    random_hash        hex      10 bytes, 5 random then 5 of unix time
+    ratchet            hex, -   32 bytes when the context flag is set
+    signature          hex      64 bytes
+    app_data           hex, -   everything after the signature
+    identity_hash      hex      derived from public_key
+    expected_hash      hex      SHA-256(name_hash || identity_hash)[0:16]
+    destination_match  keyword  yes, no: expected_hash against the header
+    signed_data        hex      the assembled material, app data before
+                                the signature rather than after it
+    signature_valid    keyword  yes, no
+
+signed_data is printed in full because assembling it is the most
+likely reason for a valid announce to be rejected.
+
+
+Plain
+
+See doc/packet, section Plain destinations. There is no key in the
+vector, because nothing is encrypted.
+
+    plaintext_length   decimal  bytes of payload
+    plaintext          hex, -   the payload; - when empty
+
+
+Token: encrypted packets and link data
+
+See doc/encryption for the destination case and doc/link for the link
+case. The token is the same construction; only the key differs.
+
+    ephemeral_public   hex      encrypted only: 32 bytes, in the packet
+    ratchet_public     hex, -   encrypted only: derived from ratchet_private
+    link_id            hex      linkdata: 16 bytes, from the link request
+    link_id_match      keyword  yes, no: link_id against the header
+    encrypted          keyword  linkdata: yes, no; a keepalive is not
+    iv                 hex      16 bytes
+    ciphertext         hex      a multiple of 16 bytes
+    hmac               hex      32 bytes, over iv || ciphertext
+    shared_key         hex, -   the X25519 output, 32 bytes
+    signing_key        hex, -   first half of the 64 derived bytes
+    encryption_key     hex, -   second half
+    hmac_valid         keyword  yes, no, -
+    plaintext_length   decimal  bytes, or - if nothing was decrypted
+    plaintext          hex, -   the bytes; - when empty or absent
+
+The three key fields and hmac_valid are "-" together, and only
+together: they mean no shared secret exists, which happens when the
+peer public key has small order. See doc/encryption.
+
+plaintext_length 0 with plaintext "-" is an empty plaintext.
+plaintext_length "-" is a failure. The two are not the same and the
+pair is what tells them apart.
+
+An identify proof on a link adds four fields. See doc/link.
+
+    identity_public    hex      64 bytes, the initiator's identity key
+    identity_hash      hex      derived from it
+    identity_signed    hex      link_id || identity_public
+    identity_valid     keyword  yes, no
+
+
+Link request and link request proof
+
+See doc/link.
+
+    x25519_public      hex      32 bytes, per link, not an identity key
+    ed25519_public     hex      linkrequest only: 32 bytes, per link
+    signalling         hex, -   3 bytes, or - in the shorter form
+    mode               keyword  aes256_cbc; hex for any other value
+    mtu                decimal  21 bits, or - when nothing was signalled
+    link_id            hex      16 bytes, over the request with the
+                                signalling bytes trimmed
+    link_id_match      keyword  linkproof: yes, no
+    signature          hex      linkproof: 64 bytes
+    signer_ed25519     hex      linkproof: the Ed25519 half of the
+                                destination identity, not of the link
+    signed_data        hex      linkproof: link_id || x25519_public ||
+                                signer_ed25519 || signalling
+    signature_valid    keyword  yes, no
+
+Three of the four parts of signed_data are not in the packet, which is
+why the vector is given the request and the identity key.
+
+
+Delivery proof
+
+See doc/packet, section Proofs.
+
+    form               keyword  implicit, explicit
+    packet_hash        hex      32 bytes, computed from proved_packet
+    proof_hash         hex, -   explicit form only: the hash it carries
+    hash_match         keyword  yes, no; yes for the implicit form
+    proof_destination  hex      packet_hash[0:16], the address it should have
+    destination_match  keyword  yes, no
+    signature          hex      64 bytes, over packet_hash
+    signer_ed25519     hex      32 bytes
+    signature_valid    keyword  yes, no
+
+
+Interface access code
+
+See doc/packet, section Interface access codes.
+
+    ifac_size          decimal  bytes of access code; configuration
+    frame_length       decimal  bytes of the whole frame
+    ifac               hex      the access code the frame carries
+    packet             hex      the packet recovered from the frame
+    expected_ifac      hex      the code that packet should have produced
+    ifac_valid         keyword  yes, no
+
+
+Signature and sign
+
+See doc/identity.
+
+    message_length     decimal  bytes of the signed message
+    message_sha256     hex      32 bytes; the message is not in expect,
+                                which is why these two kinds are decode
+                                class
+    signature          hex      64 bytes; an input for signature and an
+                                output for sign
+    valid              keyword  signature only: yes, no
+
+sign has no verdict field. The signature is the answer.
+
+
+Rejection
+
+An object that broke a rule carries the rule and the numbers behind it,
+and no other fields. Naming the rule rather than the stage keeps two
+decoders from agreeing by accident while failing for different reasons.
+
+    invalid            keyword  short-header, hop-limit, short-payload,
+                                invalid-length
+    length             decimal  short-header: bytes present
+    minimum_length     decimal  short-header, short-payload: bytes needed
+    payload_length     decimal  short-payload, invalid-length: bytes present
+    hops               decimal  hop-limit: the count
+    hop_limit          decimal  hop-limit: the threshold, 128
+    accepted_length    decimal  invalid-length: the shorter accepted length
+    signalled_length   decimal  invalid-length: the longer one
+    implicit_length    decimal  invalid-length: proof, 64
+    explicit_length    decimal  invalid-length: proof, 96
+
+length, payload_length and hops are header field names as well. In a
+rejection they are the evidence for the rule that was broken, and the
+presence of invalid is what says which reading applies.

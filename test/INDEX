@@ -9,6 +9,7 @@ announce/non-canonical-s
 announce/path-response
 announce/ratchet
 announce/ratchet-and-app-data
+announce/short-header
 announce/short-payload
 destination/app-name-only
 destination/empty-aspect
@@ -54,6 +55,7 @@ plain/empty
 plain/path-request
 proof/explicit
 proof/implicit
+proof/invalid-length
 proof/proved-in-transport
 sign/upstream
 signature/altered
