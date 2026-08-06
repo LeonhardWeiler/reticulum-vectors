@@ -154,12 +154,12 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Fifty-four of the sixty-three are of
-that class. The nine that are not name their reason:
+the result against raw. Fifty-nine of the sixty-nine are of
+that class. The ten that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
                                   by length and digest, not by content
-    the five invalid vectors      nothing decoded, so expect names the
+    the six invalid vectors       nothing decoded, so expect names the
                                   rule that was broken and no fields
 
 The class says whether expect is total, not whether the reference

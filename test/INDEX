@@ -51,8 +51,14 @@ linkrequest/in-transport
 linkrequest/invalid-length
 linkrequest/no-signalling
 linkrequest/signalling
+pathrequest/ambiguous
+pathrequest/long-tag
+pathrequest/short
+pathrequest/tagged
+pathrequest/tagless
+pathrequest/transport
 plain/empty
-plain/path-request
+plain/payload
 proof/explicit
 proof/implicit
 proof/invalid-length

@@ -256,6 +256,10 @@ def stub_transport(RNS, tmpdir):
     # destination has no remembered ratchet. Pointing it at an empty
     # directory keeps that lookup from reaching a real instance.
     RNS.Reticulum.storagepath = tmpdir
+    # The constructor sets this and nothing else does, so without an
+    # instance the attribute does not exist at all and every reader of
+    # it raises. RNS/Reticulum.py:254.
+    RNS.Reticulum._Reticulum__transport_enabled = False
 
 
 def load_rns(checkout):
@@ -323,8 +327,8 @@ def hexf(b):
 # its raw carries a 950-byte message that expect records only by its
 # digest, so the vector can be decoded and not rebuilt.
 ENCODABLE = ("identity", "keyset", "destination", "announce", "plain",
-             "encrypted", "linkrequest", "linkproof", "linkdata", "proof",
-             "ifac")
+             "pathrequest", "encrypted", "linkrequest", "linkproof", "linkdata",
+             "proof", "ifac")
 
 
 def determinism(kind, expect):
@@ -1074,21 +1078,17 @@ def gen_plain(RNS, w):
     The destination has no identity, so its hash is SHA-256 of the name
     hash alone; test/destination/no-identity records that derivation.
     """
-    # A path request as Transport.request_path builds one for an
-    # instance that is not itself a transport node: the destination
-    # being asked after, then a random tag. RNS/Transport.py:2872.
-    #
-    # The payload is left as bytes here rather than decomposed into
-    # fields. What a path request means belongs to Transport, and the
-    # corpus does not cover Transport yet; what this vector records is
-    # that the packet carrying it is not encrypted.
+    # The payload here is arbitrary bytes, not a path request: what the
+    # payload of a path request means is test/pathrequest, and these two
+    # vectors record only that a plain destination hands the payload
+    # through untouched, whatever it holds.
     wanted = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
     destination_hash = RNS.Destination.hash(wanted, "rns_unit_tests", "link", "establish")
 
     cases = [
-        ("path-request", (RNS.Transport.APP_NAME, "path", "request"),
+        ("payload", (RNS.Transport.APP_NAME, "path", "request"),
          destination_hash + bytes.fromhex("0102030405060708090a"),
-         "a path request, the packet type that made this destination type worth recording"),
+         "26 bytes of payload, delivered unencrypted and undecomposed"),
         ("empty", (RNS.Transport.APP_NAME, "path", "request"), b"",
          "no payload at all, which a plain destination permits and an encrypted one cannot"),
     ]
@@ -1109,6 +1109,147 @@ def gen_plain(RNS, w):
         w.vector("plain", name, purpose,
             [packet.raw.hex()],
             describe_plain(packet.raw))
+
+
+def describe_pathrequest(raw):
+    """Which fields a path request carries is decided by how long it is,
+    and by nothing else. RNS/Transport.py:2965.
+    """
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) < ADDRLEN:
+        return invalid("short-payload",
+                       ("payload_length", len(payload)),
+                       ("minimum_length", ADDRLEN))
+
+    wanted = payload[:ADDRLEN]
+    if len(payload) > ADDRLEN * 2:
+        requester = payload[ADDRLEN:ADDRLEN*2]
+        tag       = payload[ADDRLEN*2:]
+    else:
+        requester = None
+        tag       = payload[ADDRLEN:]
+
+    return lines + [
+        field("wanted_hash",  wanted.hex()),
+        field("requester_id", requester.hex() if requester else "-"),
+        field("tag",          hexf(tag)),
+        field("unique_tag",   (wanted + tag[:ADDRLEN]).hex() if tag else "-"),
+        field("accepted",     "yes" if tag else "no"),
+    ]
+
+
+def gen_pathrequest(RNS, w):
+    """The payload a transport node reads before it knows a path is
+    being asked for.
+
+    request_path writes two or three fields, and the handler reads them
+    back by length alone: there is no count, no type byte and no
+    delimiter. A tag of 17 bytes is therefore indistinguishable from a
+    transport id followed by a tag of one, and the reference reads it as
+    the latter. That ambiguity is the vector.
+
+    The two instance attributes set below are what a running instance
+    would hold. request_path reads both and neither is a value the
+    corpus asserts anything about; the bytes are the reference's.
+
+        RNS/Transport.py:2871, RNS/Reticulum.py:1762
+    """
+    wanted = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
+    destination_hash = RNS.Destination.hash(wanted, "rns_unit_tests", "link", "establish")
+
+    RNS.Transport.identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0]))
+
+    cases = [
+        ("tagged", False, None,
+         "the form an instance that is not a transport node sends"),
+        ("transport", True, None,
+         "the transport-node form; the requesting instance's id sits between the two"),
+        ("tagless", False, b"",
+         "the destination hash alone, which the reference reads and then drops"),
+        ("ambiguous", False, bytes.fromhex("0102030405060708090a0b0c0d0e0f1011"),
+         "a 17-byte tag, which the length rule reads as a transport id and one tag byte"),
+        ("long-tag", False, bytes.fromhex("0102030405060708090a0b0c0d0e0f10" * 2 + "11"),
+         "a 33-byte tag; 17 bytes are left after the split and 16 of those survive"),
+    ]
+
+    for name, transport, tag, purpose in cases:
+        RNS.Reticulum._Reticulum__transport_enabled = transport
+        with pinned(RNS, "pathrequest-" + name):
+            with captured(RNS) as sent:
+                RNS.Transport.request_path(destination_hash, tag=tag)
+        RNS.Reticulum._Reticulum__transport_enabled = False
+
+        assert len(sent) == 1
+        raw = sent[0].raw
+
+        # The handler's own reading of what it just built, so that the
+        # decomposition below is measured against RNS and not only
+        # against cmd/dump.
+        described = describe_pathrequest(raw)
+        seen = handler_reads(RNS, raw[19:])
+        if seen is None:
+            assert lookup_field(described, "accepted") == "no"
+        else:
+            assert lookup_field(described, "wanted_hash") == seen["destination_hash"].hex()
+            assert lookup_field(described, "requester_id") == hexf(seen["transport_id"])
+            assert lookup_field(described, "unique_tag") == seen["unique_tag"].hex()
+
+        w.vector("pathrequest", name, purpose, [raw.hex()], described)
+
+    # Shorter than the destination hash it is supposed to name. The
+    # handler reads nothing at all from it, which is a rejection with no
+    # rule of its own; the corpus names the length that failed.
+    with pinned(RNS, "pathrequest-short"):
+        out = RNS.Destination(None, RNS.Destination.OUT, RNS.Destination.PLAIN,
+                              RNS.Transport.APP_NAME, "path", "request")
+        short = RNS.Packet(out, destination_hash[:ADDRLEN-1], packet_type=RNS.Packet.DATA,
+                           transport_type=RNS.Transport.BROADCAST,
+                           header_type=RNS.Packet.HEADER_1)
+        short.pack()
+
+    assert handler_reads(RNS, short.raw[19:]) is None
+
+    w.vector("pathrequest", "short",
+        "15 bytes, one short of the destination hash a path request names",
+        [short.raw.hex()],
+        describe_pathrequest(short.raw))
+
+
+def handler_reads(RNS, data):
+    """What Transport.path_request_handler took the payload to mean.
+
+    The handler acts on what it reads rather than returning it, so the
+    call it makes is intercepted and its arguments are the answer. None
+    means it made no call: the payload named no destination, or named
+    one with no tag.
+
+        RNS/Transport.py:2959
+    """
+    real_request = RNS.Transport.path_request
+    seen = []
+
+    def path_request(destination_hash, is_from_local_client, attached_interface,
+                     requestor_transport_id=None, tag=None):
+        seen.append({"destination_hash": destination_hash,
+                     "transport_id": requestor_transport_id,
+                     "tag": tag,
+                     "unique_tag": destination_hash + tag})
+
+    class Packet:
+        receiving_interface = None
+
+    RNS.Transport.path_request = staticmethod(path_request)
+    RNS.Transport.discovery_pr_tags.clear()
+    try:
+        RNS.Transport.path_request_handler(data, Packet())
+    finally:
+        RNS.Transport.path_request = real_request
+
+    return seen[0] if seen else None
 
 
 def hashable_part(raw, payload_len=None):
@@ -1773,6 +1914,7 @@ def main():
         gen_sign(RNS, w)
         announce_minimal = gen_announce(RNS, w, tmpdir, verify)
         gen_plain(RNS, w)
+        gen_pathrequest(RNS, w)
         gen_proof(RNS, w, verify)
         gen_ifac(RNS, w, announce_minimal)
         gen_encrypted(RNS, w)

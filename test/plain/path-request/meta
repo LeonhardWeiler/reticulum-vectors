@@ -1,3 +1,0 @@
-source             python-rns 1.4.2 (b48b96e6, openssl backend)
-determinism        encode
-purpose            a path request, the packet type that made this destination type worth recording

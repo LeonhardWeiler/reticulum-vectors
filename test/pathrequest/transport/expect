@@ -1,0 +1,16 @@
+flags              08
+header_type        1
+context_flag       unset
+transport_type     broadcast
+destination_type   plain
+packet_type        data
+hops               0
+transport_id       -
+destination_hash   6b9f66014d9853faab220fba47d02761
+context            none
+payload_length     48
+wanted_hash        fb48da0e82e6e01ba0c014513f74540d
+requester_id       e5fe93ee4acba095b3b9b6541515ed3e
+tag                fd72c4100ea93b353d5fc03e391e2fd8
+unique_tag         fb48da0e82e6e01ba0c014513f74540dfd72c4100ea93b353d5fc03e391e2fd8
+accepted           yes

@@ -51,7 +51,8 @@ from. Each is the line of raw named in the kind's own document.
 Header
 
 Carried by every kind whose raw is a whole packet: announce, plain,
-encrypted, linkrequest, linkproof, linkdata, proof. See doc/packet.
+pathrequest, encrypted, linkrequest, linkproof, linkdata, proof. See
+doc/packet.
 
     flags              hex      the flags byte, one byte
     header_type        decimal  1 or 2, the human-facing numbering
@@ -129,6 +130,23 @@ vector, because nothing is encrypted.
 
     plaintext_length   decimal  bytes of payload
     plaintext          hex, -   the payload; - when empty
+
+
+Path request
+
+See doc/packet, section Path requests. The payload of a plain packet
+addressed to the path request destination.
+
+    wanted_hash        hex      16 bytes, the destination asked after
+    requester_id       hex, -   16 bytes, the transport instance asking
+    tag                hex, -   the rest of the payload; - when absent
+    unique_tag         hex, -   wanted_hash || tag[0:16]
+    accepted           keyword  yes, no: whether the reference acts on it
+
+Which of the three parts are present is decided by the payload length
+alone. unique_tag is what the duplicate check is made against, and it
+takes at most 16 bytes of tag, so it is shorter than wanted_hash || tag
+whenever the tag is longer than that.
 
 
 Token: encrypted packets and link data

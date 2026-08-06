@@ -1,0 +1,3 @@
+source             python-rns 1.4.2 (b48b96e6, openssl backend)
+determinism        decode
+purpose            15 bytes, one short of the destination hash a path request names

@@ -5,8 +5,9 @@ routed, see upstream docs/source/understanding.rst, sections
 "Reticulum Transport" and "Binary Packet Format".
 
 Vectors: every kind whose raw is a whole packet, that is
-test/announce/, test/encrypted/, test/linkrequest/, test/linkproof/
-and test/linkdata/.
+test/announce/, test/plain/, test/pathrequest/, test/encrypted/,
+test/linkrequest/, test/linkproof/, test/linkdata/, test/proof/ and
+test/ifac/.
 
 
 Constants
@@ -195,15 +196,13 @@ SHA-256 of the name hash alone. See doc/destination.
 This is the destination type a path request is addressed to, which is
 why it matters to an implementation that never encrypts anything: a
 transport node must read one before it knows a path is being asked
-for. What the payload of a path request means belongs to Transport and
-is not covered here. test/plain/path-request records the packet
-carrying one, and records that it is not encrypted.
+for. The payload of a path request is the section below.
 
-    RNS/Transport.py:2872
-
-test/plain/empty carries no payload. A packet to a single destination
-cannot: PKCS7 adds a full block to an empty plaintext, and the token
-adds 48 bytes around it. See doc/encryption.
+test/plain/payload carries 26 bytes that mean nothing, which is the
+point: a plain destination hands the payload through whatever it holds.
+test/plain/empty carries no payload at all. A packet to a single
+destination cannot: PKCS7 adds a full block to an empty plaintext, and
+the token adds 48 bytes around it. See doc/encryption.
 
 
 Vector format: plain
@@ -217,6 +216,76 @@ raw is one line:
 expect names the header fields, the payload length and the payload.
 There is no key anywhere in the vector, because there is nothing to
 decrypt.
+
+
+Path requests
+
+A plain packet addressed to the destination named
+
+    rnstransport.path.request
+
+carries two or three fields, concatenated with no count, no type byte
+and no delimiter:
+
+    offset  size  field
+    19      16    the destination hash being asked after
+    35      16    the transport id of the requesting instance, or absent
+    35/51   -     the tag, or absent
+
+Which of the three are present is decided by the payload length alone:
+
+    length       reading
+    below 16     nothing is read; the request is dropped
+    16           destination only, no tag; the request is dropped
+    17 to 32     destination, then the tag
+    above 32     destination, transport id, then the tag
+
+    RNS/Transport.py:2871, RNS/Transport.py:2965
+
+The sender writes the transport id when the instance is itself a
+transport node and omits it otherwise, but the reader cannot tell the
+two apart except by length. A 17-byte tag written without a transport
+id is read as a transport id followed by a tag of one byte.
+test/pathrequest/ambiguous is that packet. There is no way to decode it
+correctly, because there is no correct decoding: the reference reads it
+the same way, and an implementation that reads it any other way has
+disagreed with the network.
+
+At most 16 bytes of the tag reach the duplicate check:
+
+    unique_tag = destination_hash || tag[0:16]
+
+Two requests for the same destination whose tags agree in their first
+16 bytes are one request, and the second is dropped.
+test/pathrequest/long-tag carries a tag of 17 bytes after the split and
+records that only 16 of them count.
+
+A request with no tag at all is read in full and then dropped, which is
+why test/pathrequest/tagless decodes and carries accepted no rather
+than a rejection.
+
+
+Vector format: pathrequest
+
+kind: pathrequest, determinism: encode
+
+raw is one line:
+
+    line 1    the complete packet
+
+expect names the header fields, then the three payload fields, the
+unique tag derived from two of them, and whether the reference acts on
+the request. A payload shorter than the destination hash it is supposed
+to name is a rejection:
+
+    invalid            short-payload      test/pathrequest/short
+    payload_length     15
+    minimum_length     16
+
+The handler has no rule of its own for that length; it reads nothing
+and returns. The corpus names the length that failed, because a decoder
+that accepts a 15-byte path request and one that rejects it must be
+distinguishable.
 
 
 Interface access codes

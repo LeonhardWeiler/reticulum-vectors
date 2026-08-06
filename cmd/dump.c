@@ -920,6 +920,64 @@ static void dump_plain(struct blob *b, int nblobs)
 	field_hex("plaintext", h.payload, h.payload_len);
 }
 
+/* A path request names a destination, optionally the transport instance
+ * asking after it, and optionally a tag. Nothing on the wire says which
+ * of the three are present: the reader decides by length alone, so a
+ * 17-byte tag is read as a transport id and a tag of one.
+ * RNS/Transport.py:2965. */
+static void dump_pathrequest(struct blob *b, int nblobs)
+{
+	struct header h;
+	enum reason r;
+	size_t got = 0, need = 0, taglen;
+	const uint8_t *wanted, *requester, *tag;
+	uint8_t unique[ADDRLEN * 2];
+
+	if (nblobs != 1)
+		fatal("pathrequest: expected 1 blob, got %d", nblobs);
+
+	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	if (h.payload_len < ADDRLEN) {
+		print_invalid(SHORT_PAYLOAD, h.payload_len, ADDRLEN);
+		return;
+	}
+
+	wanted = h.payload;
+	if (h.payload_len > ADDRLEN * 2) {
+		requester = h.payload + ADDRLEN;
+		tag       = h.payload + ADDRLEN * 2;
+		taglen    = h.payload_len - ADDRLEN * 2;
+	} else {
+		requester = NULL;
+		tag       = h.payload + ADDRLEN;
+		taglen    = h.payload_len - ADDRLEN;
+	}
+
+	print_header(&h);
+	field_hex("wanted_hash", wanted, ADDRLEN);
+	if (requester != NULL)
+		field_hex("requester_id", requester, ADDRLEN);
+	else
+		field("requester_id", "-");
+	field_hex("tag", tag, taglen);
+
+	/* Only the first 16 bytes of the tag reach the duplicate check, so
+	 * two requests that differ past that are one request. */
+	if (taglen > 0) {
+		memcpy(unique, wanted, ADDRLEN);
+		memcpy(unique + ADDRLEN, tag, taglen < ADDRLEN ? taglen : ADDRLEN);
+		field_hex("unique_tag", unique,
+		          ADDRLEN + (taglen < ADDRLEN ? taglen : ADDRLEN));
+	} else {
+		field("unique_tag", "-");
+	}
+	field("accepted", "%s", taglen > 0 ? "yes" : "no");
+}
+
 /* The bytes a packet is hashed over. The low four flag bits and the hop
  * count are excluded, so that the hash survives a hop.
  * RNS/Packet.py:348. */
@@ -1469,6 +1527,17 @@ static void encode_plain(struct kv *f, int n)
 	emit(&o);
 }
 
+static void encode_pathrequest(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "wanted_hash");
+	put_field(&o, f, n, "requester_id");
+	put_field(&o, f, n, "tag");
+	emit(&o);
+}
+
 static void encode_linkrequest(struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1580,6 +1649,7 @@ static const struct {
 	{ "sign",        dump_sign,        NULL               },
 	{ "announce",    dump_announce,    encode_announce    },
 	{ "plain",       dump_plain,       encode_plain       },
+	{ "pathrequest", dump_pathrequest, encode_pathrequest },
 	{ "encrypted",   dump_encrypted,   encode_encrypted   },
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },

@@ -1,0 +1,3 @@
+source             python-rns 1.4.2 (b48b96e6, openssl backend)
+determinism        encode
+purpose            a 33-byte tag; 17 bytes are left after the split and 16 of those survive
