@@ -215,8 +215,13 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
+	# The status is named because a decoder that dies on a signal writes
+	# nothing to stderr, and "FAIL" followed by a blank line says less
+	# than the shell already knew. 134 is an abort, 139 a segmentation
+	# fault, and either is a different thing to go and look at than a
+	# decoder that printed a reason and exited 1.
 	if [ "$status" -ne 0 ]; then
-		fail_with "$dir" "$(cat "$err")"
+		fail_with "$dir" "exit status $status" "$(cat "$err")"
 		continue
 	fi
 
