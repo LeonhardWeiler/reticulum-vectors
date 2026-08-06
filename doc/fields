@@ -66,9 +66,10 @@ doc/packet.
     hops               decimal  the hop count, below 128
     transport_id       hex, -   header 2 only, otherwise -
     destination_hash   hex      the address field, 16 bytes
-    context            keyword  none, path_response, channel,
-                                keepalive, link_identify, link_close,
-                                link_proof, link_rtt, link_request_proof
+    context            keyword  none, request, response, path_response,
+                                channel, keepalive, link_identify,
+                                link_close, link_proof, link_rtt,
+                                link_request_proof
     payload_length     decimal  bytes after the header
 
 context falls back to hex for a byte with no name. It is the one field
@@ -202,6 +203,25 @@ An identify proof on a link adds four fields. See doc/link.
     identity_hash      hex      derived from it
     identity_signed    hex      link_id || identity_public
     identity_valid     keyword  yes, no
+
+A request adds three fields and a response two, all of them elements of
+a msgpack array. See doc/link.
+
+    request_time       hex      8 bytes, an IEEE 754 double, big endian
+    request_path_hash  hex      16 bytes, the truncated hash of the path
+    request_data       hex, -   the request body
+    request_id         hex      16 bytes, naming the request packet
+    response_data      hex, -   the response body
+
+request_time is recorded as its eight bytes rather than as a number.
+It is the only floating point value anywhere in the corpus, and a
+decimal would have to survive being written and read back to reproduce
+raw.
+
+request_data and response_data are "-" for both an absent value and an
+empty one: msgpack writes nil and a zero-length byte string
+differently, and this format spells both absences the same way. No
+vector carries the second.
 
 
 Link request and link request proof

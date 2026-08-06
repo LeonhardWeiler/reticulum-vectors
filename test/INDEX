@@ -51,6 +51,9 @@ linkdata/close
 linkdata/identify
 linkdata/keepalive
 linkdata/minimal
+linkdata/request
+linkdata/request-no-data
+linkdata/response
 linkdata/rtt
 linkproof/altered-signature
 linkproof/signalling

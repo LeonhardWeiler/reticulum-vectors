@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 79 vectors test/ held at that date,
+Run on 2026-08-06 against the 82 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 3321994373
+    corpus 2844033114
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -26,20 +26,20 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the sixty-nine vectors of the encode class, and no
+from expect for the seventy-two vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
 what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  62 / 64  17 / 17
-    rsReticulum         07ca721   2026-08-02  58 / 64  14 / 17
-    Reticulum-rs        be7a7fc   2026-07-31  49 / 64   8 / 17
-    microReticulum      40fa628   2026-07-20  49 / 64  10 / 17
-    rns.js              d4602ca   2025-02-10  39 / 64   2 / 17
-    sgiath/reticulum    0c4904e   2026-07-09  33 / 64   2 / 17
+    go-reticulum        06621cc   2026-04-28  65 / 67  20 / 20
+    rsReticulum         07ca721   2026-08-02  60 / 67  16 / 20
+    Reticulum-rs        be7a7fc   2026-07-31  49 / 67   8 / 20
+    microReticulum      40fa628   2026-07-20  49 / 67  10 / 20
+    rns.js              d4602ca   2025-02-10  39 / 67   2 / 20
+    sgiath/reticulum    0c4904e   2026-07-09  33 / 67   2 / 20
 
-Out of 64, not 79: every harness exits 77 for four kinds, and those
+Out of 67, not 82: every harness exits 77 for four kinds, and those
 fifteen vectors are skipped rather than counted against anyone.
 
     plain         2 vectors
@@ -47,8 +47,8 @@ fifteen vectors are skipped rather than counted against anyone.
     group         3
     ifac          4
 
-The link column is the fifteen vectors of the three link kinds plus the
-two delivery proofs made on a link, which are filed under proof.
+The link column is the eighteen vectors of the three link kinds plus
+the two delivery proofs made on a link, which are filed under proof.
 
 No failure in this run is a harness's own. Four were. They are
 recorded here because a harness is evidence and a change to one changes
@@ -661,3 +661,55 @@ reads a header out of bytes that do not hold one and then measures what
 is left. The rejection names the wrong rule, which is the reason the
 corpus records the numbers behind a rejection rather than a single
 word.
+
+
+Finding 19: four of six read nothing a request or a response carries
+
+Affects Reticulum-rs, microReticulum, rns.js and sgiath/reticulum.
+Vectors test/linkdata/request, request-no-data and response.
+
+Contexts 0x09 and 0x0a are where msgpack becomes part of the wire
+format. Two implementations read them and four do not, and the four are
+not alike in how far they get:
+
+    Reticulum-rs      names both contexts, reticulum-core/src/packet.rs:115
+    microReticulum    names both, Type.h:426, and has a msgpack decoder
+                      in Resource.cpp that nothing points at a request
+    rns.js            has both constants commented out at
+                      src/packet.js:28, and msgpackr as a dependency
+    sgiath/reticulum  has neither constant and no msgpack anywhere
+
+Naming the context is not reading it. All four decode the packet, the
+token and the plaintext correctly and then stop, so a request reaches
+an application as an opaque blob it has to unpack itself, if it knows
+to.
+
+go-reticulum reads both through its vendored umsgpack
+(rns/link.go:1543, :1562). rsReticulum has Link::parse_request and
+Link::parse_response_plaintext as standalone functions, which is the
+easiest request path of the six to point a harness at.
+
+
+Finding 20: rsReticulum delivers a msgpack nil as the byte 0xc0
+
+Affects rsReticulum. Vector test/linkdata/request-no-data.
+
+Link.request called with a path and nothing else sends a three-element
+array whose third element is nil. rsReticulum's parse_request routes
+every element through msgpack_value_to_bytes
+(crates/rns-link/src/link.rs:97), which returns the bytes of a binary
+or a string and otherwise re-encodes the value:
+
+    } else {
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, value)?;
+        Ok(encoded)
+    }
+
+For nil that is one byte, 0xc0, so an application asking for a request
+body gets one byte of msgpack framing where the reference gives it
+nothing. A request with no data is the ordinary case: it is what
+Link.request produces when called with a path alone.
+
+The same function is on the response path, so a response with no body
+carries the same byte.

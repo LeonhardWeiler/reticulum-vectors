@@ -393,6 +393,8 @@ fn context_name(c: u8) -> String {
     use rns_wire::context::PacketContext;
     match PacketContext::from_byte(c) {
         PacketContext::None => "none".to_string(),
+        PacketContext::Request => "request".to_string(),
+        PacketContext::Response => "response".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
         PacketContext::Channel => "channel".to_string(),
         PacketContext::Keepalive => "keepalive".to_string(),
@@ -676,6 +678,39 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
                 f(out, "sequence", "-");
                 f(out, "declared_length", "-");
                 f(out, "message", "-");
+            }
+        }
+    }
+
+    use rns_link::link::Link;
+
+    // rsReticulum's own parsers, rns-link/src/link.rs:884 and :968. The
+    // timestamp comes back as f64 and is printed as the eight bytes it
+    // was decoded from.
+    let context = p.header.context.to_byte();
+    if context == 0x09 {
+        match Link::parse_request(&pt) {
+            Ok((_, path_hash, at, data)) => {
+                f(out, "request_time", &hexs(&at.to_be_bytes()));
+                f(out, "request_path_hash", &hexs(&path_hash));
+                f(out, "request_data", &hexs(&data));
+            }
+            Err(_) => {
+                f(out, "request_time", "-");
+                f(out, "request_path_hash", "-");
+                f(out, "request_data", "-");
+            }
+        }
+    }
+    if context == 0x0a {
+        match Link::parse_response_plaintext(&pt) {
+            Ok((request_id, data)) => {
+                f(out, "request_id", &hexs(&request_id));
+                f(out, "response_data", &hexs(&data));
+            }
+            Err(_) => {
+                f(out, "request_id", "-");
+                f(out, "response_data", "-");
             }
         }
     }

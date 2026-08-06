@@ -405,6 +405,8 @@ fn context_name(c: u8) -> String {
     use reticulum::packet::PacketContext;
     match PacketContext::from(c) {
         PacketContext::None => "none".to_string(),
+        PacketContext::Request => "request".to_string(),
+        PacketContext::Response => "response".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
         PacketContext::Channel => "channel".to_string(),
         PacketContext::KeepAlive => "keepalive".to_string(),
@@ -670,6 +672,19 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
         f(out, "sequence", "-");
         f(out, "declared_length", "-");
         f(out, "message", "-");
+    }
+
+    // Reticulum-rs names both contexts, reticulum-core/src/packet.rs:115,
+    // and has no code anywhere that reads what they carry. Nothing to
+    // call, so nothing is supplied.
+    if context == 0x09 {
+        f(out, "request_time", "-");
+        f(out, "request_path_hash", "-");
+        f(out, "request_data", "-");
+    }
+    if context == 0x0a {
+        f(out, "request_id", "-");
+        f(out, "response_data", "-");
     }
 
     if context == 0xfb && pt.len() == 128 {

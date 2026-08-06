@@ -499,6 +499,19 @@ defmodule Dump do
               f("message", "-")
             end
 
+            # sgiath/reticulum has no constant for either context and no
+            # code that reads what these packets carry. Nothing to call.
+            if context == 0x09 do
+              f("request_time", "-")
+              f("request_path_hash", "-")
+              f("request_data", "-")
+            end
+
+            if context == 0x0A do
+              f("request_id", "-")
+              f("response_data", "-")
+            end
+
             if context == Reticulum.Packet.Context.linkidentify() and byte_size(pt) == 128 do
               pub = binary_part(pt, 0, 64)
               sig = binary_part(pt, 64, 64)

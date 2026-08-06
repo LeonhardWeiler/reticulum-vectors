@@ -209,6 +209,8 @@ The context byte says what the plaintext holds. One context is not
 encrypted at all:
 
     0x00   none            application data, and delivery proofs
+    0x09   request         a msgpack array of three
+    0x0a   response        a msgpack array of two
     0x0e   channel         a channel envelope
     0xfa   keepalive       one byte, in clear, not a token: 0xff from
                            the initiator and 0xfe in reply
@@ -268,6 +270,58 @@ the same key passes neither, and one that verifies them against the
 wrong key each passes neither; they are two vectors because one of them
 alone could be passed by an implementation that always reaches for the
 identity.
+
+
+Request and response
+
+Contexts 0x09 and 0x0a, and the first place msgpack is part of the wire
+format rather than of an application above it. Both plaintexts are one
+msgpack array and nothing else: no length, no type byte, no framing of
+their own.
+
+A request is three elements:
+
+    0    float64   the sender's clock, as time.time returns it
+    1    bin       16 bytes, SHA-256 of the path, truncated
+    2    bin       the request body, or nil
+
+    RNS/Link.py:487#request_path_hash
+
+The path is not sent. Only its hash is, so the responder matches
+against hashes it has registered and a path it has not registered is
+indistinguishable from one that does not exist.
+
+A response is two elements:
+
+    0    bin       16 bytes, the request id
+    1    bin       the response body
+
+    RNS/Link.py:849#packed_response
+
+The request id is the truncated hash of the request *packet*, taken by
+the receiver, not a hash of the packed request. So it depends on the
+header the request arrived with, and a decoder that hashes the payload
+instead gets sixteen different bytes that look equally plausible.
+
+    RNS/Link.py:989#getTruncatedHash
+
+test/linkdata/request and test/linkdata/response are the two halves of
+one exchange: the id in the second is the truncated packet hash of the
+first.
+
+The float is where implementations part company. umsgpack writes a
+Python float as float64 always, so the eight bytes are an IEEE 754
+double, big endian, and an implementation whose serialiser narrows to
+float32, or emits an integer for a whole number, writes a packet the
+reference reads as a different type. The corpus records the eight bytes
+rather than a decimal, because that is what the wire carries.
+
+    RNS/vendor/umsgpack.py:457#_pack2
+
+nil and a zero-length byte string are different on the wire, 0xc0
+against 0xc4 0x00, and this format spells both "-". Only the nil case
+has a vector; a request with no data is what Link.request produces when
+it is called with a path alone.
 
 
 Channel

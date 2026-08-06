@@ -666,6 +666,8 @@ static const struct {
 	const char *name;
 } contexts[] = {
 	{ 0x00, "none" },
+	{ 0x09, "request" },
+	{ 0x0a, "response" },
 	{ 0x0b, "path_response" },
 	{ 0x0e, "channel" },
 	{ 0xfa, "keepalive" },
@@ -1197,6 +1199,86 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	      ed25519_verify(signer, signature, signed_data, sdlen) ? "yes" : "no");
 }
 
+/* Enough msgpack to read what the reference puts on a link. Every type
+ * outside that set is refused rather than skipped: a decoder that reads
+ * a shape the reference never writes has invented a format, and this
+ * one is meant to be a second reading of the reference and nothing
+ * else. RNS/vendor/umsgpack.py:457#_pack2. */
+struct mp {
+	const uint8_t *p;
+	size_t         left;
+};
+
+static unsigned mp_head(struct mp *m)
+{
+	if (m->left == 0)
+		fatal("msgpack: input ends inside a value");
+	m->left--;
+	return *m->p++;
+}
+
+static const uint8_t *mp_take(struct mp *m, size_t n)
+{
+	const uint8_t *at = m->p;
+
+	if (m->left < n)
+		fatal("msgpack: wanted %zu bytes, %zu left", n, m->left);
+	m->p    += n;
+	m->left -= n;
+	return at;
+}
+
+static uint64_t mp_be(const uint8_t *p, size_t n)
+{
+	uint64_t v = 0;
+	size_t   i;
+
+	for (i = 0; i < n; i++)
+		v = v << 8 | p[i];
+	return v;
+}
+
+static size_t mp_array(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	if ((h & 0xf0) != 0x90)
+		fatal("msgpack: %02x is not an array", h);
+	return h & 0x0f;
+}
+
+/* nil and an empty byte string are both length zero, which the format
+ * spells "-" either way. No shape the corpus carries distinguishes
+ * them; see doc/link. */
+static const uint8_t *mp_bin(struct mp *m, size_t *len)
+{
+	unsigned h = mp_head(m);
+
+	if (h == 0xc0) { *len = 0; return NULL; }
+	if (h == 0xc4) { *len = (size_t)mp_be(mp_take(m, 1), 1); return mp_take(m, *len); }
+	if (h == 0xc5) { *len = (size_t)mp_be(mp_take(m, 2), 2); return mp_take(m, *len); }
+	fatal("msgpack: %02x is not a byte string", h);
+	return NULL;
+}
+
+/* Printed as its eight bytes. A decimal would have to survive being
+ * written and read back to reproduce raw, and the wire carries the
+ * bytes. */
+static const uint8_t *mp_double(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	if (h != 0xcb)
+		fatal("msgpack: %02x is not a float64", h);
+	return mp_take(m, 8);
+}
+
+static void mp_end(struct mp *m)
+{
+	if (m->left != 0)
+		fatal("msgpack: %zu bytes after the value", m->left);
+}
+
 static void dump_linkdata(struct blob *b, int nblobs)
 {
 	struct header h, rh;
@@ -1275,6 +1357,34 @@ static void dump_linkdata(struct blob *b, int nblobs)
 		field("sequence", "%u", (unsigned)(t.plain[2] << 8 | t.plain[3]));
 		field("declared_length", "%u", (unsigned)(t.plain[4] << 8 | t.plain[5]));
 		field_hex("message", t.plain + ENVELOPELEN, t.ptlen - ENVELOPELEN);
+	}
+
+	/* A request is a three-element array and a response a two-element
+	 * one, both msgpack, both with no length or type byte of their own
+	 * around them. RNS/Link.py:488#unpacked_request,
+	 * RNS/Link.py:849#packed_response. */
+	if (h.context == 0x09 || h.context == 0x0a) {
+		struct mp m = { t.plain, t.ptlen };
+		const uint8_t *p;
+		size_t n;
+
+		if (h.context == 0x09) {
+			if (mp_array(&m) != 3)
+				fatal("request: not three elements");
+			field_hex("request_time", mp_double(&m), 8);
+			p = mp_bin(&m, &n);
+			field_hex("request_path_hash", p, n);
+			p = mp_bin(&m, &n);
+			field_hex("request_data", p, n);
+		} else {
+			if (mp_array(&m) != 2)
+				fatal("response: not two elements");
+			p = mp_bin(&m, &n);
+			field_hex("request_id", p, n);
+			p = mp_bin(&m, &n);
+			field_hex("response_data", p, n);
+		}
+		mp_end(&m);
 	}
 
 	/* An identify proof names the initiator, which nothing else on a

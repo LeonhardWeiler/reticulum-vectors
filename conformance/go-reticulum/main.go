@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 
 	"github.com/svanichkin/go-reticulum/rns"
 	Cryptography "github.com/svanichkin/go-reticulum/rns/cryptography"
+	umsgpack "github.com/svanichkin/go-reticulum/rns/vendor"
 )
 
 const (
@@ -44,6 +46,14 @@ func hx(b []byte) string {
 		return "-"
 	}
 	return hex.EncodeToString(b)
+}
+
+func mpBin(v any) string {
+	b, ok := v.([]byte)
+	if !ok {
+		return "-"
+	}
+	return hx(b)
 }
 
 func readRaw(path string) [][]byte {
@@ -392,6 +402,10 @@ func contextName(c byte) string {
 	switch c {
 	case rns.PacketCtxNone:
 		return "none"
+	case rns.PacketCtxRequest:
+		return "request"
+	case rns.PacketCtxResponse:
+		return "response"
 	case rns.PacketCtxPathResponse:
 		return "path_response"
 	case rns.PacketCtxChannel:
@@ -791,6 +805,26 @@ func linkdata(b [][]byte) {
 			f("message", hx(plaintext[6:]))
 		} else {
 			f("message", "-")
+		}
+	}
+
+	// go-reticulum's own msgpack, as link.go:1543 reads a request and
+	// link.go:1562 a response. The time comes back as a float64 and is
+	// printed as the eight bytes it was decoded from.
+	if p.Context == rns.PacketCtxRequest || p.Context == rns.PacketCtxResponse {
+		var unpacked []any
+		if err := umsgpack.Unpackb(plaintext, &unpacked); err != nil {
+			panic(err)
+		}
+		if p.Context == rns.PacketCtxRequest {
+			at := make([]byte, 8)
+			binary.BigEndian.PutUint64(at, math.Float64bits(unpacked[0].(float64)))
+			f("request_time", hx(at))
+			f("request_path_hash", mpBin(unpacked[1]))
+			f("request_data", mpBin(unpacked[2]))
+		} else {
+			f("request_id", mpBin(unpacked[0]))
+			f("response_data", mpBin(unpacked[1]))
 		}
 	}
 

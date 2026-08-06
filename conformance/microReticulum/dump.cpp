@@ -164,6 +164,8 @@ static std::string context_name(unsigned c) {
 	static char buf[8];
 	switch (c) {
 	case RNS::Type::Packet::CONTEXT_NONE:   return "none";
+	case RNS::Type::Packet::REQUEST:        return "request";
+	case RNS::Type::Packet::RESPONSE:       return "response";
 	case RNS::Type::Packet::PATH_RESPONSE:  return "path_response";
 	case RNS::Type::Packet::CHANNEL:        return "channel";
 	case RNS::Type::Packet::KEEPALIVE:      return "keepalive";
@@ -560,6 +562,20 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 		f("sequence", "-");
 		f("declared_length", "-");
 		f("message", "-");
+	}
+
+	// The same case as the channel envelope: Type.h:426 names both
+	// contexts and no code reads what they carry. microReticulum has a
+	// msgpack decoder, in Resource.cpp, and nothing points it at a
+	// request.
+	if ((unsigned)p.context() == RNS::Type::Packet::REQUEST) {
+		f("request_time", "-");
+		f("request_path_hash", "-");
+		f("request_data", "-");
+	}
+	if ((unsigned)p.context() == RNS::Type::Packet::RESPONSE) {
+		f("request_id", "-");
+		f("response_data", "-");
 	}
 
 	if ((unsigned)p.context() == RNS::Type::Packet::LINKIDENTIFY && plaintext.size() == 128) {

@@ -18,6 +18,7 @@ import contextlib
 import hashlib
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -161,6 +162,12 @@ LINK_DESTINATION = (0, ("rns_unit_tests", "link", "establish"))
 # value inside the five-byte field will do; this one is a round number
 # well clear of both ends.
 PINNED_TIME = 1750000000
+
+# A link measures its round trip time, and under a pinned clock it
+# measures zero. Zero is a value no link reports, and it reaches the
+# wire twice: in the rtt packet and in every packet receipt, which
+# derives a timeout from it.
+PINNED_RTT = 0.0625
 
 
 class DetRandom:
@@ -335,6 +342,40 @@ def field(name, value):
 def hexf(b):
     """Hex, or "-" for the empty byte string. See field()."""
     return b.hex() if b else "-"
+
+
+def msgpack_array(data):
+    """The msgpack subset the reference puts on a link.
+
+    Read here rather than through umsgpack so that expect stays this
+    program's own reading of raw; gen_request asserts the two agree. A
+    float64 comes back as its eight bytes, because that is what expect
+    records and what a decimal would have to survive a round trip to
+    reproduce. Anything outside the subset raises.
+
+        RNS/vendor/umsgpack.py:457#_pack2
+    """
+    head, at, out = data[0], 1, []
+    if head & 0xf0 != 0x90:
+        raise ValueError("msgpack: %02x is not an array" % head)
+
+    for _ in range(head & 0x0f):
+        kind, at = data[at], at + 1
+        if kind == 0xc0:
+            out.append(None)
+            continue
+        if kind == 0xcb:
+            size = 8
+        elif kind == 0xc4:
+            size, at = data[at], at + 1
+        else:
+            raise ValueError("msgpack: %02x is not a type this reads" % kind)
+        out.append(data[at:at + size])
+        at += size
+
+    if at != len(data):
+        raise ValueError("msgpack: %d bytes after the array" % (len(data) - at))
+    return out
 
 
 # The kinds cmd/dump can rebuild raw for. signature is not among them:
@@ -673,7 +714,7 @@ def gen_proof(RNS, w, verify):
         assert len(sent) == 1
         proof = sent[0]
 
-        payload = proof.raw[19:]
+        payload = proof.raw[HEADER1LEN:]
         assert len(payload) == (64 if implicit else 96)
 
         signature = payload if implicit else payload[32:]
@@ -868,7 +909,7 @@ def gen_ifac(RNS, w, announce_raw_bytes):
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
-CONTEXTS     = {0x00: "none", 0x0b: "path_response", 0x0e: "channel",
+CONTEXTS     = {0x00: "none", 0x09: "request", 0x0a: "response", 0x0b: "path_response", 0x0e: "channel",
                 0xfa: "keepalive", 0xfb: "link_identify", 0xfc: "link_close",
                 0xfd: "link_proof", 0xfe: "link_rtt", 0xff: "link_request_proof"}
 
@@ -883,6 +924,7 @@ RATCHETLEN  = 32
 ADDRLEN     = 16
 KEYHALF     = 32
 TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:50#TOKEN_OVERHEAD
+HEADER1LEN  = 19        # RNS/Reticulum.py:147#HEADER_MINSIZE
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 ECPUBSIZE   = 64        # RNS/Link.py:70#ECPUBSIZE, both public keys
 SIGNALLEN   = 3         # RNS/Link.py:80#LINK_MTU_SIZE, LINK_MTU_SIZE
@@ -1179,7 +1221,7 @@ def gen_plain(RNS, w):
             packet.pack()
 
         # The property the kind exists to record: nothing was encrypted.
-        assert packet.raw[19:] == data
+        assert packet.raw[HEADER1LEN:] == data
         assert packet.raw[2:18] == out.hash
 
         w.vector("plain", name, purpose,
@@ -1267,7 +1309,7 @@ def gen_pathrequest(RNS, w):
         # decomposition below is measured against RNS and not only
         # against cmd/dump.
         described = describe_pathrequest(raw)
-        seen = handler_reads(RNS, raw[19:])
+        seen = handler_reads(RNS, raw[HEADER1LEN:])
         if seen is None:
             assert lookup_field(described, "accepted") == "no"
         else:
@@ -1397,13 +1439,24 @@ def describe_linkrequest(raw):
 @contextlib.contextmanager
 def captured(RNS):
     """Packet.send hands the packet to Transport, which is not running.
-    The corpus wants the bytes, so send packs and records instead."""
+    The corpus wants the bytes, so send packs and records instead.
+
+    It returns what the real send returns, where that can be built. A
+    receipt holds two hashes and six fields and starts nothing, and
+    Link.request sets a timeout on the one it gets back, so returning
+    True there ends the request before it has one. Over a destination
+    rather than a link the receipt asks the running instance for the
+    first hop timeout (RNS/Packet.py:417#get_first_hop_timeout), and
+    there is nothing to return but True.
+    """
     real_send = RNS.Packet.send
     sent = []
 
     def send(self):
         self.pack()
         sent.append(self)
+        if self.destination.type == RNS.Destination.LINK:
+            return RNS.PacketReceipt(self)
         return True
 
     RNS.Packet.send = send
@@ -1462,6 +1515,9 @@ def link_session(RNS, tag):
         link.set_link_id(request)
         link.mtu  = RNS.Link.mtu_from_lr_packet(request)
         link.mode = RNS.Link.mode_from_lr_packet(request)
+        link.update_mdu()
+        link.destination = in_destination
+        link.rtt = PINNED_RTT
         link.handshake()
 
         with captured(RNS) as sent:
@@ -1500,6 +1556,8 @@ def initiator_link(RNS, session):
     link.set_link_id(session["request"])
     link.mtu           = session["link"].mtu
     link.mode          = session["link"].mode
+    link.rtt           = PINNED_RTT
+    link.update_mdu()
     link.load_peer(proof_data[SIGLEN:SIGLEN+KEYHALF], peer_ed25519)
     link.handshake()
     link.status = RNS.Link.ACTIVE
@@ -1723,6 +1781,24 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
             field("message",        hexf(plaintext[ENVELOPELEN:])),
         ]
 
+    # A request is a three-element array and a response a two-element
+    # one, both msgpack and neither with a length or type byte of its
+    # own around it. RNS/Link.py:488#unpacked_request,
+    # RNS/Link.py:849#packed_response.
+    if h["context"] in (0x09, 0x0a) and plaintext is not None:
+        parts = msgpack_array(plaintext)
+        if h["context"] == 0x09:
+            lines += [
+                field("request_time",      parts[0].hex()),
+                field("request_path_hash", hexf(parts[1])),
+                field("request_data",      hexf(parts[2])),
+            ]
+        else:
+            lines += [
+                field("request_id",    hexf(parts[0])),
+                field("response_data", hexf(parts[1])),
+            ]
+
     # An identify proof names the initiator, which nothing else on a
     # link does. Its signature covers the link id, so it cannot be
     # replayed onto another link. RNS/Link.py:464#signed_data.
@@ -1752,10 +1828,6 @@ def gen_linkdata(RNS, w, verify, session):
     # plainly not the one the link was established to.
     initiator_identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[1][0]))
 
-    # The measured round trip time is zero under a pinned clock, which
-    # would record the msgpack layout of a value no link ever reports.
-    rtt = 0.0625
-
     # Channel.send is the sequence counter, a retry ring and a watchdog
     # around the two lines that make bytes,
     # RNS/Channel.py:507#reserved_sequence. Those
@@ -1773,7 +1845,7 @@ def gen_linkdata(RNS, w, verify, session):
         with captured(RNS) as sent:
             RNS.Packet(link, b"reticulum").send()
             link.identify(initiator_identity)
-            RNS.Packet(link, umsgpack.packb(rtt), context=RNS.Packet.LRRTT).send()
+            RNS.Packet(link, umsgpack.packb(PINNED_RTT), context=RNS.Packet.LRRTT).send()
             RNS.Packet(link, link.link_id, context=RNS.Packet.LINKCLOSE).send()
             link.send_keepalive()
             for sequence, message in enumerate(messages):
@@ -1810,7 +1882,70 @@ def gen_linkdata(RNS, w, verify, session):
         describe_linkdata(request_raw, responder_private, altered, verify),
         source="constructed by tools/gen from linkdata/minimal")
 
+    gen_request(RNS, w, verify, session, link, request_raw, responder_private)
     return link, sent[0]
+
+
+REQUEST_PATH = "/vectors/echo"
+
+
+def gen_request(RNS, w, verify, session, initiator, request_raw, responder_private):
+    """A request and the response to it, both msgpack over the link.
+
+    Link.request runs whole, including the receipt it sets a timeout on.
+    The response side needs a handler registered on the destination,
+    because that is the only way into Link.handle_request; what the
+    reference does before calling it is decrypt the packet and unpack
+    it, which is done here with its own two functions.
+
+        RNS/Link.py:487#request_path_hash, RNS/Link.py:989#getTruncatedHash
+    """
+    from RNS.vendor import umsgpack
+
+    responder = session["link"]
+    responder.status = RNS.Link.ACTIVE
+    session["in_destination"].register_request_handler(REQUEST_PATH,
+        response_generator=lambda path, data, rid, lid, ident, at: b"ok",
+        allow=RNS.Destination.ALLOW_ALL)
+
+    with pinned(RNS, "linkdata-request"):
+        with captured(RNS) as asked:
+            initiator.request(REQUEST_PATH, data=b"reticulum")
+            initiator.request(REQUEST_PATH)
+
+        packed = responder.decrypt(asked[0].raw[HEADER1LEN:])
+        with captured(RNS) as answered:
+            responder.handle_request(asked[0].getTruncatedHash(),
+                                     umsgpack.unpackb(packed))
+
+    # The id in the response names the request packet, not the request.
+    assert umsgpack.unpackb(packed) == umsgpack.unpackb(asked[0].data)
+    assert umsgpack.unpackb(responder.decrypt(answered[0].raw[HEADER1LEN:]))[0] \
+        == asked[0].getTruncatedHash()
+
+    # msgpack_array is this program's own reading. Where umsgpack
+    # exposes the same values, the two must agree.
+    for packet in asked + answered:
+        theirs = umsgpack.unpackb(responder.decrypt(packet.raw[HEADER1LEN:]))
+        mine   = msgpack_array(responder.decrypt(packet.raw[HEADER1LEN:]))
+        if packet.context == RNS.Packet.REQUEST:
+            assert struct.unpack(">d", mine[0])[0] == theirs[0]
+            assert mine[1:] == theirs[1:]
+        else:
+            assert mine == theirs
+
+    cases = [
+        ("request", asked[0],
+         "a request: the time, the hash of the path, and the data"),
+        ("request-no-data", asked[1],
+         "a request with no data, which msgpack writes as nil"),
+        ("response", answered[0],
+         "the answer, naming the request by the truncated hash of its packet"),
+    ]
+    for name, packet, purpose in cases:
+        w.vector("linkdata", name, purpose,
+            [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
+            describe_linkdata(request_raw, responder_private, packet.raw, verify))
 
 
 def gen_linkpacketproof(RNS, w, verify, session, link, proved):

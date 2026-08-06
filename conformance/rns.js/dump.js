@@ -464,6 +464,19 @@ function linkdata(blobs) {
         f("message", "-");
     }
 
+    // rns.js has both constants commented out at src/packet.js:28, so
+    // it does not name the context either, and nothing reads what these
+    // packets carry. msgpackr is a dependency and no request reaches it.
+    if (p.context === 0x09) {
+        f("request_time", "-");
+        f("request_path_hash", "-");
+        f("request_data", "-");
+    }
+    if (p.context === 0x0a) {
+        f("request_id", "-");
+        f("response_data", "-");
+    }
+
     if (p.context === 0xfb && plaintext !== null
         && plaintext.length === Identity.KEYSIZE_IN_BYTES + Identity.SIGLENGTH_IN_BYTES) {
         const pub = plaintext.slice(0, Identity.KEYSIZE_IN_BYTES);
