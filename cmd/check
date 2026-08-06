@@ -212,6 +212,15 @@ for dir in "$root"/test/*/*/; do
 			fail_with "$dir" "round trip does not reproduce raw" "$changed"
 			continue
 		fi
+
+	# The class is derived by tools/gen, which a consumer does not run.
+	# Without this, decode is the one field in meta that can be wrong in
+	# the direction that skips a check.
+	elif [ "$ENCODE" = yes ] &&
+	     back=$(run "$DUMP" -e "$kind" "$dir/expect" 2>/dev/null) &&
+	     [ -z "$(printf '%s\n' "$back" | diff "$dir/raw" -)" ]; then
+		fail_with "$dir" "meta says decode, and expect rebuilds raw"
+		continue
 	fi
 
 	pass=$((pass + 1))

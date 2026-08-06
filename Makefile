@@ -31,12 +31,16 @@ check: cmd/dump
 gen:
 	tools/gen
 
-# Every meta file claims a source, and doc/ cites the reference by line.
-# verify is the evidence for both: gen exits non-zero if regenerating
-# would change any committed byte, and cite exits non-zero if a citation
-# no longer names a line holding what it says is there. Needs Python and
-# the checkout; check alone does not.
+# Every meta file claims a source, doc/ cites the reference by line, and
+# cmd/VENDOR says the vendored file is unmodified. verify is the
+# evidence for all three. Needs Python and the checkout; check alone
+# does not.
+#
+# The hashes are read through grep because the first of the two lines
+# carries a label and sha256sum skips it, checking one file of two and
+# exiting zero.
 verify: check
+	cd cmd && grep -oE '[0-9a-f]{64}  tweetnacl\.[ch]' VENDOR | sha256sum -c
 	tools/gen
 	tools/cite
 
