@@ -74,6 +74,16 @@ Six rules
    hash. If the implementation exposes an identity at all, that harness
    is twenty lines and produces a real number.
 
+   conformance/example/dump.py is that harness, in thirteen lines of
+   code, and it runs:
+
+       DUMP=conformance/example/dump.py ENCODE=no cmd/check
+       5 passed, 0 failed, corpus 4048137228, 89 skipped: announce ...
+
+   It calls no implementation, which is the one thing it does that a
+   real harness must not do. Everything else about it is the shape to
+   copy.
+
    From there: keyset adds the two curve base multiplications,
    destination adds the name rules, announce adds the header and the
    signature, and by then most of the format is in hand.

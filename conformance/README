@@ -54,6 +54,18 @@ raw; no implementation code produces them and none is credited with
 them. They exist for the encode direction, which no harness runs.
 
 
+One directory here is not a measurement
+
+    example/dump.py   the smallest harness that produces a result:
+                      test/identity, thirteen lines, no implementation
+                      behind it. It is here because this is where
+                      harnesses live and doc/harness sends a first
+                      reader to it, and it is not a row in
+                      ../CONFORMANCE because it measures nothing.
+
+                      DUMP=conformance/example/dump.py ENCODE=no cmd/check
+
+
 Building
 
     rns.js            npm install in conformance/src/rns.js,
