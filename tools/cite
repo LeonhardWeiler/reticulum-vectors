@@ -29,12 +29,18 @@ CHECKOUT = os.path.join(os.path.dirname(ROOT), "upstream")
 
 GIT = ["git", "-C", ROOT, "ls-files", "-z"]
 
+# Two trees are cited, and both are in the checkout: RNS/ is the
+# implementation and tests/ is the suite the adopted values come from.
+# Leaving tests/ out was leaving out the citations that sit in meta
+# files, which is the strongest provenance the format has; one of them
+# had slid six lines onto a print statement before this line changed.
+#
 # The anchor is a chain of identifiers, so a sentence's full stop is not
 # part of it and Reticulum.MTU is. One without an anchor still matches,
 # and is an error: a check that can be left off is a check that will be.
-CITE   = re.compile(r"RNS/[A-Za-z0-9_/]+\.py:\d+"
+CITE   = re.compile(r"(?:RNS|tests)/[A-Za-z0-9_/]+\.py:\d+"
                     r"(?:#[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)?")
-PARTS  = re.compile(r"^(RNS/[A-Za-z0-9_/]+\.py):(\d+)#(.+)$")
+PARTS  = re.compile(r"^((?:RNS|tests)/[A-Za-z0-9_/]+\.py):(\d+)#(.+)$")
 
 
 def sources():

@@ -206,9 +206,9 @@ half of the Reticulum private key, verifies every signature the
 reference makes and passes every other vector here. What it emits is an
 announce and a link proof that no reference accepts.
 
-The value is the one upstream asserts at tests/identity.py:31, which
-is an assertion about signing. test/signature adopted the same value
-for the other direction.
+The value is the one upstream asserts at
+tests/identity.py:37#sig_from_key_0, which is an assertion about
+signing. test/signature adopted the same value for the other direction.
 
 These two kinds are the only decode-class vectors in the corpus that
 decoded. Every other kind is encode class, and cmd/check rebuilds raw
@@ -216,7 +216,7 @@ from expect on every run for every vector that decoded.
 
 The message is given by its bytes rather than as text, because the
 adopted upstream vector turns on exactly that distinction. The
-upstream test at tests/identity.py:35 signs
+upstream test at tests/identity.py:35#fid.sign signs
 
     signed_message.encode("utf-8")
 

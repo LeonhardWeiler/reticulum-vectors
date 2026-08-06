@@ -58,7 +58,8 @@ What upstream does not provide, and this corpus does:
 
     raw packet bytes                none exist upstream
     announce byte layout            none exist upstream
-    destination hash derivation     one incidental case, tests/link.py:113
+    destination hash derivation     one incidental case,
+                                    tests/link.py:113#dest.hash
     machine-readable vectors        upstream vectors are Python literals
 
 If a proposed artifact does not fall in the second list, it does not
@@ -216,7 +217,7 @@ the corpus was written. The pin in source is the provenance.
 
 Adopted vectors record their origin instead:
 
-    source        python-rns tests/identity.py:13 (b48b96e6)
+    source        python-rns tests/identity.py:13#fixed_keys (b48b96e6)
 
 Every value in expect is hex, a decimal number, or a keyword from a
 fixed set. Byte strings are always hex, names included: printed as
@@ -270,8 +271,8 @@ directories including meta. It never edits an existing vector in place;
 regeneration produces a new directory or an explicit diff.
 
 `cite` is Python. doc/ and the programs name the reference by line, in
-the form `RNS/Packet.py:190#anchor`, and nothing else reads those
-numbers, so they drift. `cite` resolves every one against the checkout
+the form `RNS/Packet.py:190#Packet.ANNOUNCE`, and nothing else reads
+those numbers, so they drift. `cite` resolves every one against the checkout
 and fails on any that no longer names a line holding what it is cited
 for. Twelve had already slid before it existed.
 
@@ -358,8 +359,8 @@ Vectors drive the dependency, not the other way around.
     milestone 3          adds nothing
     test/sign            adds Ed25519 sign
 
-Announces are not encrypted (RNS/Packet.py:190), so milestone 1 needed
-no symmetric cryptography at all.
+Announces are not encrypted (RNS/Packet.py:190#Packet.ANNOUNCE), so
+milestone 1 needed no symmetric cryptography at all.
 
 Ed25519 signing arrived with test/sign and cost nothing to vendor:
 tweetnacl ships crypto_sign beside the crypto_sign_open the corpus was
@@ -371,10 +372,10 @@ only and 256-bit only, because every token in the corpus is one the
 reference produced from a 64-byte derived key.
 
 The 128-bit mode was expected to arrive with links. It did not. Only
-MODE_AES256_CBC is in ENABLED_MODES at this pin (RNS/Link.py:133), and
-signalling_bytes raises on any other, so no link the reference
-establishes uses it. AES-128 waits for a vector that needs it, and none
-does.
+MODE_AES256_CBC is in ENABLED_MODES at this pin
+(RNS/Link.py:133#ENABLED_MODES), and signalling_bytes raises on any
+other, so no link the reference establishes uses it. AES-128 waits for
+a vector that needs it, and none does.
 
 ---
 

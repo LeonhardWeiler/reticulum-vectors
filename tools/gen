@@ -46,7 +46,7 @@ FIELD_WIDTH = 18
 
 # Adopted verbatim from the upstream test suite. Not re-derived.
 #
-#     reticulum/tests/identity.py:13-19
+#     tests/identity.py:13#fixed_keys
 #
 UPSTREAM_KEYS = [
     ("f8953ffaf607627e615603ff1530c82c434cf87c07179dd7689ea776f30b964c"
@@ -66,7 +66,7 @@ UPSTREAM_KEYS = [
      "d13712efc45ef87674fb5ac26c37c912"),
 ]
 
-# Adopted verbatim from reticulum/tests/identity.py:7-8. Note that the
+# Adopted verbatim from tests/identity.py:7#signed_message. Note that the
 # upstream test signs signed_message.encode("utf-8"), so the signed
 # message is the ascii text of the hex, 950 bytes, not the 475 it spells.
 UPSTREAM_SIGNED_MESSAGE = (
@@ -85,8 +85,8 @@ UPSTREAM_SIGNATURE = ("3020ef58f861591826a61c3d2d4a25b949cdb3094085ba6b1177a6f2a
                       "24d1095d6fdd078f0b2826e80b261c93c1ff97fbfd4857f25706d57dd073590c")
 
 PIN                 = "%s, %s" % (PIN_COMMIT[:8], PIN_BACKEND_NAME)
-UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13 (%s)" % (PIN_VERSION, PIN)
-UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py:7 (%s)" % (PIN_VERSION, PIN)
+UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13#fixed_keys (%s)" % (PIN_VERSION, PIN)
+UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py:7#signed_message (%s)" % (PIN_VERSION, PIN)
 GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN)
 
 # Constructed here, not upstream. The pair pins the clamping rule: the
@@ -100,10 +100,10 @@ CLAMP_KEYS = [
 ]
 
 # The first is the only destination hash asserted anywhere upstream, at
-# tests/link.py:113. It is reproduced here to anchor the derivation.
+# tests/link.py:113#dest.hash. It is reproduced here to anchor the derivation.
 DESTINATIONS = [
     ("upstream-link-establish", ("rns_unit_tests", "link", "establish"), 0,
-     "the destination hash asserted at upstream tests/link.py:113"),
+     "the destination hash asserted at upstream tests/link.py:113#dest.hash"),
     ("two-components", ("lxmf", "delivery"), 1,
      "two components, the common real-world shape"),
     ("app-name-only", ("example_utilities",), 2,
@@ -663,7 +663,7 @@ def gen_signature(RNS, w, verify):
 def gen_sign(RNS, w):
     """The other direction of the same adopted value.
 
-    tests/identity.py:31 asserts what Identity.sign produces, not what
+    tests/identity.py:37#sig_from_key_0 asserts what Identity.sign produces, not what
     it verifies. test/signature records the value and asks only that a
     signature check succeed; here the signature is not given, it is
     produced from the private key and the message.
@@ -695,7 +695,7 @@ def gen_sign(RNS, w):
             field("message_sha256",  hashlib.sha256(message).hexdigest()),
             field("signature",       signature.hex()),
         ],
-        source="python-rns %s tests/identity.py:31 (%s)" % (PIN_VERSION, PIN))
+        source="python-rns %s tests/identity.py:37#sig_from_key_0 (%s)" % (PIN_VERSION, PIN))
 
 
 def gen_proof(RNS, w, verify):
