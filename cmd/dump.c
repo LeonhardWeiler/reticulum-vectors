@@ -1490,8 +1490,9 @@ static void dump_ifac(struct blob *b, int nblobs)
  * are the decoders, expressed less directly. What the table would buy
  * is that the two directions cannot drift apart, and the round trip
  * already buys that: a field dropped here, or moved, stops reproducing
- * raw for every vector of the kind, and each kind has vectors both with
- * and without each of its optional fields. */
+ * raw for every vector of the kind. That rests on every optional field
+ * having both of its cases on file, which cmd/check counts rather than
+ * this comment claiming it. */
 
 struct out {
 	char   hex[MAXBLOB*2 + 2];

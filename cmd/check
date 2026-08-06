@@ -105,6 +105,37 @@ if [ -n "$differs" ]; then
 	exit 2
 fi
 
+# The encoders in cmd/dump decide a field is present by looking for
+# "-", and the decoders decide it by reading the packet. Those are two
+# rules for one thing, and the round trip only holds them together
+# where both cases are on file. dump.c says as much and leaves it at
+# that, which makes it the last claim here that no program reads.
+#
+# Counted per field and not per kind. transport_id is written by one
+# line of put_header that nine encoders share, and announce and
+# linkrequest cross it for all of them; per kind it would report five
+# gaps that are one crossed branch.
+#
+# The reverse case cannot be found this way: a field that is optional
+# in the format and present in every vector looks exactly like a
+# mandatory one from test/ alone.
+uncrossed=$(awk '
+	NF == 2 { seen[$1 SUBSEP (($2 == "-") ? "absent" : "present")] = 1 }
+	END {
+		for (k in seen) {
+			split(k, f, SUBSEP)
+			if (f[2] == "absent" && !((f[1] SUBSEP "present") in seen))
+				printf "    %s is absent in every vector that carries it\n", f[1]
+		}
+	}
+' "$root"/test/*/*/expect | LC_ALL=C sort)
+
+if [ -n "$uncrossed" ]; then
+	echo "optional fields with only one case on file:"
+	printf '%s\n' "$uncrossed"
+	exit 2
+fi
+
 fail_with() {
 	echo "FAIL $1"
 	shift
