@@ -45,6 +45,46 @@ or a ratchet public key when one is known for that destination.
     RNS/Identity.py:804, RNS/Destination.py:607
 
 
+Contributory behaviour, and the backend in the pin
+
+X25519 against a point of small order yields an all-zero shared secret.
+Neither end contributed to it, and every reader of the announce can
+compute it, because the salt of the derivation is the recipient's
+identity hash and that is public.
+
+The two curve implementations python-rns ships do different things
+with it.
+
+    openssl backend     raises, produces no secret     the pin
+    internal fallback   returns the 32 zero bytes      RNS/Cryptography/X25519.py
+
+    RNS/Cryptography/Provider.py:35
+
+Neither checks for it deliberately. RFC 7748 section 6.1 leaves the
+choice to the protocol, and Reticulum makes none, so the behaviour is
+whichever library is installed. See doc/identity for the same split on
+the signature side, and for why the backend is part of the pin.
+
+test/encrypted/low-order-ephemeral carries a packet whose ephemeral key
+is the all-zero point. It decodes: the header is a header and the token
+is laid out, because those bytes are in the packet. Everything that
+needs the agreement is "-".
+
+    shared_key         -
+    signing_key        -
+    encryption_key     -
+    hmac_valid         -
+    plaintext_length   -
+    plaintext          -
+
+That is a third value for hmac_valid beside yes and no, and it means
+the question was never reached rather than answered. The same
+distinction plaintext_length already carries.
+
+An implementation that returns the zero secret rather than refusing
+will report hmac_valid no here, not "-", and the vector will say so.
+
+
 Key derivation
 
     derived = HKDF-SHA256(shared, salt, context, 64)
@@ -128,6 +168,9 @@ diverged rather than guessing.
 
 The two together are unambiguous: length 0 with plaintext "-" is an
 empty plaintext, length "-" is a failure.
+
+The three key fields and hmac_valid are "-" when no shared secret
+exists at all. See the section on contributory behaviour above.
 
 Encode class. The ephemeral key and the initialisation vector are drawn
 at random, so no implementation can produce this packet a second time;

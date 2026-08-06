@@ -1,7 +1,15 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 52 vectors in test/, through the
-harnesses in conformance/.
+Run on 2026-08-06 against the 52 vectors test/ held at that date,
+through the harnesses in conformance/.
+
+Three vectors have been added since, and no row below covers them:
+test/signature/non-canonical-s, test/announce/non-canonical-s and
+test/encrypted/low-order-ephemeral. They are the ones that turn on
+which curve backend is in use, and they are the most likely of any
+vector here to find a divergence, because the reference itself has one.
+The rows are left at what was measured rather than restated against a
+corpus they were not run on.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does

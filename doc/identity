@@ -87,6 +87,45 @@ restated here.
     RNS/Identity.py:907
 
 
+Canonical signatures, and the backend in the pin
+
+A signature is R || S, and RFC 8032 section 5.1.7 admits only S < L,
+where L is the group order. Adding L to S gives a second encoding of
+the same signature: R is untouched, and an implementation that reduces
+S rather than range-checking it accepts both.
+
+python-rns ships two curve implementations and picks one at import
+time. They disagree here.
+
+    openssl backend     rejects S + L      the pin
+    internal fallback   accepts S + L      RNS/Cryptography/pure25519
+
+    RNS/Cryptography/Provider.py:35
+
+So the verdict on this input is decided by what is installed, not by
+the version. That is why every meta file names the backend as well as
+the commit, and why tools/gen refuses to run under the other one.
+
+test/signature/non-canonical-s and test/announce/non-canonical-s carry
+the two forms. The announce decodes cleanly and its destination hash
+matches; only signature_valid is no, and it is no because of the pin.
+
+cmd/dump range-checks S itself, because tweetnacl does not. Without
+that check it reports a valid announce for a packet the pinned backend
+drops, which would make it the second implementation of something other
+than the reference. The check is in cmd/dump.c, not in the vendored
+file, which is not edited.
+
+Two consequences for an implementation:
+
+    A verifier that reduces S instead of checking it will accept
+    announces python-rns 1.4.2 drops. It interoperates in one
+    direction only.
+
+    A signer never produces S >= L, so this costs nothing to get
+    right on the sending side. It is a receiving-side rule.
+
+
 Vector format: identity
 
 kind: identity, determinism: encode

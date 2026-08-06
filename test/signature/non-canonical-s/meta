@@ -1,0 +1,3 @@
+source             constructed by tools/gen from signature/upstream
+determinism        decode
+purpose            the same signature with S re-encoded as S+L; the pinned backend rejects it

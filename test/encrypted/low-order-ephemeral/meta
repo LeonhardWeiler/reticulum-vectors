@@ -1,0 +1,3 @@
+source             constructed by tools/gen from encrypted/minimal
+determinism        encode
+purpose            ephemeral key replaced with a point of small order; no shared secret exists

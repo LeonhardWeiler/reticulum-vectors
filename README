@@ -14,10 +14,18 @@ output to the expected decomposition.
 This is not a specification. It does not define correct behaviour. It
 records the observed behaviour of one implementation at one version:
 
-    python-rns 1.4.2, commit b48b96e61676504e0a4e527b33b9a0b4495c6872
+    python-rns 1.4.2, commit b48b96e61676504e0a4e527b33b9a0b4495c6872,
+    openssl backend
 
 Every vector records that pin. When the pin moves, vectors are
 regenerated and the differences are examined.
+
+The backend is part of the pin because python-rns ships two curve
+implementations, picks one at import time by what is installed, and
+they do not agree everywhere. Two vectors turn on the difference, and
+tools/gen refuses to run under the other one. See doc/identity, section
+"Canonical signatures", and doc/encryption, section "Contributory
+behaviour".
 
 raw is what the reference produced. Where a value in raw was instead
 composed by tools/gen out of the reference's own functions, because the
@@ -33,7 +41,7 @@ be.
 
 Every private key here is public
 
-Twenty-six vectors carry a private key: all of test/keyset/ and
+Twenty-one vectors carry a private key: all of test/keyset/ and
 test/sign/, the recipient key in test/encrypted/, the responder's link
 key in test/linkdata/, and the interface key in test/ifac/. Six of them
 are lifted from the upstream test suite and the rest are generated from
@@ -140,8 +148,8 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Forty-six of the fifty-two are of
-that class. The six that are not name their reason:
+the result against raw. Forty-eight of the fifty-five are of
+that class. The seven that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
                                   by length and digest, not by content

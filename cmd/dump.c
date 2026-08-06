@@ -287,6 +287,33 @@ static void ed25519_sign(const uint8_t seed[32], const uint8_t *msg, size_t mlen
 	memcpy(out, sm, 64);
 }
 
+/* The group order L, little endian. RFC 8032 section 5.1. */
+static const uint8_t ed25519_L[32] = {
+	0xed,0xd3,0xf5,0x5c,0x1a,0x63,0x12,0x58,
+	0xd6,0x9c,0xf7,0xa2,0xde,0xf9,0xde,0x14,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x10,
+};
+
+/* A signature is R || S with S a scalar, and RFC 8032 section 5.1.7
+ * admits only S < L. Adding L to S yields a second encoding of the same
+ * signature, which the pinned backend rejects and tweetnacl accepts:
+ * crypto_sign_open reduces S rather than refusing it. The check belongs
+ * here rather than in the vendored file, which is not edited.
+ *
+ * Without it dump reports signature_valid yes for an announce python-rns
+ * drops. See doc/identity, section Canonical signatures. */
+static int scalar_canonical(const uint8_t s[32])
+{
+	int i;
+
+	for (i = 31; i >= 0; i--) {
+		if (s[i] < ed25519_L[i]) return 1;
+		if (s[i] > ed25519_L[i]) return 0;
+	}
+	return 0;			/* S == L is not canonical either */
+}
+
 static int ed25519_verify(const uint8_t pk[32], const uint8_t sig[64],
                           const uint8_t *msg, size_t mlen)
 {
@@ -296,10 +323,33 @@ static int ed25519_verify(const uint8_t pk[32], const uint8_t sig[64],
 	if (mlen > MAXBLOB)
 		fatal("message of %zu bytes exceeds %d", mlen, MAXBLOB);
 
+	if (!scalar_canonical(sig + 32))
+		return 0;
+
 	memcpy(sm, sig, 64);
 	memcpy(sm + 64, msg, mlen);
 
 	return crypto_sign_open(m, &got, sm, (unsigned long long)mlen + 64, pk) == 0;
+}
+
+/* X25519 against a point of small order yields an all-zero secret. The
+ * pinned backend raises rather than returning it; tweetnacl returns it
+ * and says nothing. A packet built that way has a key every reader of
+ * the announce can compute, so the two behaviours are not equivalent.
+ *
+ * Returns 0 when no usable secret exists. See doc/encryption, section
+ * Contributory behaviour. */
+static int x25519_shared(uint8_t out[KEYHALF], const uint8_t scalar[KEYHALF],
+                         const uint8_t peer[KEYHALF])
+{
+	size_t i;
+	uint8_t acc = 0;
+
+	crypto_scalarmult(out, scalar, peer);
+	for (i = 0; i < KEYHALF; i++)
+		acc |= out[i];
+
+	return acc != 0;
 }
 
 static void truncated_hash(const uint8_t *p, size_t n, uint8_t *out, size_t take)
@@ -672,11 +722,14 @@ struct token {
 	const uint8_t *iv, *ciphertext, *mac;
 	size_t   ctlen, ptlen;
 	uint8_t  plain[MAXBLOB];
-	int      mac_ok, opened;
+	int      mac_ok, opened, keyed;
 };
 
+/* A null derived key means no key agreement was possible. The token is
+ * still laid out, because its three parts are in the packet, but no
+ * verdict about it can be reached. */
 static void token_open(const uint8_t *p, size_t len,
-                       const uint8_t derived[DERIVEDLEN], struct token *t)
+                       const uint8_t *derived, struct token *t)
 {
 	uint8_t expected[MACLEN], signed_part[MAXBLOB];
 
@@ -686,6 +739,11 @@ static void token_open(const uint8_t *p, size_t len,
 	t->mac        = p + len - MACLEN;
 	t->ptlen      = 0;
 	t->opened     = 0;
+	t->mac_ok     = 0;
+	t->keyed      = derived != NULL;
+
+	if (!t->keyed)
+		return;
 
 	memcpy(signed_part, t->iv, IVLEN);
 	memcpy(signed_part + IVLEN, t->ciphertext, t->ctlen);
@@ -706,9 +764,14 @@ static void print_token(const struct token *t)
 	field_hex("hmac", t->mac, MACLEN);
 }
 
-static void print_keys(const uint8_t shared[KEYHALF],
-                       const uint8_t derived[DERIVEDLEN])
+static void print_keys(const uint8_t *shared, const uint8_t *derived)
 {
+	if (shared == NULL) {
+		field("shared_key", "-");
+		field("signing_key", "-");
+		field("encryption_key", "-");
+		return;
+	}
 	field_hex("shared_key", shared, KEYHALF);
 	field_hex("signing_key", derived, MACLEN);
 	field_hex("encryption_key", derived + MACLEN, MACLEN);
@@ -716,6 +779,12 @@ static void print_keys(const uint8_t shared[KEYHALF],
 
 static void print_plaintext(const struct token *t)
 {
+	if (!t->keyed) {
+		field("hmac_valid", "-");
+		field("plaintext_length", "-");
+		field("plaintext", "-");
+		return;
+	}
 	field("hmac_valid", "%s", t->mac_ok ? "yes" : "no");
 	if (!t->opened) {
 		field("plaintext_length", "-");
@@ -739,6 +808,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 	uint8_t pub[KEYSIZE], identity_hash[ADDRLEN];
 	uint8_t agree[KEYHALF], shared[KEYHALF], derived[DERIVEDLEN];
 	uint8_t ratchet_pub[KEYHALF];
+	int agreed;
 
 	if (nblobs != 3)
 		fatal("encrypted: expected 3 blobs, got %d", nblobs);
@@ -776,9 +846,12 @@ static void dump_encrypted(struct blob *b, int nblobs)
 		crypto_scalarmult_base(ratchet_pub, b[1].data);
 	}
 
-	crypto_scalarmult(shared, agree, ephemeral);
-	hkdf_sha256(shared, KEYHALF, identity_hash, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
-	token_open(h.payload + KEYHALF, h.payload_len - KEYHALF, derived, &t);
+	agreed = x25519_shared(shared, agree, ephemeral);
+	if (agreed)
+		hkdf_sha256(shared, KEYHALF, identity_hash, ADDRLEN, NULL, 0,
+		            derived, DERIVEDLEN);
+	token_open(h.payload + KEYHALF, h.payload_len - KEYHALF,
+	           agreed ? derived : NULL, &t);
 
 	print_header(&h);
 	field_hex("ephemeral_public", ephemeral, KEYHALF);
@@ -788,7 +861,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 		field("ratchet_public", "-");
 	else
 		field_hex("ratchet_public", ratchet_pub, KEYHALF);
-	print_keys(shared, derived);
+	print_keys(agreed ? shared : NULL, derived);
 	print_plaintext(&t);
 }
 
@@ -999,6 +1072,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	const uint8_t *initiator_public;
 	uint8_t link_id[ADDRLEN], shared[KEYHALF], derived[DERIVEDLEN];
 	uint8_t identity_hash[ADDRLEN], signed_data[ADDRLEN + KEYSIZE];
+	int agreed;
 
 	if (nblobs != 3)
 		fatal("linkdata: expected 3 blobs, got %d", nblobs);
@@ -1046,12 +1120,14 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	 * link carries an ephemeral key. The salt is the link id, which is
 	 * in no packet either. RNS/Link.py:351, RNS/Link.py:607. */
 	initiator_public = rh.payload;
-	crypto_scalarmult(shared, b[1].data, initiator_public);
-	hkdf_sha256(shared, KEYHALF, link_id, ADDRLEN, NULL, 0, derived, DERIVEDLEN);
-	token_open(h.payload, h.payload_len, derived, &t);
+	agreed = x25519_shared(shared, b[1].data, initiator_public);
+	if (agreed)
+		hkdf_sha256(shared, KEYHALF, link_id, ADDRLEN, NULL, 0,
+		            derived, DERIVEDLEN);
+	token_open(h.payload, h.payload_len, agreed ? derived : NULL, &t);
 
 	print_token(&t);
-	print_keys(shared, derived);
+	print_keys(agreed ? shared : NULL, derived);
 	print_plaintext(&t);
 	if (!t.opened)
 		return;

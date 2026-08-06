@@ -4,6 +4,7 @@ announce/destination-mismatch
 announce/hop-limit
 announce/in-transport
 announce/minimal
+announce/non-canonical-s
 announce/path-response
 announce/ratchet
 announce/ratchet-and-app-data
@@ -18,6 +19,7 @@ destination/utf8-precomposed
 encrypted/altered-hmac
 encrypted/block-aligned
 encrypted/empty
+encrypted/low-order-ephemeral
 encrypted/minimal
 encrypted/ratchet
 identity/upstream-0
@@ -49,4 +51,5 @@ proof/explicit
 proof/implicit
 sign/upstream
 signature/altered
+signature/non-canonical-s
 signature/upstream

@@ -1,0 +1,3 @@
+source             constructed by tools/gen from announce/minimal
+determinism        encode
+purpose            signature S re-encoded as S+L; the announce decodes and matches, and the pinned backend rejects it

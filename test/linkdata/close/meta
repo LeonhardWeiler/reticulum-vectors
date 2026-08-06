@@ -1,3 +1,3 @@
-source             python-rns 1.4.2 (b48b96e6)
+source             python-rns 1.4.2 (b48b96e6, openssl backend)
 determinism        encode
 purpose            teardown; the plaintext is the link id

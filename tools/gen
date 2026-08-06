@@ -26,6 +26,18 @@ import time
 PIN_VERSION = "1.4.2"
 PIN_COMMIT  = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
 
+# python-rns ships two curve implementations and picks one at import
+# time. They do not agree everywhere: the openssl backend refuses a
+# non-canonical Ed25519 scalar and an all-zero X25519 secret, and the
+# internal fallback accepts both. There are therefore inputs on which
+# the verdict is decided by the backend and not by the version, so a
+# pin that names only a version and a commit does not identify what was
+# observed. It is named here and recorded in every meta file.
+#
+#     RNS/Cryptography/Provider.py:35
+PIN_BACKEND      = 0x02             # PROVIDER_PYCA
+PIN_BACKEND_NAME = "openssl backend"
+
 ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHECKOUT = os.path.join(os.path.dirname(ROOT), "reticulum")
 
@@ -71,9 +83,10 @@ UPSTREAM_SIGNED_MESSAGE = (
 UPSTREAM_SIGNATURE = ("3020ef58f861591826a61c3d2d4a25b949cdb3094085ba6b1177a6f2a05f3cdd"
                       "24d1095d6fdd078f0b2826e80b261c93c1ff97fbfd4857f25706d57dd073590c")
 
-UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13 (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
-UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py:7 (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
-GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN_COMMIT[:8])
+PIN                 = "%s, %s" % (PIN_COMMIT[:8], PIN_BACKEND_NAME)
+UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py:13 (%s)" % (PIN_VERSION, PIN)
+UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py:7 (%s)" % (PIN_VERSION, PIN)
+GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN)
 
 # Constructed here, not upstream. The pair pins the clamping rule: the
 # X25519 scalar is stored as given and clamped only when used, so the
@@ -255,6 +268,17 @@ def load_rns(checkout):
                             capture_output=True, text=True).stdout.strip()
     if commit != PIN_COMMIT:
         sys.exit("checkout is at %s, pin is %s" % (commit, PIN_COMMIT))
+
+    # The backend is part of the pin, and it is chosen at import time by
+    # what happens to be installed. Regenerating under the other one
+    # would produce different bytes for the ratchet vectors and a
+    # different verdict for the two non-canonical vectors, and nothing
+    # downstream could tell which had been used.
+    from RNS.Cryptography import Provider
+    if Provider.PROVIDER != PIN_BACKEND:
+        sys.exit("checkout uses crypto backend %#04x, pin is %#04x (%s); "
+                 "install the cryptography package"
+                 % (Provider.PROVIDER, PIN_BACKEND, PIN_BACKEND_NAME))
 
     return RNS
 
@@ -486,9 +510,20 @@ def gen_signature(RNS, w, verify):
     bad[0] ^= 0x01
     bad = bytes(bad)
 
+    # The one input in the corpus on which the two backends python-rns
+    # ships disagree. The pin names the one that refuses it; the vector
+    # records that verdict, and the assertions record that there was a
+    # choice to make.
+    mangled = non_canonical(good)
+    assert not verify(public[32:], mangled, message)
+    assert internal_accepts(public[32:], mangled, message)
+
     cases = [
         ("upstream", good, "adopted signature over the upstream message", UPSTREAM_SIG_SOURCE),
         ("altered", bad, "the same signature with the first byte altered",
+         "constructed by tools/gen from signature/upstream"),
+        ("non-canonical-s", mangled,
+         "the same signature with S re-encoded as S+L; the pinned backend rejects it",
          "constructed by tools/gen from signature/upstream"),
     ]
 
@@ -540,7 +575,7 @@ def gen_sign(RNS, w):
             field("message_sha256",  hashlib.sha256(message).hexdigest()),
             field("signature",       signature.hex()),
         ],
-        source="python-rns %s tests/identity.py:31 (%s)" % (PIN_VERSION, PIN_COMMIT[:8]))
+        source="python-rns %s tests/identity.py:31 (%s)" % (PIN_VERSION, PIN))
 
 
 def gen_proof(RNS, w, verify):
@@ -727,6 +762,39 @@ MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144
 MODE_DEFAULT = 0x01     # RNS/Link.py:134
 
 
+# The Ed25519 group order, RFC 8032 section 5.1.
+ED25519_L = 2**252 + 27742317777372353535851937790883648493
+
+
+def non_canonical(signature):
+    """The same signature with S re-encoded as S + L.
+
+    RFC 8032 section 5.1.7 admits only S < L, so this is a second
+    encoding of one signature rather than a forgery: R is untouched and
+    S reduces to the original. The openssl backend refuses it, the
+    internal fallback accepts it, and so does an implementation that
+    reduces S instead of range-checking it.
+    """
+    s = int.from_bytes(signature[32:], "little") + ED25519_L
+    assert s < 2**256, "S + L does not fit in 32 bytes"
+    return signature[:32] + s.to_bytes(32, "little")
+
+
+def internal_accepts(ed25519_public, signature, message):
+    """The verdict of the backend that is not pinned.
+
+    The two non-canonical vectors exist because the answer differs from
+    the pinned one. Asserting it here keeps the vector from quietly
+    becoming a vector about nothing if a future release aligns them.
+    """
+    from RNS.Cryptography.pure25519 import ed25519_oop
+    try:
+        ed25519_oop.VerifyingKey(ed25519_public).verify(signature, message)
+        return True
+    except Exception:
+        return False
+
+
 def invalid(reason, *evidence):
     """A packet that cannot be decoded yields the reason and the numbers
     behind it, so a disagreement names the rule rather than the stage."""
@@ -893,6 +961,13 @@ def gen_announce(RNS, w, tmpdir, verify):
         ("altered-signature",
          base[:-SIGLEN] + bytes([base[-SIGLEN] ^ 0x01]) + base[-SIGLEN+1:],
          "first signature byte altered; the announce decodes and matches, but the signature does not verify",
+         "constructed by tools/gen from announce/minimal"),
+
+        # announce/minimal carries no app data, so the signature is the
+        # tail of the packet. The same re-encoding as test/signature,
+        # on a whole packet, because that is where it costs something.
+        ("non-canonical-s", base[:-SIGLEN] + non_canonical(base[-SIGLEN:]),
+         "signature S re-encoded as S+L; the announce decodes and matches, and the pinned backend rejects it",
          "constructed by tools/gen from announce/minimal"),
     ]
 
@@ -1412,21 +1487,33 @@ def describe_encrypted(raw, private, ratchet_private):
         agree_with = private[:KEYHALF]
         ratchet_public = None
 
-    shared = X25519PrivateKey.from_private_bytes(agree_with).exchange(
-        X25519PublicKey.from_public_bytes(ephemeral))
-    derived = hkdf_sha256(64, shared, identity_hash)
-    signing_key, encryption_key = derived[:32], derived[32:]
+    # X25519 against a point of small order yields an all-zero secret,
+    # which the pinned backend raises on rather than returning. Nothing
+    # about the token can then be decided, and its three parts are still
+    # in the packet. The internal fallback returns the zero secret and
+    # carries on; see doc/encryption.
+    try:
+        shared = X25519PrivateKey.from_private_bytes(agree_with).exchange(
+            X25519PublicKey.from_public_bytes(ephemeral))
+    except ValueError:
+        shared = None
 
-    mac_ok = _hmac.compare_digest(
-        mac, _hmac.new(signing_key, iv + ciphertext, hashlib.sha256).digest())
+    signing_key = encryption_key = None
+    mac_ok = plaintext = None
 
-    plaintext = None
-    if mac_ok and len(ciphertext) > 0 and len(ciphertext) % 16 == 0:
-        dec = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
-        padded = dec.update(ciphertext) + dec.finalize()
-        n = padded[-1]
-        if 0 < n <= 16 and n <= len(padded):
-            plaintext = padded[:len(padded) - n]
+    if shared is not None:
+        derived = hkdf_sha256(64, shared, identity_hash)
+        signing_key, encryption_key = derived[:32], derived[32:]
+
+        mac_ok = _hmac.compare_digest(
+            mac, _hmac.new(signing_key, iv + ciphertext, hashlib.sha256).digest())
+
+        if mac_ok and len(ciphertext) > 0 and len(ciphertext) % 16 == 0:
+            dec = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
+            padded = dec.update(ciphertext) + dec.finalize()
+            n = padded[-1]
+            if 0 < n <= 16 and n <= len(padded):
+                plaintext = padded[:len(padded) - n]
 
     lines += [
         field("ephemeral_public", ephemeral.hex()),
@@ -1435,10 +1522,10 @@ def describe_encrypted(raw, private, ratchet_private):
         field("hmac",            mac.hex()),
         field("identity_hash",   identity_hash.hex()),
         field("ratchet_public",  ratchet_public.hex() if ratchet_public else "-"),
-        field("shared_key",      shared.hex()),
-        field("signing_key",     signing_key.hex()),
-        field("encryption_key",  encryption_key.hex()),
-        field("hmac_valid",      "yes" if mac_ok else "no"),
+        field("shared_key",      "-" if shared is None else shared.hex()),
+        field("signing_key",     "-" if signing_key is None else signing_key.hex()),
+        field("encryption_key",  "-" if encryption_key is None else encryption_key.hex()),
+        field("hmac_valid",      "-" if mac_ok is None else ("yes" if mac_ok else "no")),
         field("plaintext_length", "-" if plaintext is None else "%d" % len(plaintext)),
         field("plaintext",        plaintext.hex() if plaintext else "-"),
     ]
@@ -1497,6 +1584,24 @@ def gen_encrypted(RNS, w):
         "last byte of the token hmac altered; nothing is decrypted",
         [private.hex(), "-", altered.hex()],
         describe_encrypted(altered, private, None),
+        source="constructed by tools/gen from encrypted/minimal")
+
+    # The ephemeral key replaced with the all-zero point, which has
+    # order 1. The header is 19 bytes and the key is the first 32 of the
+    # payload. The pinned backend will not produce a secret from it at
+    # all; the internal fallback produces the one every reader of the
+    # announce can compute for themselves.
+    low_order = raw[:19] + bytes(KEYHALF) + raw[19+KEYHALF:]
+    assert len(low_order) == len(raw)
+
+    from RNS.Cryptography.X25519 import X25519PrivateKey as InternalX25519
+    assert InternalX25519.from_private_bytes(private[:KEYHALF]) \
+        .exchange(bytes(KEYHALF)) == bytes(KEYHALF)
+
+    w.vector("encrypted", "low-order-ephemeral",
+        "ephemeral key replaced with a point of small order; no shared secret exists",
+        [private.hex(), "-", low_order.hex()],
+        describe_encrypted(low_order, private, None),
         source="constructed by tools/gen from encrypted/minimal")
 
 
