@@ -19,6 +19,11 @@ Four, and no others.
         keyword    one word from a set fixed per field, listed below
         -          absent, empty, or not determined
 
+The second column below is the forms one field admits, and cmd/check
+reads it: a value no declared form covers fails. It was prose for a
+while, and six of these lines had drifted by the time anything read
+them.
+
 The three meanings of "-" are told apart by the field, not by the
 value. An optional part of a packet that is not present is "-". An
 empty byte string is "-", because hex cannot spell one and a name
@@ -66,16 +71,14 @@ doc/packet.
     hops               decimal  the hop count, below 128
     transport_id       hex, -   header 2 only, otherwise -
     destination_hash   hex      the address field, 16 bytes
-    context            keyword  none, resource, resource_adv,
+    context            keyword, hex
+                                none, resource, resource_adv,
                                 resource_req, resource_hmu, resource_prf,
                                 resource_icl, resource_rcl, request,
                                 response, path_response, channel,
                                 keepalive, link_identify, link_close,
                                 link_proof, link_rtt, link_request_proof
     payload_length     decimal  bytes after the header
-
-context falls back to hex for a byte with no name. It is the one field
-whose form depends on the value.
 
 The address field is called destination_hash for every kind, and for
 two kinds it is not a destination hash: a link request proof carries
@@ -91,7 +94,8 @@ Identity and destination
     ed25519_public     hex      32 bytes
     x25519_private     hex      32 bytes, the raw scalar, unclamped
     ed25519_private    hex      32 bytes, an RFC 8032 seed
-    identity_hash      hex      SHA-256(public_key)[0:16]
+    identity_hash      hex, -   SHA-256(public_key)[0:16]; - when there is no
+                                identity, as a plain destination has none
     name               hex      the full destination name, utf-8 bytes
     app_name           hex      the first component
     aspect             hex, -   one component, repeated; - when empty
@@ -174,8 +178,10 @@ and for a group packet it is not derived at all.
     signing_key        hex, -   first half of the 64 derived bytes, or
                                 of group_key, which is not derived
     encryption_key     hex, -   second half
-    hmac_valid         keyword  yes, no, -
-    plaintext_length   decimal  bytes, or - if nothing was decrypted
+    hmac_valid         keyword, -
+                                yes, no
+    plaintext_length   decimal, -
+                                bytes, or - if nothing was decrypted
     plaintext          hex, -   the bytes; - when empty or absent
 
 The three key fields and hmac_valid are "-" together, and only
@@ -277,8 +283,10 @@ See doc/link.
     x25519_public      hex      32 bytes, per link, not an identity key
     ed25519_public     hex      linkrequest only: 32 bytes, per link
     signalling         hex, -   3 bytes, or - in the shorter form
-    mode               keyword  aes256_cbc; hex for any other value
-    mtu                decimal  21 bits, or - when nothing was signalled
+    mode               keyword, hex
+                                aes256_cbc
+    mtu                decimal, -
+                                21 bits, or - when nothing was signalled
     link_id            hex      16 bytes, over the request with the
                                 signalling bytes trimmed
     link_id_match      keyword  linkproof: yes, no

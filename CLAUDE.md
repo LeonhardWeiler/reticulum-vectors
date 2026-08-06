@@ -269,8 +269,16 @@ enforced.
 
 Before the first vector it refuses a test/ that disagrees with
 test/INDEX, a field name that doc/fields does not carry or that no
-vector does, and an optional field with only one of its two cases on
-file. Each of those was a sentence somewhere before it was a check.
+vector does, a value no form doc/fields declares for that field covers,
+and an optional field with only one of its two cases on file. Each of
+those was a sentence somewhere before it was a check.
+
+The form column is the newest of them and the clearest case for the
+rule. doc/fields is a fixed-width table and only its first column was
+ever read; the second looked like data and was prose. Six of its lines
+were wrong the day a parser first looked at them, among them the hex
+fallback of `context`, which the document described in a paragraph
+below the table and did not declare in it.
 
 `make verify` reads one more claim nothing read: `dump -l` against the
 kinds in test/INDEX. README and doc/harness both send a harness author
