@@ -223,8 +223,19 @@ done
 # count, and nothing said so. cksum because it is POSIX and this is a
 # fingerprint rather than a signature: anyone who can edit test/ can
 # edit the number too.
-corpus=$(LC_ALL=C; cat "$root"/test/INDEX "$root"/test/*/*/raw \
-                       "$root"/test/*/*/expect | cksum | cut -d' ' -f1)
+#
+# The order comes from INDEX and not from a glob. A glob is expanded in
+# the collating order of the caller's locale, and UTF-8 locales sort
+# punctuation differently from C: test/*/*/raw swaps signalling with
+# signalling-removed and sign/ with signature/, and the same corpus
+# fingerprints as 678091306 or as 4275070876 depending on who runs it.
+# INDEX has one order, it is checked against test/ above, and it is the
+# same list that decides what the corpus is.
+corpus=$( { cat "$index"
+            while read -r v; do
+                    cat "$root/test/$v/raw" "$root/test/$v/expect"
+            done < "$index"
+          } | cksum | cut -d' ' -f1)
 
 if [ "$skip" -eq 0 ]; then
 	echo "$pass passed, $fail failed, corpus $corpus"

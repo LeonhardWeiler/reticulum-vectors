@@ -4,12 +4,19 @@ Run on 2026-08-06 against the 78 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 678091306
+    corpus 1271484319
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
 corpus; two vectors changed shape without changing the count between
 this run and the last.
+
+The rows below were measured while it read 678091306. Not one byte of
+test/ has changed since; the number moved because it was wrong. It was
+taken over a shell glob, and a glob is ordered by the locale of whoever
+runs it, so the same corpus fingerprinted as 678091306 under C and as
+4275070876 under en_US.UTF-8. It is taken over test/INDEX now and is
+the same everywhere.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
