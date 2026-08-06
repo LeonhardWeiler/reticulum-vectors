@@ -56,6 +56,12 @@ void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
 	size_t produced = 0, blocklen = 0;
 	unsigned counter = 0;
 
+	/* The reference raises on both, and no caller here reaches either.
+	 * Returning quietly would leave out untouched for the caller to
+	 * compare, which reads as a derivation that came out wrong. */
+	if (outlen == 0 || ikmlen == 0)
+		abort();
+
 	if (salt == NULL || saltlen == 0) {
 		memset(zeros, 0, HASH);
 		salt = zeros;

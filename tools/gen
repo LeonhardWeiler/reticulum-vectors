@@ -276,10 +276,23 @@ def load_rns(checkout):
     if RNS.__version__ != PIN_VERSION:
         sys.exit("checkout is version %s, pin is %s" % (RNS.__version__, PIN_VERSION))
 
-    commit = subprocess.run(["git", "-C", checkout, "rev-parse", "HEAD"],
-                            capture_output=True, text=True).stdout.strip()
+    def git(*args):
+        r = subprocess.run(["git", "-C", checkout, *args],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit("git %s in %s: %s" % (args[0], checkout, r.stderr.strip()))
+        return r.stdout
+
+    commit = git("rev-parse", "HEAD").strip()
     if commit != PIN_COMMIT:
         sys.exit("checkout is at %s, pin is %s" % (commit, PIN_COMMIT))
+
+    # rev-parse names the commit, not the tree. An edited working copy
+    # would produce vectors that claim the pin as their source, which is
+    # the strongest provenance the format has.
+    dirty = git("status", "--porcelain").strip()
+    if dirty:
+        sys.exit("checkout has uncommitted changes:\n%s" % dirty)
 
     # The backend is part of the pin, and it is chosen at import time by
     # what happens to be installed. Regenerating under the other one

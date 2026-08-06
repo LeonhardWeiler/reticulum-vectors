@@ -54,6 +54,7 @@ pass=0
 fail=0
 seen=0
 skip=0
+noise=0
 skipped_kinds=
 
 err=$(mktemp) || exit 2
@@ -219,6 +220,13 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
+	# Not compared, because a warning is not a field, but not discarded
+	# either: a sanitizer build reports every vector passing and prints
+	# its findings to a stream nothing mentions.
+	if [ -s "$err" ]; then
+		noise=$((noise + 1))
+	fi
+
 	if ! bad=$(check_format "$dir/expect"); then
 		fail_with "$dir" "$bad"
 		continue
@@ -290,6 +298,10 @@ fi
 
 # A corpus with nothing in it must not report success, and neither must
 # a decoder that skipped everything.
+if [ "$noise" -gt 0 ]; then
+	echo "$noise decoder runs wrote to standard error" >&2
+fi
+
 if [ "$seen" -eq 0 ]; then
 	echo "no vectors under $root/test" >&2
 	exit 2

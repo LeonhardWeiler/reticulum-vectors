@@ -170,12 +170,12 @@ static int readraw(const char *path, struct blob *out, int max)
 {
 	FILE *f;
 	char line[MAXBLOB*2 + 4];
-	int n = 0;
+	int n = 0, lineno = 0;
 
 	if ((f = fopen(path, "r")) == NULL)
 		fatal("cannot open %s", path);
 
-	while (readline(f, line, sizeof line, path, n + 1)) {
+	while (readline(f, line, sizeof line, path, ++lineno)) {
 		struct blob *b;
 		size_t len = strlen(line);
 
@@ -210,12 +210,12 @@ static int readexpect(const char *path, struct kv *out, int max)
 {
 	FILE *f;
 	char line[MAXBLOB*2 + 64];
-	int n = 0;
+	int n = 0, lineno = 0;
 
 	if ((f = fopen(path, "r")) == NULL)
 		fatal("cannot open %s", path);
 
-	while (readline(f, line, sizeof line, path, n + 1)) {
+	while (readline(f, line, sizeof line, path, ++lineno)) {
 		char *value;
 		size_t namelen;
 
@@ -232,9 +232,9 @@ static int readexpect(const char *path, struct kv *out, int max)
 			value++;
 
 		if (namelen == 0 || namelen >= sizeof out[n].name)
-			fatal("%s: unusable field name on line %d", path, n + 1);
+			fatal("%s: unusable field name on line %d", path, lineno);
 		if (strlen(value) >= sizeof out[n].value)
-			fatal("%s: value too long on line %d", path, n + 1);
+			fatal("%s: value too long on line %d", path, lineno);
 
 		memcpy(out[n].name, line, namelen);
 		out[n].name[namelen] = '\0';
@@ -611,6 +611,12 @@ static enum reason parse_announce(const struct header *h, struct announce *a,
 
 	return OK;
 }
+
+/* The assembled material is payload_len - SIGLEN + ADDRLEN bytes: the
+ * signature is in the payload and not in the signed data, the
+ * destination hash the other way round. It fits in a MAXBLOB buffer
+ * only because the signature is the larger of the two. */
+typedef char signed_data_fits[ADDRLEN <= SIGLEN ? 1 : -1];
 
 /* app_data is transmitted after the signature but signed before it.
  * Getting this wrong is the most likely reason for a valid announce to
@@ -1084,7 +1090,7 @@ static void print_signalling(const uint8_t *p)
 		field("signalling", "-");
 	}
 
-	if (mode == 0x01)
+	if (mode == MODE_DEFAULT)
 		field("mode", "aes256_cbc");
 	else
 		field("mode", "%02x", mode);

@@ -21,14 +21,13 @@
 import argparse
 import os
 import re
+import subprocess
 import sys
 
 ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHECKOUT = os.path.join(os.path.dirname(ROOT), "upstream")
 
-SOURCES = ["README", "CONFORMANCE", "Makefile", "cmd/check", "tools/gen",
-           "tools/cite"]
-DIRS    = ["doc", "cmd"]
+GIT = ["git", "-C", ROOT, "ls-files", "-z"]
 
 # The anchor is a chain of identifiers, so a sentence's full stop is not
 # part of it and Reticulum.MTU is. One without an anchor still matches,
@@ -39,20 +38,20 @@ PARTS  = re.compile(r"^(RNS/[A-Za-z0-9_/]+\.py):(\d+)#(.+)$")
 
 
 def sources():
-    for name in SOURCES:
-        path = os.path.join(ROOT, name)
-        if os.path.isfile(path):
-            yield path
-    for d in DIRS:
-        for name in sorted(os.listdir(os.path.join(ROOT, d))):
-            path = os.path.join(ROOT, d, name)
-            if os.path.isfile(path) and not name.endswith(".o"):
-                yield path
-    # A meta file's source line cites RNS where the vector was derived
-    # rather than captured. That is a provenance claim, and it is
-    # checked like every other citation.
-    for name in sorted(open(os.path.join(ROOT, "test", "INDEX"))):
-        yield os.path.join(ROOT, "test", name.strip(), "meta")
+    """Every file this repository tracks, which is the point.
+
+    A hand-kept list of where citations may appear is a list that goes
+    stale silently: a new file with a wrong citation is not reported,
+    it is not looked at. git already knows what belongs here, and
+    .gitignore already excludes the cloned implementations under
+    conformance/src, which are not ours to check.
+    """
+    r = subprocess.run(GIT, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit("git ls-files in %s: %s" % (ROOT, r.stderr.strip()))
+    for name in sorted(r.stdout.split("\0")):
+        if name:
+            yield os.path.join(ROOT, name)
 
 
 def elsewhere(lines, anchor):
