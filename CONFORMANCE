@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 90 vectors test/ held at that date,
+Run on 2026-08-06 against the 94 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 951802319
+    corpus 4048137228
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -26,20 +26,20 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the eighty vectors of the encode class, and no
+from expect for the 84 vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
 what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  67 / 74  22 / 27
-    rsReticulum         07ca721   2026-08-02  63 / 74  19 / 27
-    microReticulum      40fa628   2026-07-20  50 / 74  11 / 27
-    Reticulum-rs        be7a7fc   2026-07-31  50 / 74   9 / 27
-    rns.js              d4602ca   2025-02-10  39 / 74   2 / 27
-    sgiath/reticulum    0c4904e   2026-07-09  33 / 74   2 / 27
+    go-reticulum        06621cc   2026-04-28  67 / 78  22 / 31
+    rsReticulum         07ca721   2026-08-02  63 / 78  19 / 31
+    microReticulum      40fa628   2026-07-20  50 / 78  11 / 31
+    Reticulum-rs        be7a7fc   2026-07-31  50 / 78   9 / 31
+    rns.js              d4602ca   2025-02-10  39 / 78   2 / 31
+    sgiath/reticulum    0c4904e   2026-07-09  33 / 78   2 / 31
 
-Out of 74, not 90: every harness exits 77 for five kinds, and those
+Out of 78, not 94: every harness exits 77 for five kinds, and those
 sixteen vectors are skipped rather than counted against anyone.
 
     plain           2 vectors
@@ -48,9 +48,17 @@ sixteen vectors are skipped rather than counted against anyone.
     ifac            4
     resourceproof   1
 
-The link column is the twenty-five vectors of the three link kinds plus
-the two delivery proofs made on a link, which are filed under proof.
-Seven of the twenty-five are the resource contexts.
+The link column is every vector of the three link kinds plus the two
+delivery proofs made on a link, which are filed under proof. Eleven of
+them are the resource contexts.
+
+Not one passing count moved when the corpus grew from 90 vectors to 94.
+The four added are the four ways a resource plaintext can be too short
+for the context byte that named it, and every implementation measured
+here fails all four. Three of them (go-reticulum, rsReticulum,
+Reticulum-rs) decrypt the token correctly and print the plaintext, and
+then have nothing to say about its length; the other three do not reach
+that far. See the finding below.
 
 No failure in this run is a harness's own. Four were. They are
 recorded here because a harness is evidence and a change to one changes
@@ -753,3 +761,35 @@ byte alone.
 Nothing here is measured for the resource proof: it is a kind of its
 own and all six exit 77 for it. No implementation of the six has a
 resource proof path to point a harness at.
+
+
+Finding 22: no implementation bounds a resource plaintext by its length
+
+Affects all six. Four vectors added on 2026-08-06, one for each way a
+resource payload can be shorter than the context byte that named it
+promises:
+
+    test/linkdata/resource-request-empty              no bytes at all
+    test/linkdata/resource-request-short              flag, no hash
+    test/linkdata/resource-request-exhausted-short    flag set, no hash
+    test/linkdata/resource-hashmap-update-short       hash one byte short
+
+Every one of the six fails all four, and no passing count moved when
+they were added. Three of them, go-reticulum, rsReticulum and
+Reticulum-rs, decrypt the token correctly and print the plaintext,
+and then produce nothing about its length; the other three fail earlier
+in the packet and never reach it. What the vectors ask for is a
+rejection naming the rule, which no implementation has code for.
+
+A part request and a hashmap update are read by length and carry no
+framing that can run out, so the plaintext is the only bound a reader
+has. cmd/dump had the same defect until 2026-08-06: it read
+requested_hashes as len - 33 bytes, which underflows as an unsigned
+length on any request shorter than that, and printed memory until it
+died. That is what these four vectors are for.
+
+Reaching it requires the link key, which both ends of a link hold and
+which this corpus publishes. It is not a remote defect in any of the
+six; it is an unchecked length in a decoder, and where the decoder runs
+on a device with no memory protection the difference matters less than
+it reads.
