@@ -408,11 +408,16 @@ defmodule Dump do
          {:ok, p} <- decode(raw) do
       payload = p.data
 
-      # No length rule here either, for the same reason.
+      # No length rule here either, for the same reason. The parts are
+      # taken only where the payload holds them: on a payload one byte
+      # short of the shorter accepted length binary_part raised, and the
+      # rescue replaced every field with one error line. doc/harness
+      # rule 6. reticulum still reports no rule, which is the result.
       signalled = byte_size(payload) == 99
+      complete = byte_size(payload) >= 96
       id = link_id(request_raw)
-      signature = binary_part(payload, 0, 64)
-      x25519_public = binary_part(payload, 64, 32)
+      signature = if complete, do: binary_part(payload, 0, 64), else: <<>>
+      x25519_public = if complete, do: binary_part(payload, 64, 32), else: <<>>
       signalling = if signalled, do: binary_part(payload, 96, 3), else: <<>>
       signer_ed = binary_part(identity_public, 32, 32)
       signed = id <> x25519_public <> signer_ed <> signalling
@@ -431,7 +436,9 @@ defmodule Dump do
       f("signer_ed25519", hx(signer_ed))
       f("signed_data", hx(signed))
       f("signature_valid",
-        if(Identity.validate(signer, signed, signature), do: "yes", else: "no"))
+        if(complete and Identity.validate(signer, signed, signature),
+          do: "yes",
+          else: if(complete, do: "no", else: "-")))
     else
       _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
     end
@@ -461,9 +468,24 @@ defmodule Dump do
       else
         f("encrypted", "yes")
 
-        <<iv::binary-size(16), rest::binary>> = payload
-        ct = binary_part(rest, 0, byte_size(rest) - 32)
-        mac = binary_part(rest, byte_size(rest) - 32, 32)
+        # Cutting the token into iv, ciphertext and hmac is
+        # transcription: reticulum decrypts behind Fernet and exposes
+        # none of the three. A payload shorter than an iv and an hmac
+        # has no token to cut, and this took the length for granted, so
+        # binary_part raised and the rescue at the top replaced every
+        # field with one error line. doc/harness rule 6. The length rule
+        # is not supplied here; that reticulum reports none is the
+        # result.
+        have_token = byte_size(payload) >= 48
+
+        {iv, ct, mac} =
+          if have_token do
+            <<iv::binary-size(16), rest::binary>> = payload
+            {iv, binary_part(rest, 0, byte_size(rest) - 32),
+             binary_part(rest, byte_size(rest) - 32, 32)}
+          else
+            {<<>>, <<>>, <<>>}
+          end
 
         {:ok, request} = decode(request_raw)
         peer = binary_part(request.data, 0, 32)

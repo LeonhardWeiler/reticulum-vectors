@@ -423,9 +423,17 @@ function linkdata(blobs) {
     }
     f("encrypted", "yes");
 
-    const iv = p.data.slice(0, 16);
-    const ct = p.data.slice(16, -32);
-    const mac = p.data.slice(-32);
+    // Cutting the token into iv, ciphertext and hmac is transcription:
+    // rns.js decrypts behind Fernet and exposes none of the three. A
+    // payload shorter than an iv and an hmac has no token to cut, and
+    // slice() clamps rather than throwing, so this produced an hmac
+    // that overlapped the ciphertext and printed three values rns.js
+    // never computed. doc/harness rule 6. The length rule is not
+    // supplied here; that rns.js reports none is the result.
+    const haveToken = p.data.length >= 48;
+    const iv = haveToken ? p.data.slice(0, 16) : Buffer.alloc(0);
+    const ct = haveToken ? p.data.slice(16, -32) : Buffer.alloc(0);
+    const mac = haveToken ? p.data.slice(-32) : Buffer.alloc(0);
 
     const initiatorPublic = request.data.slice(0, Link.ECPUBSIZE / 2);
     const shared = Buffer.from(x25519.getSharedSecret(responderPrivate, initiatorPublic));
@@ -436,7 +444,8 @@ function linkdata(blobs) {
     const signing = derived.slice(0, half);
     const encryption = derived.slice(half);
 
-    const hmacOk = Cryptography.hmacSha256(signing, Buffer.concat([iv, ct])).equals(mac);
+    const hmacOk = haveToken &&
+        Cryptography.hmacSha256(signing, Buffer.concat([iv, ct])).equals(mac);
 
     let plaintext = null;
     try {

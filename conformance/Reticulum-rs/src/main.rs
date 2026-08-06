@@ -632,9 +632,18 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     }
     f(out, "encrypted", "yes");
 
-    let iv = &payload[..16];
-    let ct = &payload[16..payload.len() - 32];
-    let mac = &payload[payload.len() - 32..];
+    // Cutting the token into iv, ciphertext and hmac is transcription:
+    // Reticulum-rs decrypts behind PrivateIdentity::decrypt and exposes
+    // none of the three. A payload shorter than an iv and an hmac has no
+    // token to cut, and this took the length for granted and indexed
+    // past the end. doc/harness rule 6: print what there is, "-" for
+    // what there is not, and do not read past a packet to invent a
+    // field. The length rule is not supplied here either; that
+    // Reticulum-rs reports none is the result.
+    let token = payload.len() >= 48;
+    let iv: &[u8] = if token { &payload[..16] } else { &[] };
+    let ct: &[u8] = if token { &payload[16..payload.len() - 32] } else { &[] };
+    let mac: &[u8] = if token { &payload[payload.len() - 32..] } else { &[] };
 
     let mut peer = [0u8; 32];
     peer.copy_from_slice(&request_raw[19..51]);

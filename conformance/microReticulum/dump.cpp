@@ -536,9 +536,18 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	}
 	f("encrypted", "yes");
 
-	RNS::Bytes iv = payload.left(16);
-	RNS::Bytes ct = payload.mid(16, payload.size() - 48);
-	RNS::Bytes mac = payload.mid(payload.size() - 32);
+	// Cutting the token into iv, ciphertext and hmac is transcription:
+	// microReticulum decrypts behind Token and exposes none of the
+	// three. A payload shorter than an iv and an hmac has no token to
+	// cut, and this took the length for granted: size() - 48 wrapped
+	// round, and the three values printed were an hmac overlapping its
+	// own ciphertext, which microReticulum never computed. doc/harness
+	// rule 6. The length rule is not supplied here; that microReticulum
+	// reports none is the result.
+	bool have_token = payload.size() >= 48;
+	RNS::Bytes iv  = have_token ? payload.left(16) : RNS::Bytes();
+	RNS::Bytes ct  = have_token ? payload.mid(16, payload.size() - 48) : RNS::Bytes();
+	RNS::Bytes mac = have_token ? payload.mid(payload.size() - 32) : RNS::Bytes();
 
 	RNS::Bytes shared = RNS::Cryptography::X25519PrivateKey::from_private_bytes(responder_private)
 	                        ->exchange(request.data().left(32));

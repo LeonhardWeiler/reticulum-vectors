@@ -116,12 +116,24 @@ Six rules
    and neither may delete the fields after it. A harness that stops at
    the first defect measures one.
 
+   The commonest way to break this is not an exception the
+   implementation raised. It is one the harness raised on its own,
+   inside the code it wrote to take apart something the implementation
+   does not export. All six here cut a token into iv, ciphertext and
+   hmac by hand and all six assumed the payload was long enough, so
+   test/linkdata/short-payload crashed four of them and made the other
+   two print an hmac overlapping its own ciphertext. Bound that code by
+   the bytes actually present, print "-" for what is not there, and do
+   not supply the rule the implementation is missing: the dash is the
+   measurement.
+
 
 What to expect it to cost
 
-The six harnesses in conformance/ run from 529 lines to 959, in six
-languages, and every one of them covers announce and the link kinds.
-The smallest, conformance/rns.js/dump.js, is the one to read first.
+The six harnesses in conformance/ run from five hundred lines to a
+thousand, in six languages, and every one of them covers announce and
+the link kinds. The smallest, conformance/rns.js/dump.js, is the one to
+read first.
 
 Most of that length is neither parsing nor cryptography. It is
 reaching past an API that was written for an application rather than

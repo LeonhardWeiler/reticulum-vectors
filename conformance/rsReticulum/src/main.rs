@@ -627,9 +627,18 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     }
     f(out, "encrypted", "yes");
 
-    let iv = &payload[..16];
-    let ct = &payload[16..payload.len() - 32];
-    let mac = &payload[payload.len() - 32..];
+    // Cutting the token into iv, ciphertext and hmac is transcription:
+    // rsReticulum decrypts behind link_decrypt and exposes none of the
+    // three. A payload shorter than an iv and an hmac has no token to
+    // cut, and this took the length for granted and indexed past the
+    // end. doc/harness rule 6: the harness prints what it has and "-"
+    // for what it does not, and does not read past a packet to invent a
+    // field. It does not supply the length rule either; that rsReticulum
+    // reports none is the result.
+    let token = payload.len() >= 48;
+    let iv = if token { Some(&payload[..16]) } else { None };
+    let ct = if token { Some(&payload[16..payload.len() - 32]) } else { None };
+    let mac = if token { Some(&payload[payload.len() - 32..]) } else { None };
 
     let mut prv = [0u8; 32];
     prv.copy_from_slice(responder_private);
@@ -645,9 +654,9 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     // rsReticulum's own curve wrapper.
     let shared = own_key.exchange(&peer_key);
 
-    f(out, "iv", &hexs(iv));
-    f(out, "ciphertext", &hexs(ct));
-    f(out, "hmac", &hexs(mac));
+    f(out, "iv", &hexs(iv.unwrap_or(&[])));
+    f(out, "ciphertext", &hexs(ct.unwrap_or(&[])));
+    f(out, "hmac", &hexs(mac.unwrap_or(&[])));
     f(out, "shared_key", &hexs(&shared));
     f(out, "signing_key", &hexs(&keys.signing_key));
     f(out, "encryption_key", &hexs(&keys.encryption_key));

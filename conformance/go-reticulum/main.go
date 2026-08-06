@@ -748,9 +748,21 @@ func linkdata(b [][]byte) {
 	}
 	f("encrypted", "yes")
 
-	iv := p.Data[:16]
-	ct := p.Data[16 : len(p.Data)-32]
-	mac := p.Data[len(p.Data)-32:]
+	// Cutting the token into iv, ciphertext and hmac is transcription:
+	// go-reticulum decrypts behind Token.Decrypt and exposes none of the
+	// three. A payload shorter than an iv and an hmac has no token to
+	// cut, and this took the length for granted and sliced out of range,
+	// which the recover at the top turned into one error line in place
+	// of every field. doc/harness rule 6: print what there is and "-"
+	// for what there is not. The length rule is not supplied here; that
+	// go-reticulum reports none is the result.
+	var iv, ct, mac []byte
+	haveToken := len(p.Data) >= 48
+	if haveToken {
+		iv = p.Data[:16]
+		ct = p.Data[16 : len(p.Data)-32]
+		mac = p.Data[len(p.Data)-32:]
+	}
 
 	// The link keeps its private key unexported, so the agreement uses
 	// Go's own curve, which is what rns uses internally.
