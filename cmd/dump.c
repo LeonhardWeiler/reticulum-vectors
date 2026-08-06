@@ -1769,6 +1769,16 @@ static void dump_ifac(struct blob *b, int nblobs)
 		fatal("ifac: access code size is %zu bytes, expected 1", b[2].len);
 
 	ifac_size = b[2].data[0];
+	/* Both bounds. The lower one is the reference's own: a configuration
+	 * below IFAC_MIN_SIZE is not accepted, and doc/packet says so.
+	 * Without it here the access code is the input hkdf derives the mask
+	 * from, and hkdf aborts on an empty input rather than returning a
+	 * mask nobody could tell from a wrong one, so a one-byte raw file
+	 * ended the program with no message at all.
+	 * RNS/Reticulum.py:149#IFAC_MIN_SIZE. */
+	if (ifac_size < 1)
+		fatal("ifac: access code of %zu bytes is below the minimum of 1",
+		      ifac_size);
 	if (ifac_size > SIGLEN)
 		fatal("ifac: access code of %zu bytes exceeds the signature", ifac_size);
 	if (b[3].len <= 2 + ifac_size)
@@ -2073,6 +2083,11 @@ static void encode_ifac(struct kv *f, int n)
 
 	if (pkt.len < 2)
 		fatal("ifac: packet of %zu bytes has no header", pkt.len);
+	/* The same two bounds the decoder applies, and for the same reason:
+	 * an absent code reaches hkdf as an empty input. */
+	if (code.len < 1)
+		fatal("ifac: access code of %zu bytes is below the minimum of 1",
+		      code.len);
 	if (code.len > SIGLEN)
 		fatal("ifac: access code of %zu bytes exceeds the signature", code.len);
 

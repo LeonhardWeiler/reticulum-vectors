@@ -56,7 +56,11 @@ void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
 	size_t produced = 0, blocklen = 0;
 	unsigned counter = 0;
 
-	/* The reference raises on both, and no caller here reaches either.
+	/* The reference raises on both, and no caller here reaches either:
+	 * dump checks the one input a file can make empty, the interface
+	 * access code, where it reads it. That claim was once wrong, and an
+	 * access code of zero bytes ended dump here with no message.
+	 *
 	 * Returning quietly would leave out untouched for the caller to
 	 * compare, which reads as a derivation that came out wrong. */
 	if (outlen == 0 || ikmlen == 0)
