@@ -2,6 +2,7 @@ announce/altered-signature
 announce/app-data
 announce/destination-mismatch
 announce/hop-limit
+announce/hop-limit-below
 announce/in-transport
 announce/minimal
 announce/non-canonical-s
@@ -10,6 +11,7 @@ announce/ratchet
 announce/ratchet-and-app-data
 announce/short-payload
 destination/app-name-only
+destination/empty-aspect
 destination/five-components
 destination/no-identity
 destination/two-components
@@ -44,11 +46,15 @@ linkdata/rtt
 linkproof/altered-signature
 linkproof/signalling
 linkproof/signalling-removed
+linkrequest/in-transport
 linkrequest/invalid-length
 linkrequest/no-signalling
 linkrequest/signalling
+plain/empty
+plain/path-request
 proof/explicit
 proof/implicit
+proof/proved-in-transport
 sign/upstream
 signature/altered
 signature/non-canonical-s

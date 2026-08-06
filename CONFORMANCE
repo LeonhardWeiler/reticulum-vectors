@@ -3,13 +3,28 @@ Conformance of independent implementations
 Run on 2026-08-06 against the 52 vectors test/ held at that date,
 through the harnesses in conformance/.
 
-Three vectors have been added since, and no row below covers them:
-test/signature/non-canonical-s, test/announce/non-canonical-s and
-test/encrypted/low-order-ephemeral. They are the ones that turn on
-which curve backend is in use, and they are the most likely of any
-vector here to find a divergence, because the reference itself has one.
-The rows are left at what was measured rather than restated against a
+Nine vectors have been added since, and no row below covers them. The
+rows are left at what was measured rather than restated against a
 corpus they were not run on.
+
+    signature/non-canonical-s     the three that turn on which curve
+    announce/non-canonical-s      backend is in use; the reference
+    encrypted/low-order-ephemeral itself diverges here
+
+    announce/hop-limit-below      the other side of the hop boundary,
+                                  which every row below fails
+
+    linkrequest/in-transport      the header 2 branch of the link id
+    proof/proved-in-transport     and of the packet hash
+
+    destination/empty-aspect      the empty byte string
+    plain/path-request            a destination type with no vectors
+    plain/empty                   until now
+
+Four of the nine are expected to change rows that pass today. The hop
+boundary separates three kinds of failure that currently look alike
+(finding 1), and the two in-transport vectors reach code no harness has
+been asked for.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does

@@ -73,9 +73,19 @@ static void field(const char *name, const char *fmt, ...)
 	putchar('\n');
 }
 
+/* The empty byte string is written "-", not as an empty value. A name
+ * followed by nothing is a line with a trailing space: it cannot be
+ * told from a truncated line, and cmd/check rejects it. Every optional
+ * field already spells absence that way, and a destination aspect may
+ * legitimately be empty. See doc/destination. */
 static void field_hex(const char *name, const uint8_t *p, size_t n)
 {
 	size_t i;
+
+	if (n == 0) {
+		field(name, "-");
+		return;
+	}
 
 	printf("%-*s ", FIELDW, name);
 	for (i = 0; i < n; i++)
@@ -884,6 +894,32 @@ static void dump_announce(struct blob *b, int nblobs)
 	print_announce(&h, &a);
 }
 
+/* A packet to a plain destination. Destination.encrypt returns the
+ * plaintext unchanged for this type, so the payload is the data, with
+ * no ephemeral key, no token and no padding. RNS/Destination.py:603.
+ *
+ * There is nothing to decrypt and therefore nothing here that could be
+ * got wrong quietly: a decoder that treats every packet as encrypted
+ * finds 80 bytes of overhead that are not there. */
+static void dump_plain(struct blob *b, int nblobs)
+{
+	struct header h;
+	enum reason r;
+	size_t got = 0, need = 0;
+
+	if (nblobs != 1)
+		fatal("plain: expected 1 blob, got %d", nblobs);
+
+	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	print_header(&h);
+	field("plaintext_length", "%zu", h.payload_len);
+	field_hex("plaintext", h.payload, h.payload_len);
+}
+
 /* The bytes a packet is hashed over. The low four flag bits and the hop
  * count are excluded, so that the hash survives a hop.
  * RNS/Packet.py:348. */
@@ -1424,6 +1460,15 @@ static void encode_encrypted(struct kv *f, int n)
 	emit(&o);
 }
 
+static void encode_plain(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "plaintext");
+	emit(&o);
+}
+
 static void encode_linkrequest(struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1520,7 +1565,7 @@ static void encode_linkdata(struct kv *f, int n)
 	emit(&o);
 }
 
-/* The nine kinds, and for each the two directions. A kind with no
+/* Every kind, and for each the two directions. A kind with no
  * encoder is one no vector can claim the encode class for: its raw
  * holds something expect does not record. */
 static const struct {
@@ -1534,6 +1579,7 @@ static const struct {
 	{ "signature",   dump_signature,   NULL               },
 	{ "sign",        dump_sign,        NULL               },
 	{ "announce",    dump_announce,    encode_announce    },
+	{ "plain",       dump_plain,       encode_plain       },
 	{ "encrypted",   dump_encrypted,   encode_encrypted   },
 	{ "linkrequest", dump_linkrequest, encode_linkrequest },
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },

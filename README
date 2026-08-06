@@ -148,7 +148,7 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Forty-eight of the fifty-five are of
+the result against raw. Fifty-four of the sixty-one are of
 that class. The seven that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
@@ -171,6 +171,12 @@ a keyword from a fixed set. Byte strings are always hex, names
 included. A destination name is arbitrary bytes, and printed as text a
 newline in an aspect would end the line early and let a vector forge or
 hide a field.
+
+No value is ever empty. Hex cannot spell the empty byte string, and a
+field name followed by nothing is a line with a trailing space that
+cannot be told from a truncated one, so the empty byte string is
+written "-" like every other absent value. test/destination/empty-aspect
+and test/plain/empty are where it happens.
 
 The number of hex lines in raw depends on the kind and is documented
 in doc/.

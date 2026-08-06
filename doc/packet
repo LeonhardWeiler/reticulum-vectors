@@ -87,7 +87,19 @@ Hops
 One byte at offset 1. A packet with hops greater than or equal to
 PATHFINDER_M, that is 128, is rejected before any further parsing.
 
-test/announce/hop-limit carries a packet at exactly 128 hops.
+Two vectors carry the boundary, because one cannot tell a wrong
+threshold from a missing one:
+
+    test/announce/hop-limit         128 hops, rejected
+    test/announce/hop-limit-below   127 hops, decodes
+
+Every implementation measured in CONFORMANCE fails the first, and they
+do not fail it for the same reason: one threshold is a hop too high,
+another a hop too low, and three implementations have no threshold at
+all. Only the pair separates them.
+
+The hop count is not part of any signed material, so the second vector
+verifies exactly as test/announce/minimal does.
 
     RNS/Packet.py:247
 
@@ -106,7 +118,21 @@ hash, the context byte and the payload, is copied unchanged. The
 payload is not re-signed, and for an announce the signature therefore
 still validates.
 
-test/announce/in-transport is test/announce/minimal after this transformation.
+Three vectors carry the transformation, and they are three because the
+transformation is only interesting where something is hashed:
+
+    test/announce/in-transport         announce/minimal, one hop
+    test/linkrequest/in-transport      linkrequest/signalling, one hop
+    test/proof/proved-in-transport     the proved packet of proof/implicit,
+                                       three hops, with the proof unchanged
+
+An announce derives no link id and no packet hash, so the first says
+nothing about the branch that drops the transport id before hashing.
+The other two do. The link request opens the same link as the request
+it was made from, and the proof still addresses the right packet and
+still verifies, over a packet whose bytes have changed. That is what
+excluding the low four flag bits, the hop count and the transport id
+buys, and it is the whole reason for the rule.
 
     RNS/Transport.py:1369
 
@@ -149,6 +175,48 @@ test/proof/implicit and test/proof/explicit carry the two forms of the
 same proof, so their signatures are identical.
 
     RNS/Identity.py:942
+
+
+Plain destinations
+
+Destination type 2. The payload is the data: Destination.encrypt
+returns the plaintext unchanged for this type, so there is no ephemeral
+key, no token and no padding, and the minimum payload is nothing at
+all.
+
+    RNS/Destination.py:603
+
+    offset  size  field
+    19      -     the data, unencrypted
+
+A plain destination holds no keys and has no identity, so its hash is
+SHA-256 of the name hash alone. See doc/destination.
+
+This is the destination type a path request is addressed to, which is
+why it matters to an implementation that never encrypts anything: a
+transport node must read one before it knows a path is being asked
+for. What the payload of a path request means belongs to Transport and
+is not covered here. test/plain/path-request records the packet
+carrying one, and records that it is not encrypted.
+
+    RNS/Transport.py:2872
+
+test/plain/empty carries no payload. A packet to a single destination
+cannot: PKCS7 adds a full block to an empty plaintext, and the token
+adds 48 bytes around it. See doc/encryption.
+
+
+Vector format: plain
+
+kind: plain, determinism: encode
+
+raw is one line:
+
+    line 1    the complete packet
+
+expect names the header fields, the payload length and the payload.
+There is no key anywhere in the vector, because there is nothing to
+decrypt.
 
 
 Interface access codes

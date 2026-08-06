@@ -119,6 +119,13 @@ DESTINATIONS = [
      "non-ascii aspects, precomposed (u+00fc)"),
     ("utf8-decomposed", ("test", "grüße", "日本語"), 4,
      "the same name decomposed (u+0075 u+0308); no normalisation, so the hash differs"),
+    # Destination.py:106 forbids a dot inside a component and nothing
+    # forbids an empty one, so "a..b" is a name RNS hashes without
+    # complaint. It is the only value in the corpus that has no hex
+    # spelling, and the reason the format writes the empty byte string
+    # as "-".
+    ("empty-aspect", ("a", "", "b"), None,
+     "an empty aspect, which is legal and hashes; written as - because hex cannot spell it"),
 ]
 
 ANNOUNCES = [
@@ -296,16 +303,28 @@ def line(name, value):
 def field(name, value):
     # An expect value is one word, so that splitting on the first space
     # is exact. meta is prose and uses line() directly.
-    if " " in str(value):
+    value = str(value)
+    if " " in value:
         raise ValueError("field %s has a space in its value: %r" % (name, value))
+    # A name followed by nothing is a line with a trailing space, which
+    # cannot be told from a truncated line. The format spells the empty
+    # byte string "-", like every other absent value.
+    if value == "":
+        raise ValueError("field %s has an empty value; write - instead" % name)
     return line(name, value)
+
+
+def hexf(b):
+    """Hex, or "-" for the empty byte string. See field()."""
+    return b.hex() if b else "-"
 
 
 # The kinds cmd/dump can rebuild raw for. signature is not among them:
 # its raw carries a 950-byte message that expect records only by its
 # digest, so the vector can be decoded and not rebuilt.
-ENCODABLE = ("identity", "keyset", "destination", "announce", "encrypted",
-             "linkrequest", "linkproof", "linkdata", "proof", "ifac")
+ENCODABLE = ("identity", "keyset", "destination", "announce", "plain",
+             "encrypted", "linkrequest", "linkproof", "linkdata", "proof",
+             "ifac")
 
 
 def determinism(kind, expect):
@@ -475,10 +494,10 @@ def gen_destination(RNS, w):
         # Every byte string in the format is hex, names included. A name
         # is arbitrary bytes; printing it as text would let a newline in
         # an aspect forge or hide a field.
-        expect = [field("name", name_bytes.hex()),
-                  field("app_name", app_name.encode("utf-8").hex())]
+        expect = [field("name", hexf(name_bytes)),
+                  field("app_name", hexf(app_name.encode("utf-8")))]
         for aspect in rest:
-            expect.append(field("aspect", aspect.encode("utf-8").hex()))
+            expect.append(field("aspect", hexf(aspect.encode("utf-8"))))
         expect.append(field("name_hash", name_hash.hex()))
         expect.append(field("identity_hash", identity_hash.hex() if identity_hash else "-"))
         expect.append(field("destination_hash", destination_hash.hex()))
@@ -616,6 +635,7 @@ def gen_proof(RNS, w, verify):
          "the 96-byte form, hash and signature, which the reference also accepts"),
     ]
 
+    made = {}
     for name, implicit, purpose in forms:
         RNS.Reticulum._Reticulum__use_implicit_proof = implicit
         with captured(RNS) as sent:
@@ -632,6 +652,27 @@ def gen_proof(RNS, w, verify):
         w.vector("proof", name, purpose,
             [proved.raw.hex(), recipient.get_public_key().hex(), proof.raw.hex()],
             describe_proof(proved.raw, recipient.get_public_key(), proof.raw, verify))
+        made[name] = proof
+
+    # The proved packet after a transport node rewrote it, with the proof
+    # left exactly as it was. That is the point of excluding the four low
+    # flag bits, the hop count and the transport id from the hash: the
+    # proof still addresses the right packet and the signature still
+    # verifies, over a packet whose bytes have changed.
+    transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
+    relayed = transport_insert(proved.raw, 3, transport_id)
+    assert hashlib.sha256(hashable_part(relayed)).digest() == packet_hash
+
+    described = describe_proof(relayed, recipient.get_public_key(),
+                               made["implicit"].raw, verify)
+    assert lookup_field(described, "destination_match") == "yes"
+    assert lookup_field(described, "signature_valid") == "yes"
+
+    w.vector("proof", "proved-in-transport",
+        "the proved packet at three hops in header 2; the proof is unchanged and still verifies",
+        [relayed.hex(), recipient.get_public_key().hex(), made["implicit"].raw.hex()],
+        described,
+        source="constructed by tools/gen from proof/implicit, per RNS/Transport.py:1369")
 
 
 def describe_proof(proved_raw, signer_public, raw, verify):
@@ -958,6 +999,16 @@ def gen_announce(RNS, w, tmpdir, verify):
          "hop count at the limit, which the reference implementation rejects",
          "constructed by tools/gen from announce/minimal"),
 
+        # The other side of the same boundary. Without it a decoder with
+        # no hop limit and a decoder whose limit is off by one both fail
+        # hop-limit and are indistinguishable; every implementation
+        # measured in CONFORMANCE failed it, two of them for different
+        # reasons. The hop count is not part of the signed data, so this
+        # announce still verifies.
+        ("hop-limit-below", base[:1] + bytes([MAX_HOPS - 1]) + base[2:],
+         "hop count one below the limit, which decodes",
+         "constructed by tools/gen from announce/minimal"),
+
         ("altered-signature",
          base[:-SIGLEN] + bytes([base[-SIGLEN] ^ 0x01]) + base[-SIGLEN+1:],
          "first signature byte altered; the announce decodes and matches, but the signature does not verify",
@@ -978,6 +1029,67 @@ def gen_announce(RNS, w, tmpdir, verify):
             source=source)
 
     return base
+
+
+def describe_plain(raw):
+    lines, h = describe_header(raw)
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    return lines + [
+        field("plaintext_length", "%d" % len(payload)),
+        field("plaintext",        hexf(payload)),
+    ]
+
+
+def gen_plain(RNS, w):
+    """Packets to a plain destination, which are not encrypted at all.
+
+    Destination.encrypt returns the plaintext unchanged for this type
+    (RNS/Destination.py:603), so there is no ephemeral key, no token and
+    no padding: the payload is the data. The type had no vectors, and it
+    is the one every transport node has to handle whether or not it ever
+    encrypts anything, because path requests are addressed to one.
+
+    The destination has no identity, so its hash is SHA-256 of the name
+    hash alone; test/destination/no-identity records that derivation.
+    """
+    # A path request as Transport.request_path builds one for an
+    # instance that is not itself a transport node: the destination
+    # being asked after, then a random tag. RNS/Transport.py:2872.
+    #
+    # The payload is left as bytes here rather than decomposed into
+    # fields. What a path request means belongs to Transport, and the
+    # corpus does not cover Transport yet; what this vector records is
+    # that the packet carrying it is not encrypted.
+    wanted = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[0][0]))
+    destination_hash = RNS.Destination.hash(wanted, "rns_unit_tests", "link", "establish")
+
+    cases = [
+        ("path-request", (RNS.Transport.APP_NAME, "path", "request"),
+         destination_hash + bytes.fromhex("0102030405060708090a"),
+         "a path request, the packet type that made this destination type worth recording"),
+        ("empty", (RNS.Transport.APP_NAME, "path", "request"), b"",
+         "no payload at all, which a plain destination permits and an encrypted one cannot"),
+    ]
+
+    for name, aspects, data, purpose in cases:
+        with pinned(RNS, "plain-" + name):
+            out = RNS.Destination(None, RNS.Destination.OUT, RNS.Destination.PLAIN,
+                                  aspects[0], *aspects[1:])
+            packet = RNS.Packet(out, data, packet_type=RNS.Packet.DATA,
+                                transport_type=RNS.Transport.BROADCAST,
+                                header_type=RNS.Packet.HEADER_1)
+            packet.pack()
+
+        # The property the kind exists to record: nothing was encrypted.
+        assert packet.raw[19:] == data
+        assert packet.raw[2:18] == out.hash
+
+        w.vector("plain", name, purpose,
+            [packet.raw.hex()],
+            describe_plain(packet.raw))
 
 
 def hashable_part(raw, payload_len=None):
@@ -1180,6 +1292,23 @@ def gen_linkrequest(RNS, w, session):
         [short.hex()],
         describe_linkrequest(short),
         source="constructed by tools/gen from linkrequest/signalling")
+
+    # The same request after a transport node rewrote it. The link id is
+    # taken over the packet with the four high flag bits cleared, the hop
+    # count removed and the transport id removed, so it must be the id
+    # above. Until this vector, header 2 appeared once in the corpus, on
+    # an announce, and announces derive no link id and no packet hash:
+    # the branch that drops the transport id before hashing was in both
+    # decoders and exercised by neither.
+    transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
+    relayed = transport_insert(raw, 1, transport_id)
+    assert lookup_field(describe_linkrequest(relayed), "link_id") == link_id.hex()
+
+    w.vector("linkrequest", "in-transport",
+        "header 2, one hop; the same link id as linkrequest/signalling",
+        [relayed.hex()],
+        describe_linkrequest(relayed),
+        source="constructed by tools/gen from linkrequest/signalling, per RNS/Transport.py:1369")
 
 
 def describe_linkproof(request_raw, identity_public, raw, verify):
@@ -1624,6 +1753,7 @@ def main():
         gen_signature(RNS, w, verify)
         gen_sign(RNS, w)
         announce_minimal = gen_announce(RNS, w, tmpdir, verify)
+        gen_plain(RNS, w)
         gen_proof(RNS, w, verify)
         gen_ifac(RNS, w, announce_minimal)
         gen_encrypted(RNS, w)

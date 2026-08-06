@@ -17,7 +17,14 @@ joined with a single dot.
 No component may contain a dot. This is enforced, not merely
 conventional.
 
-    RNS/Destination.py:96
+    RNS/Destination.py:102, RNS/Destination.py:106
+
+A component may be empty. Nothing forbids it, and "a..b" is a name RNS
+hashes without complaint. test/destination/empty-aspect records it,
+and it is the reason the format has a spelling for the empty byte
+string: hex has none, and a field name followed by nothing is a line
+with a trailing space that cannot be told from a truncated one. The
+empty byte string is written "-", like every other absent value.
 
 
 Name hash

@@ -1,0 +1,3 @@
+source             constructed by tools/gen from proof/implicit, per RNS/Transport.py:1369
+determinism        encode
+purpose            the proved packet at three hops in header 2; the proof is unchanged and still verifies

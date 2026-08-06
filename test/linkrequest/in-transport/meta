@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkrequest/signalling, per RNS/Transport.py:1369
+determinism        encode
+purpose            header 2, one hop; the same link id as linkrequest/signalling

@@ -89,6 +89,12 @@ as the same request that signals 500 bytes. The vectors
 test/linkrequest/signalling and test/linkrequest/no-signalling carry
 the same link id for exactly this reason.
 
+test/linkrequest/in-transport carries it a third time, from a header 2
+packet at one hop. Removing the transport id is part of the same rule
+and is the half of it no other vector reaches: a request that arrived
+through a transport node must open the link its sender opened, or the
+two ends address different links from the first packet onward.
+
     RNS/Link.py:336
 
 The link id is not a hash of the public keys, and it is not derived
@@ -255,5 +261,5 @@ either kind.
 
 expect opens with those input lines, as link_request and either
 signer_public or responder_private, so that it holds every byte of raw.
-test/linkrequest/invalid-length is decode class; the other eight link
+test/linkrequest/invalid-length is decode class; the other twelve link
 vectors are encode class and cmd/check rebuilds all three lines.

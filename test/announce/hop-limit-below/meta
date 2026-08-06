@@ -1,0 +1,3 @@
+source             constructed by tools/gen from announce/minimal
+determinism        encode
+purpose            hop count one below the limit, which decodes
