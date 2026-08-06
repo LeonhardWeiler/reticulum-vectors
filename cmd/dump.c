@@ -1450,7 +1450,17 @@ static void dump_ifac(struct blob *b, int nblobs)
  * vector of the encode class is one whose expect holds every byte of
  * raw, and cmd/check tests that claim by diffing the result. A field
  * whose value is "-" contributes no bytes, which is how the format
- * spells every optional field. */
+ * spells every optional field.
+ *
+ * Written out, and not driven from a table shared with the decoders. A
+ * table would have to say that a ratchet is present when the context
+ * flag is set, that signalling is present at one payload length and not
+ * another, and that a keepalive on a link has no token at all; those
+ * are the decoders, expressed less directly. What the table would buy
+ * is that the two directions cannot drift apart, and the round trip
+ * already buys that: a field dropped here, or moved, stops reproducing
+ * raw for every vector of the kind, and each kind has vectors both with
+ * and without each of its optional fields. */
 
 struct out {
 	char   hex[MAXBLOB*2 + 2];
