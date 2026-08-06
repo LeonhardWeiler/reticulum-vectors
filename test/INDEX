@@ -27,6 +27,7 @@ encrypted/minimal
 encrypted/ratchet
 group/altered-hmac
 group/minimal
+group/zero-padding
 identity/upstream-0
 identity/upstream-1
 identity/upstream-2

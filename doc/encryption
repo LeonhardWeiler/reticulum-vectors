@@ -143,6 +143,22 @@ a value above the block size is invalid.
 
     RNS/Cryptography/PKCS7.py:45#bs
 
+That is the only bound applied. A length of zero removes nothing and
+yields the whole final block, and the padding bytes themselves are
+never compared against the length. A decoder that adds either check
+refuses tokens the reference opens.
+
+The reference cannot be asked to produce a token with a padding length
+of zero, because pad writes 1 to 16 and adds a whole block to a
+plaintext that is already aligned. It can be asked to open one, and
+test/group/zero-padding is that token: written by the reference's own
+Token.encrypt with pad replaced by the identity for the one call, and
+opened by the reference unchanged. It is filed under group because
+there the key is configuration rather than a negotiated secret, so
+producing such a token needs nothing but membership.
+
+    RNS/Cryptography/PKCS7.py:35#pad
+
 
 Vector format
 

@@ -238,7 +238,7 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Sixty-eight of the seventy-eight are of
+the result against raw. Sixty-nine of the seventy-nine are of
 that class. The ten that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message

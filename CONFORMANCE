@@ -1,22 +1,24 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 78 vectors test/ held at that date,
+Run on 2026-08-06 against the 79 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 1271484319
+    corpus 3321994373
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
 corpus; two vectors changed shape without changing the count between
 this run and the last.
 
-The rows below were measured while it read 678091306. Not one byte of
-test/ has changed since; the number moved because it was wrong. It was
-taken over a shell glob, and a glob is ordered by the locale of whoever
-runs it, so the same corpus fingerprinted as 678091306 under C and as
+The rows below were measured while it read 678091306, and it has moved
+twice since for reasons that do not touch them. First it was wrong: it
+was taken over a shell glob, a glob is ordered by the locale of whoever
+runs it, and the same corpus fingerprinted as 678091306 under C and as
 4275070876 under en_US.UTF-8. It is taken over test/INDEX now and is
-the same everywhere.
+the same everywhere. Then group/zero-padding was added, which every
+harness skips, so the rows are unchanged and only the skip count is
+one higher.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
@@ -24,7 +26,7 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the sixty-eight vectors of the encode class, and no
+from expect for the sixty-nine vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
 what these implementations write.
 
@@ -37,12 +39,12 @@ what these implementations write.
     rns.js              d4602ca   2025-02-10  39 / 64   2 / 17
     sgiath/reticulum    0c4904e   2026-07-09  33 / 64   2 / 17
 
-Out of 64, not 78: every harness exits 77 for four kinds, and those
-fourteen vectors are skipped rather than counted against anyone.
+Out of 64, not 79: every harness exits 77 for four kinds, and those
+fifteen vectors are skipped rather than counted against anyone.
 
     plain         2 vectors
     pathrequest   6
-    group         2
+    group         3
     ifac          4
 
 The link column is the fifteen vectors of the three link kinds plus the

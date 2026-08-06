@@ -201,8 +201,12 @@ int pkcs7_unpad(const uint8_t *in, size_t len, size_t *outlen)
 	if (len == 0 || len % 16 != 0)
 		return -1;
 
+	/* The upper bound is the only one the reference applies. A length of
+	 * zero removes nothing there, and refusing it here made dump report
+	 * no plaintext for a token the reference opens. See
+	 * test/group/zero-padding. */
 	n = in[len - 1];
-	if (n == 0 || n > 16 || (size_t)n > len)
+	if (n > 16)
 		return -1;
 
 	*outlen = len - n;

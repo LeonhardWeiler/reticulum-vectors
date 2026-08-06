@@ -1920,8 +1920,10 @@ def token_open(payload, key):
     if t["mac_ok"] and len(t["ciphertext"]) > 0 and len(t["ciphertext"]) % 16 == 0:
         dec = Cipher(algorithms.AES(encryption_key), modes.CBC(t["iv"])).decryptor()
         padded = dec.update(t["ciphertext"]) + dec.finalize()
+        # The upper bound is the only one the reference applies.
+        # RNS/Cryptography/PKCS7.py:45#bs
         n = padded[-1]
-        if 0 < n <= 16 and n <= len(padded):
+        if n <= 16:
             t["plaintext"] = padded[:len(padded) - n]
 
     return t
@@ -2076,6 +2078,31 @@ def gen_group(RNS, w):
         [group_key.hex(), altered.hex()],
         describe_group(altered, group_key),
         source="constructed by tools/gen from group/minimal")
+
+    # PKCS7.pad writes 1..16, so the reference cannot be asked for a
+    # token with a padding length of zero, and PKCS7.unpad accepts one:
+    # it applies the upper bound and nothing else, and removes nothing.
+    # Everything but pad is the reference running normally, and the
+    # verdict below is the reference's own. See doc/encryption.
+    from RNS.Cryptography import PKCS7
+
+    with pinned(RNS, "group-zero-padding"):
+        real_pad = PKCS7.pad
+        try:
+            PKCS7.pad = staticmethod(lambda data, bs=16: data)
+            zero = RNS.Packet(destination, b"reticulum______" + bytes(1))
+            zero.pack()
+        finally:
+            PKCS7.pad = real_pad
+
+    assert destination.decrypt(zero.ciphertext) == b"reticulum______" + bytes(1)
+
+    w.vector("group", "zero-padding",
+        "a padding length of zero, which the reference accepts and removes nothing for",
+        [group_key.hex(), zero.raw.hex()],
+        describe_group(zero.raw, group_key),
+        source="python-rns 1.4.2 (b48b96e6, openssl backend), "
+               "RNS/Cryptography/PKCS7.py:35#pad stubbed to the identity")
 
 
 def private_to_public(private):
