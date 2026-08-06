@@ -143,6 +143,23 @@ The receiver asks for at most WINDOW parts at a time, and the window
 grows as parts arrive, so the number of map hashes in a request is not
 fixed either.
 
+Nothing in the payload states its own length, so the plaintext is the
+only bound a reader has. The least a request can be is one byte, and
+once the flag has been read the least it can be is
+
+    33 bytes    the flag and the resource hash
+    37 bytes    when the flag is set, with the last map hash between
+
+A plaintext shorter than that is rejected as short-plaintext, with the
+threshold beside it; see doc/fields. The packet around it decoded, so
+the header, the token and the keys stand. Four vectors hold the four
+ways to be too short:
+
+    test/linkdata/resource-request-empty
+    test/linkdata/resource-request-short
+    test/linkdata/resource-request-exhausted-short
+    test/linkdata/resource-hashmap-update-short
+
 
 Hashmap update, 0x04
 
@@ -155,6 +172,11 @@ Hashmap update, 0x04
 Sent by the sender when a part request says the receiver has run out of
 hashes. The hash is raw and what follows it is msgpack, which is the
 one payload in the corpus that is half of each.
+
+The msgpack half carries its own lengths and a reader cannot run past
+them. The raw half carries none, so the least an update can be is 33
+bytes: the hash and one byte of the array behind it. Shorter is
+rejected as short-plaintext.
 
 
 Proof, 0x05

@@ -421,14 +421,20 @@ def determinism(kind, expect):
     """encode when expect holds every byte of raw.
 
     That is so exactly when the kind has an encoder and the object
-    decoded: a vector that names a broken rule carries the rule and the
-    numbers behind it, and nothing to rebuild from. Deriving the class
-    here rather than declaring it per vector keeps the claim from being
-    wrong; cmd/check then tests it.
+    decoded. Deriving the class here rather than declaring it per vector
+    keeps the claim from being wrong; cmd/check then tests it, in both
+    directions, which is what makes a rule of thumb safe to use here.
+
+    A broken rule is not by itself the decode class. What decides is
+    whether the packet was read at all, and a packet that was read
+    printed its flags first. Where the rule broken is inside a
+    plaintext, the packet around it decoded whole and every byte of raw
+    is in expect: those vectors rebuild.
     """
     if kind not in ENCODABLE:
         return "decode"
-    if any(l.startswith("invalid") for l in expect):
+    if any(l.startswith("invalid") for l in expect) and \
+       not any(l.startswith("flags ") for l in expect):
         return "decode"
     return "encode"
 
@@ -2454,7 +2460,16 @@ def describe_resource(context, plaintext):
         ]
 
     if context == RESOURCE_REQ:
+        # Read by length, with no framing to run out of, so the
+        # plaintext is the only bound there is. The length itself is
+        # already on the line above as plaintext_length; naming it
+        # again here would put the field in the output twice.
+        if len(plaintext) < 1:
+            return invalid("short-plaintext", ("minimum_length", 1))
         exhausted = plaintext[0]
+        need = 1 + (MAPHASHLEN if exhausted else 0) + HASHLEN
+        if len(plaintext) < need:
+            return invalid("short-plaintext", ("minimum_length", need))
         at = 1
         last = None
         if exhausted:
@@ -2467,6 +2482,10 @@ def describe_resource(context, plaintext):
         ]
 
     if context == RESOURCE_HMU:
+        # The hash is fixed width and the msgpack array follows it, so
+        # one byte past the hash is the least that can be read.
+        if len(plaintext) < HASHLEN + 1:
+            return invalid("short-plaintext", ("minimum_length", HASHLEN + 1))
         segment, hashmap = msgpack_one(plaintext[HASHLEN:])
         return [
             field("resource_hash", plaintext[:HASHLEN].hex()),
@@ -2509,6 +2528,62 @@ def describe_resourceproof(advertised, raw):
         field("resource_proof", payload[HASHLEN:].hex()),
         field("hash_match",     "yes" if payload[:HASHLEN] == advertised else "no"),
     ]
+
+
+def gen_resource_short(RNS, w, verify, session):
+    """Plaintexts too short for the context that carries them.
+
+    A part request and a hashmap update are read by length: the first
+    byte of a request decides whether four more follow it, and neither
+    payload carries a length of its own. A reader that trusts the
+    context byte and not the length walks off the end of the plaintext,
+    and the four cases below are the four ways it can.
+
+    Only the plaintext is chosen here. Everything around it is the
+    reference's: Link.encrypt draws the initialisation vector, and
+    Packet.pack writes the header, so raw is its output as it is for
+    every other vector of this kind.
+
+    No receiver sends these. They are the negative half of a rule that
+    is otherwise only in code, and cmd/check holds both readings of it
+    against each other.
+    """
+    cases = [
+        ("resource-request-empty", RNS.Packet.RESOURCE_REQ, b"",
+         "a part request with no bytes at all, not even the hashmap flag"),
+        ("resource-request-short", RNS.Packet.RESOURCE_REQ, b"\x00",
+         "the flag says the hashmap is not exhausted; the resource hash is missing"),
+        ("resource-request-exhausted-short", RNS.Packet.RESOURCE_REQ,
+         b"\x01" + b"\xaa" * MAPHASHLEN,
+         "the flag says exhausted, so the last map hash is read and the hash is not"),
+        ("resource-hashmap-update-short", RNS.Packet.RESOURCE_HMU, bytes(HASHLEN - 1),
+         "a hashmap update one byte short of the resource hash it opens with"),
+    ]
+
+    link = session["link"]
+    link.status = RNS.Link.ACTIVE
+
+    with pinned(RNS, "resource-short"):
+        with captured(RNS) as sent:
+            for _, context, plaintext, _ in cases:
+                RNS.Packet(link, plaintext, context=context).send()
+
+    request_raw = session["request"].raw
+    responder_private = link.prv.private_bytes()
+
+    for (name, _, plaintext, purpose), packet in zip(cases, sent):
+        described = describe_linkdata(request_raw, responder_private, packet.raw, verify)
+
+        # The reference must recover the plaintext that was chosen, and
+        # the vector must be the one the rule is about.
+        assert link.decrypt(packet.raw[HEADER1LEN:]) == plaintext
+        assert lookup_field(described, "invalid") == "short-plaintext"
+
+        w.vector("linkdata", name, purpose,
+            [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
+            described,
+            source="plaintext chosen by tools/gen, packed and encrypted by "
+                   "python-rns %s (%s)" % (PIN_VERSION, PIN))
 
 
 def gen_resource(RNS, w, verify):
@@ -2566,6 +2641,8 @@ def gen_resource(RNS, w, verify):
         w.vector("linkdata", name, purpose,
             [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
             describe_linkdata(request_raw, responder_private, packet.raw, verify))
+
+    gen_resource_short(RNS, w, verify, single)
 
     proof = seen[RNS.Packet.RESOURCE_PRF]
     assert proof.data[:HASHLEN] == resource.hash

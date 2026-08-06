@@ -1327,6 +1327,27 @@ static void mp_end(struct mp *m)
 #define MAPHASHLEN   4		/* RNS/Resource.py:102#MAPHASH_LEN */
 #define HASHLEN      32		/* RNS/Identity.py:80#HASHLENGTH */
 
+/* A part request and a hashmap update are read by length and have no
+ * framing to run out of, so the plaintext they came in is the only
+ * bound there is. Where it is too short the rule is named, as it is for
+ * a packet that is too short; the length itself is already on the line
+ * above, as plaintext_length.
+ *
+ * The advertisement needs no such check: msgpack carries its own
+ * lengths and mp_take refuses to read past them. The two cancels need
+ * none either: the payload is the resource hash and however many bytes
+ * arrived are the ones printed, which is what the reference compares.
+ * RNS/Resource.py:1102#cancel. */
+static int resource_short(size_t len, size_t need)
+{
+	if (len >= need)
+		return 0;
+
+	field("invalid", "short-plaintext");
+	field("minimum_length", "%zu", need);
+	return 1;
+}
+
 /* What the plaintext holds for each resource context. The
  * advertisement is a msgpack map of eleven one-letter keys, in the
  * order the reference writes them; a part request is three pieces
@@ -1367,6 +1388,13 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 	if (context == RESOURCE_REQ) {
 		size_t at = 1;
 
+		/* The flag decides how much follows it, so it is read only
+		 * after the byte holding it is known to be there. */
+		if (resource_short(len, 1))
+			return;
+		if (resource_short(len, 1 + (p[0] ? MAPHASHLEN : 0) + HASHLEN))
+			return;
+
 		field("hashmap_exhausted", "%s", p[0] ? "yes" : "no");
 		if (p[0]) {
 			field_hex("last_map_hash", p + at, MAPHASHLEN);
@@ -1381,9 +1409,17 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 	}
 
 	if (context == RESOURCE_HMU) {
-		struct mp u = { p + HASHLEN, len - HASHLEN };
+		struct mp u;
 		const uint8_t *hashmap;
 		size_t hashmap_len;
+
+		/* The hash is fixed width and the msgpack array follows it, so
+		 * one byte past the hash is the least that can be read. */
+		if (resource_short(len, HASHLEN + 1))
+			return;
+
+		u.p    = p + HASHLEN;
+		u.left = len - HASHLEN;
 
 		if (mp_array(&u) != 2)
 			fatal("hashmap update: not two elements");

@@ -360,9 +360,10 @@ and no other fields. Naming the rule rather than the stage keeps two
 decoders from agreeing by accident while failing for different reasons.
 
     invalid            keyword  short-header, hop-limit, short-payload,
-                                invalid-length
+                                invalid-length, short-plaintext
     length             decimal  short-header: bytes present
-    minimum_length     decimal  short-header, short-payload: bytes needed
+    minimum_length     decimal  short-header, short-payload,
+                                short-plaintext: bytes needed
     payload_length     decimal  short-payload, invalid-length: bytes present
     hops               decimal  hop-limit: the count
     hop_limit          decimal  hop-limit: the threshold, 128
@@ -374,3 +375,12 @@ decoders from agreeing by accident while failing for different reasons.
 length, payload_length and hops are header field names as well. In a
 rejection they are the evidence for the rule that was broken, and the
 presence of invalid is what says which reading applies.
+
+short-plaintext is the one rejection that leaves the fields before it
+standing. The other four say the packet was not read; this one says the
+packet was read whole and the plaintext inside it was too short for the
+context byte that named it. The header, the token and the keys are
+therefore all present and correct, and the vector is of the encode
+class, which the others are not. The length is the plaintext_length
+already printed above, so only the threshold is repeated. See
+doc/resource.

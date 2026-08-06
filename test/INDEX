@@ -57,9 +57,13 @@ linkdata/resource-advertisement
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver
 linkdata/resource-hashmap-update
+linkdata/resource-hashmap-update-short
 linkdata/resource-part
 linkdata/resource-request
+linkdata/resource-request-empty
 linkdata/resource-request-exhausted
+linkdata/resource-request-exhausted-short
+linkdata/resource-request-short
 linkdata/response
 linkdata/rtt
 linkproof/altered-signature
