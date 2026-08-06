@@ -272,6 +272,10 @@ test/INDEX, a field name that doc/fields does not carry or that no
 vector does, and an optional field with only one of its two cases on
 file. Each of those was a sentence somewhere before it was a check.
 
+`make verify` reads one more claim nothing read: `dump -l` against the
+kinds in test/INDEX. README and doc/harness both send a harness author
+to that list.
+
 There is no separate validator binary. A checker that shares a decoder
 with the dumper would be one program written twice.
 

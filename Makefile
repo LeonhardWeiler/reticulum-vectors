@@ -47,7 +47,17 @@ gen:
 # X25519 exchange. The sed strips tweetnacl's own suffixes, so the file
 # can name crypto_sign where the object names
 # crypto_sign_ed25519_tweet.
+#
+# dump -l is read the same way, against test/INDEX. README and
+# doc/harness both send a harness author to it for the list of kinds,
+# and nothing compared it to the corpus: a kind added to test/ and not
+# to the list would leave that answer short by one, silently, in the one
+# place a reader is told to trust it.
 verify: check
+	{ cmd/dump -l | LC_ALL=C sort -u; \
+	  cut -d/ -f1 test/INDEX | LC_ALL=C sort -u; } | LC_ALL=C sort | uniq -c \
+	  | awk '$$1 != 2 { print "cmd/dump -l and test/INDEX disagree on " $$2; bad = 1 } \
+	         END { exit bad }'
 	cd cmd && grep -oE '[0-9a-f]{64}  tweetnacl\.[ch]' VENDOR | sha256sum -c
 	{ grep -oE '^ +crypto_[a-z_]+' cmd/VENDOR | tr -d ' ' | LC_ALL=C sort -u; \
 	  nm cmd/dump.o | sed -n 's/.* U \(crypto_[a-z_0-9]*\)/\1/p' \
