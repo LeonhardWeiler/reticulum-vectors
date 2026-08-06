@@ -101,8 +101,16 @@ skips a check rather than causing one. A decode-class vector whose
 expect rebuilds raw is now a failure.
 
 Only two things put a vector in the decode class: expect records a
-field by digest rather than by content, or the object broke a rule and
-has no fields at all. Ten of the ninety are of that class.
+field by digest rather than by content, or the object broke a rule
+before its header was read and so has no fields at all. Ten vectors are
+of that class.
+
+A broken rule is not by itself the second case. Where the rule broken
+is inside a plaintext, the packet around it decoded whole and expect
+holds every byte of raw, so the vector is encode class and rebuilds;
+test/linkdata holds four of those. What tells the two apart is whether
+flags was printed, and gen derives the class that way rather than from
+the presence of the word invalid.
 
 The corpus proves the read direction with expect and the write
 direction with the round trip. An implementation that decodes every
@@ -160,13 +168,21 @@ cmd/check.
         conformance/
             README          what a result covers, and what it does not
             <impl>/         one harness per implementation measured
+            example/        one harness that runs and measures nothing,
+                            which is where doc/harness sends a reader
 
         tools/
             gen             python, generates vectors against the pinned RNS
-            cite            python, checks every RNS line citation
+            cite            python, checks every line citation
 
 Nine documents. One C program. One shell script. Two tools that are
 not part of the contract, because a consumer runs neither.
+
+That accounts for what a consumer reads and not for what a clone holds:
+conformance/ is 4343 lines of harness in six languages, and it is the
+larger half of the repository. README says so in its layout, because a
+reader told that dump needs a C compiler and nothing else is entitled
+to be surprised by a clone that wants Go, Rust, Node and Elixir.
 
 ---
 
@@ -232,6 +248,10 @@ accident while failing for different reasons:
     payload_length     147
     minimum_length     148
 
+Where the number is already in the output the rejection does not repeat
+it. A plaintext too short for its context byte prints the threshold
+alone, because plaintext_length is three lines above it.
+
 ---
 
 ## cmd/
@@ -275,6 +295,12 @@ the form `RNS/Packet.py:190#Packet.ANNOUNCE`, and nothing else reads
 those numbers, so they drift. `cite` resolves every one against the checkout
 and fails on any that no longer names a line holding what it is cited
 for. Twelve had already slid before it existed.
+
+Both trees in the checkout are cited and both are checked: `RNS/` is
+the implementation and `tests/` is the suite the adopted values come
+from. Leaving `tests/` out left the citations in meta files unchecked,
+which is the strongest provenance the format has, and one of them had
+slid six lines onto a print statement.
 
 Where it looks is `git ls-files` and not a list of its own. A list of
 where to check fails in the direction that says nothing: the file
