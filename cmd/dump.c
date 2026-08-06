@@ -1055,12 +1055,32 @@ static void packet_hash_of(const uint8_t *raw, size_t len,
 	sha256(part, hashable_part(raw, len, h, part), out);
 }
 
-static void print_mode(unsigned mode)
+/* Three bytes, big endian: three bits of mode and 21 of mtu. A link
+ * request and the proof that answers it carry the same three bytes in
+ * different positions and read them the same way. NULL is the shorter
+ * form, where the mode falls back to the default and the mtu has no
+ * fallback at all. RNS/Link.py:148. */
+static void print_signalling(const uint8_t *p)
 {
+	unsigned value = 0, mode = MODE_DEFAULT;
+
+	if (p != NULL) {
+		value = (unsigned)p[0] << 16 | (unsigned)p[1] << 8 | p[2];
+		mode  = (value >> 21) & 0x07;
+		field_hex("signalling", p, SIGNALLEN);
+	} else {
+		field("signalling", "-");
+	}
+
 	if (mode == 0x01)
 		field("mode", "aes256_cbc");
 	else
 		field("mode", "%02x", mode);
+
+	if (p != NULL)
+		field("mtu", "%u", value & MTU_BYTEMASK);
+	else
+		field("mtu", "-");
 }
 
 static void dump_linkrequest(struct blob *b, int nblobs)
@@ -1069,7 +1089,6 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 	enum reason r;
 	size_t got = 0, need = 0;
 	uint8_t link_id[ADDRLEN];
-	unsigned mode, mtu = 0, value;
 	int signalled;
 
 	if (nblobs != 1)
@@ -1089,30 +1108,12 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 		return;
 	}
 
-	if (signalled) {
-		value = ((unsigned)h.payload[ECPUBSIZE] << 16) |
-		        ((unsigned)h.payload[ECPUBSIZE + 1] << 8) |
-		        h.payload[ECPUBSIZE + 2];
-		mode = (value >> 21) & 0x07;
-		mtu  = value & MTU_BYTEMASK;
-	} else {
-		mode = MODE_DEFAULT;
-	}
-
 	link_id_of(b[0].data, b[0].len, &h, link_id);
 
 	print_header(&h);
 	field_hex("x25519_public", h.payload, KEYHALF);
 	field_hex("ed25519_public", h.payload + KEYHALF, KEYHALF);
-	if (signalled)
-		field_hex("signalling", h.payload + ECPUBSIZE, SIGNALLEN);
-	else
-		field("signalling", "-");
-	print_mode(mode);
-	if (signalled)
-		field("mtu", "%u", mtu);
-	else
-		field("mtu", "-");
+	print_signalling(signalled ? h.payload + ECPUBSIZE : NULL);
 	field_hex("link_id", link_id, ADDRLEN);
 }
 
@@ -1123,7 +1124,6 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	size_t got = 0, need = 0, sdlen = 0;
 	const uint8_t *signature, *x25519, *signalling, *signer;
 	uint8_t link_id[ADDRLEN], signed_data[MAXBLOB];
-	unsigned mode, mtu = 0, value;
 	int signalled;
 
 	if (nblobs != 3)
@@ -1156,15 +1156,6 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	signalling = h.payload + SIGLEN + KEYHALF;
 	signer     = b[1].data + KEYHALF;
 
-	if (signalled) {
-		value = ((unsigned)signalling[0] << 16) |
-		        ((unsigned)signalling[1] << 8) | signalling[2];
-		mode = (value >> 21) & 0x07;
-		mtu  = value & MTU_BYTEMASK;
-	} else {
-		mode = MODE_DEFAULT;
-	}
-
 	link_id_of(b[0].data, b[0].len, &rh, link_id);
 
 	memcpy(signed_data + sdlen, link_id, ADDRLEN);  sdlen += ADDRLEN;
@@ -1181,15 +1172,7 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	      memcmp(h.destination_hash, link_id, ADDRLEN) == 0 ? "yes" : "no");
 	field_hex("signature", signature, SIGLEN);
 	field_hex("x25519_public", x25519, KEYHALF);
-	if (signalled)
-		field_hex("signalling", signalling, SIGNALLEN);
-	else
-		field("signalling", "-");
-	print_mode(mode);
-	if (signalled)
-		field("mtu", "%u", mtu);
-	else
-		field("mtu", "-");
+	print_signalling(signalled ? signalling : NULL);
 	field_hex("signer_ed25519", signer, KEYHALF);
 	field_hex("signed_data", signed_data, sdlen);
 	field("signature_valid", "%s",
