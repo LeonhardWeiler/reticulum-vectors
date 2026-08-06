@@ -1,0 +1,225 @@
+Resource
+
+A transfer of more data than one packet holds, over an established
+link. Seven context bytes, six of them link data packets and one a
+proof. Start at doc/link for the link itself and at doc/fields for the
+field names.
+
+
+Constants
+
+    MAPHASH_LEN         4 bytes    RNS/Resource.py:102#MAPHASH_LEN
+    RANDOM_HASH_SIZE    4 bytes    RNS/Resource.py:104#RANDOM_HASH_SIZE
+    SDU                 464 bytes  RNS/Resource.py:103#SDU
+    HASHMAP_MAX_LEN     74 entries RNS/Resource.py:1249#HASHMAP_MAX_LEN
+    WINDOW              4 parts    RNS/Resource.py:58#WINDOW
+
+HASHMAP_MAX_LEN is derived from the link MDU and is how many four-byte
+map hashes fit in one advertisement or one update. It decides where a
+transfer needs a second segment, and nothing on the wire states it.
+
+
+Contexts
+
+    0x01   resource        one part
+    0x02   resource_adv    an advertisement, msgpack
+    0x03   resource_req    a part request
+    0x04   resource_hmu    a hashmap update, msgpack
+    0x05   resource_prf    a proof, and a packet of type proof
+    0x06   resource_icl    the sender cancels
+    0x07   resource_rcl    the receiver cancels
+
+    RNS/Packet.py:73#RESOURCE
+
+
+One token, cut into parts
+
+The data is encrypted once, through the link, and the resulting token
+is then cut into parts of SDU bytes:
+
+    self.data = self.link.encrypt(self.data)
+
+    RNS/Resource.py:423#link.encrypt
+
+So a part is a slice of one token and not a token of its own. Only the
+first part begins with the initialisation vector and only the last ends
+with the hmac, and no part can be opened alone. A decoder that reads a
+part as a token finds sixteen bytes it takes for an iv and no hmac that
+verifies.
+
+The packet layer does not encrypt a part either, for the same reason it
+does not encrypt a keepalive: the payload is already ciphertext.
+
+    RNS/Packet.py:202#RESOURCE
+
+A part is named by its map hash, four bytes:
+
+    map_hash = SHA-256(part || random_hash)[0:4]
+
+    RNS/Resource.py:505#get_map_hash
+
+The random hash is the resource's, from the advertisement, so a part
+packet does not carry enough to name itself. That is not an oversight:
+the receiver matches parts against a hashmap it already has, and a part
+that arrives without one belongs to no transfer it is expecting. No
+vector records a map hash for that reason.
+
+Four bytes is short enough to collide, and the reference says so: it
+keeps a guard list while cutting and remaps the whole resource if two
+parts hash alike.
+
+    RNS/Resource.py:452#collision_guard_list
+
+
+Advertisement, 0x02
+
+A msgpack map of eleven one-character keys, in this order:
+
+    t   uint   transfer size, the encrypted length
+    d   uint   data size, before compression and encryption
+    n   uint   number of parts
+    h   bin    resource hash, 32 bytes
+    r   bin    random hash, 4 bytes
+    o   bin    original hash, 32 bytes; the first segment's
+    i   uint   segment index
+    l   uint   total segments
+    q   bin    request id, or nil
+    f   uint   flags, one byte
+    m   bin    hashmap, four bytes per part
+
+    RNS/Resource.py:1329#dictionary
+
+The order is the order the reference writes them and msgpack preserves
+it, but a map is not a sequence: a reader that goes by position rather
+than by key agrees with this reference and with nothing that is
+entitled to reorder them.
+
+The resource hash is over the data and the random hash together, so two
+transfers of identical data are two resources:
+
+    hash = SHA-256(data || random_hash)
+
+    RNS/Resource.py:453#random_hash
+
+The flags byte is six bits, low to high:
+
+    0   encrypted
+    1   compressed
+    2   split
+    3   is request
+    4   is response
+    5   has metadata
+
+    RNS/Resource.py:1310#self.f
+
+Only the byte is recorded. No vector varies the bits, and a vector for
+a flag value belongs with an object that sets it rather than in a table
+of permutations; see doc/packet.
+
+The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries.
+A resource with more parts than that advertises the first segment and
+sends the rest later, which is what 0x04 is for.
+
+
+Part request, 0x03
+
+Three pieces concatenated, with no count, no type byte and no
+delimiter. The reader takes them by length:
+
+    offset  size  field
+    0       1     hashmap exhausted: 0x00 or 0xff
+    1       4     the last map hash, only when exhausted
+    -       32    the resource hash
+    -       -     four bytes per part requested
+
+    RNS/Resource.py:971#request_data
+
+The flag decides where the resource hash begins. A decoder that reads a
+fixed offset is right on every request until the receiver runs out of
+hashes, and then reads the resource hash four bytes early and every map
+hash after it wrongly.
+
+The receiver asks for at most WINDOW parts at a time, and the window
+grows as parts arrive, so the number of map hashes in a request is not
+fixed either.
+
+
+Hashmap update, 0x04
+
+    offset  size  field
+    0       32    the resource hash
+    32      -     msgpack [segment index, hashmap]
+
+    RNS/Resource.py:1064#hmu
+
+Sent by the sender when a part request says the receiver has run out of
+hashes. The hash is raw and what follows it is msgpack, which is the
+one payload in the corpus that is half of each.
+
+
+Proof, 0x05
+
+A packet of type proof, not data, and not encrypted, addressed to the
+link id. Its payload is 64 bytes:
+
+    offset  size  field
+    0       32    the resource hash
+    32      32    SHA-256(data || resource_hash)
+
+    RNS/Resource.py:760#proof_data
+
+That is the same packet type and the same length as an implicit
+delivery proof, and neither half means here what it means there: the
+second 32 bytes are a hash of the data, not a signature over anything,
+and nothing about the packet is signed. The context byte is the only
+thing that tells the two apart, which is why the corpus files this as
+its own kind, resourceproof, rather than as a form of proof.
+
+A receiver that has the whole resource can compute it. So can anyone
+else who has the data, which is what it is for: it says the transfer
+arrived, not who sent it.
+
+
+Cancels, 0x06 and 0x07
+
+The resource hash, 32 bytes, and nothing else. 0x06 is the sender
+giving up and 0x07 the receiver. Either end sends one only while it
+still believes the transfer is running: a resource that has completed
+cancels nothing.
+
+    RNS/Resource.py:1095#COMPLETE
+
+
+Vector format
+
+kind: linkdata for six of the seven, determinism: encode
+
+raw is three lines, as for every other packet on a link:
+
+    line 1    the link request packet
+    line 2    the responder's 32-byte link private key
+    line 3    the complete packet
+
+    test/linkdata/resource-advertisement
+    test/linkdata/resource-part
+    test/linkdata/resource-request
+    test/linkdata/resource-request-exhausted
+    test/linkdata/resource-hashmap-update
+    test/linkdata/resource-cancel
+    test/linkdata/resource-cancel-receiver
+
+The exhausted request and the hashmap update come from a transfer of
+more parts than one hashmap segment holds; the others from a transfer
+of four parts, and the two cancels from one that is stopped after the
+advertisement.
+
+kind: resourceproof, determinism: encode
+
+raw is two lines:
+
+    line 1    the resource hash the receiver was advertised
+    line 2    the complete packet
+
+The hash is an input because the packet names a resource and says
+nothing else about it. hash_match is the comparison, and it is the only
+check a resource proof admits without the data.

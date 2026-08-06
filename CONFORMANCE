@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-06 against the 82 vectors test/ held at that date,
+Run on 2026-08-06 against the 90 vectors test/ held at that date,
 through the harnesses in conformance/, at the implementation commits
 named below. Every row is reproducible only at its commit.
 
-    corpus 2844033114
+    corpus 951802319
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -26,29 +26,31 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the seventy-two vectors of the encode class, and no
+from expect for the eighty vectors of the encode class, and no
 harness implements that direction, so nothing below says anything about
 what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  65 / 67  20 / 20
-    rsReticulum         07ca721   2026-08-02  60 / 67  16 / 20
-    Reticulum-rs        be7a7fc   2026-07-31  49 / 67   8 / 20
-    microReticulum      40fa628   2026-07-20  49 / 67  10 / 20
-    rns.js              d4602ca   2025-02-10  39 / 67   2 / 20
-    sgiath/reticulum    0c4904e   2026-07-09  33 / 67   2 / 20
+    go-reticulum        06621cc   2026-04-28  67 / 74  22 / 27
+    rsReticulum         07ca721   2026-08-02  63 / 74  19 / 27
+    microReticulum      40fa628   2026-07-20  50 / 74  11 / 27
+    Reticulum-rs        be7a7fc   2026-07-31  50 / 74   9 / 27
+    rns.js              d4602ca   2025-02-10  39 / 74   2 / 27
+    sgiath/reticulum    0c4904e   2026-07-09  33 / 74   2 / 27
 
-Out of 67, not 82: every harness exits 77 for four kinds, and those
-fifteen vectors are skipped rather than counted against anyone.
+Out of 74, not 90: every harness exits 77 for five kinds, and those
+sixteen vectors are skipped rather than counted against anyone.
 
-    plain         2 vectors
-    pathrequest   6
-    group         3
-    ifac          4
+    plain           2 vectors
+    pathrequest     6
+    group           3
+    ifac            4
+    resourceproof   1
 
-The link column is the eighteen vectors of the three link kinds plus
+The link column is the twenty-five vectors of the three link kinds plus
 the two delivery proofs made on a link, which are filed under proof.
+Seven of the twenty-five are the resource contexts.
 
 No failure in this run is a harness's own. Four were. They are
 recorded here because a harness is evidence and a change to one changes
@@ -713,3 +715,41 @@ Link.request produces when called with a path alone.
 
 The same function is on the response path, so a response with no body
 carries the same byte.
+
+
+Finding 21: a resource part is read as a token by nobody, and named by
+one implementation of six
+
+Affects every implementation tested. Vectors test/linkdata/resource-*.
+
+Seven contexts carry a resource transfer and the six implementations
+read between one and three of them:
+
+    context           go    rsRet  micro  rs-rs  rns.js  sgiath
+    -----------------------------------------------------------
+    0x02 adv          own   own    own    -      -       -
+    0x03 req          -     -      -      -      -       -
+    0x04 hmu          -     own    -      -      -       -
+    0x06/0x07 cancel  -     -      -      -      -       -
+
+"own" is the implementation's own decoder called by the harness; a dash
+is code that does not exist. Three of the six can read an
+advertisement, one can read a hashmap update, and none has a parser for
+a part request or for either cancel. Those three are read inline in a
+transfer loop and yield nothing an observer can call, which is a
+different thing from being absent, and it is why the harnesses print a
+dash rather than following the code: a transfer loop is not a decoder.
+
+The part request is the one worth having. Its first byte decides where
+the resource hash begins, and an implementation that assumes a fixed
+offset is right until the receiver runs out of hashes. See doc/resource.
+
+microReticulum reads an advertisement correctly and still fails the
+vector, because it decrypts nothing on a link at all; see finding 11.
+rns.js has all seven constants commented out at src/packet.js:20, so it
+does not name the contexts either and fails the part on the context
+byte alone.
+
+Nothing here is measured for the resource proof: it is a kind of its
+own and all six exit 77 for it. No implementation of the six has a
+resource proof path to point a harness at.

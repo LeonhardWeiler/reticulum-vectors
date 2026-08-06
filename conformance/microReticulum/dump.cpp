@@ -23,6 +23,7 @@
 #include "Cryptography/Token.h"
 #include "Cryptography/X25519.h"
 #include "Link.h"
+#include "Resource.h"
 
 static const int W = 18;
 static std::vector<std::string> out;
@@ -164,6 +165,13 @@ static std::string context_name(unsigned c) {
 	static char buf[8];
 	switch (c) {
 	case RNS::Type::Packet::CONTEXT_NONE:   return "none";
+	case RNS::Type::Packet::RESOURCE:       return "resource";
+	case RNS::Type::Packet::RESOURCE_ADV:   return "resource_adv";
+	case RNS::Type::Packet::RESOURCE_REQ:   return "resource_req";
+	case RNS::Type::Packet::RESOURCE_HMU:   return "resource_hmu";
+	case RNS::Type::Packet::RESOURCE_PRF:   return "resource_prf";
+	case RNS::Type::Packet::RESOURCE_ICL:   return "resource_icl";
+	case RNS::Type::Packet::RESOURCE_RCL:   return "resource_rcl";
 	case RNS::Type::Packet::REQUEST:        return "request";
 	case RNS::Type::Packet::RESPONSE:       return "response";
 	case RNS::Type::Packet::PATH_RESPONSE:  return "path_response";
@@ -516,7 +524,10 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	f("link_id", hexs(link_id));
 	f("link_id_match", p.destination_hash() == link_id ? "yes" : "no");
 
-	if ((unsigned)p.context() == RNS::Type::Packet::KEEPALIVE) {
+	// A resource part is not encrypted by the packet layer: the resource
+	// encrypted the whole stream and cut the token into parts.
+	if ((unsigned)p.context() == RNS::Type::Packet::RESOURCE ||
+	    (unsigned)p.context() == RNS::Type::Packet::KEEPALIVE) {
 		f("encrypted", "no");
 		snprintf(buf, sizeof buf, "%zu", (size_t)payload.size());
 		f("plaintext_length", buf);
@@ -568,6 +579,39 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	// contexts and no code reads what they carry. microReticulum has a
 	// msgpack decoder, in Resource.cpp, and nothing points it at a
 	// request.
+	// microReticulum's own decoder, src/microReticulum/Resource.h:199.
+	// It has no parser for the other five contexts.
+	if ((unsigned)p.context() == RNS::Type::Packet::RESOURCE_ADV) {
+		RNS::ResourceAdvertisement adv = RNS::ResourceAdvertisement::unpack(plaintext);
+		char buf[32];
+		snprintf(buf, sizeof buf, "%zu", adv._t); f("transfer_size", buf);
+		snprintf(buf, sizeof buf, "%zu", adv._d); f("data_size", buf);
+		snprintf(buf, sizeof buf, "%u", adv._n);  f("resource_parts", buf);
+		f("resource_hash", hexs(adv._h));
+		f("resource_random", hexs(adv._r));
+		f("original_hash", hexs(adv._o));
+		snprintf(buf, sizeof buf, "%u", adv._i);  f("segment_index", buf);
+		snprintf(buf, sizeof buf, "%u", adv._l);  f("total_segments", buf);
+		f("request_id", hexs(adv._q));
+		snprintf(buf, sizeof buf, "%02x", adv._f); f("resource_flags", buf);
+		f("hashmap", hexs(adv._m));
+	}
+	if ((unsigned)p.context() == RNS::Type::Packet::RESOURCE_REQ) {
+		f("hashmap_exhausted", "-");
+		f("last_map_hash", "-");
+		f("resource_hash", "-");
+		f("requested_hashes", "-");
+	}
+	if ((unsigned)p.context() == RNS::Type::Packet::RESOURCE_HMU) {
+		f("resource_hash", "-");
+		f("segment_index", "-");
+		f("hashmap", "-");
+	}
+	if ((unsigned)p.context() == RNS::Type::Packet::RESOURCE_ICL ||
+	    (unsigned)p.context() == RNS::Type::Packet::RESOURCE_RCL) {
+		f("resource_hash", "-");
+	}
+
 	if ((unsigned)p.context() == RNS::Type::Packet::REQUEST) {
 		f("request_time", "-");
 		f("request_path_hash", "-");

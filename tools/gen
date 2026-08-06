@@ -264,6 +264,9 @@ def stub_transport(RNS, tmpdir):
     # destination has no remembered ratchet. Pointing it at an empty
     # directory keeps that lookup from reaching a real instance.
     RNS.Reticulum.storagepath = tmpdir
+    # A receiving resource writes segments under this path before it
+    # reassembles them. RNS/Reticulum.py:248#resourcepath.
+    RNS.Reticulum.resourcepath = tmpdir
     # The constructor sets this and nothing else does, so without an
     # instance the attribute does not exist at all and every reader of
     # it raises. RNS/Reticulum.py:254#__transport_enabled.
@@ -344,8 +347,8 @@ def hexf(b):
     return b.hex() if b else "-"
 
 
-def msgpack_array(data):
-    """The msgpack subset the reference puts on a link.
+def msgpack_read(data, at=0):
+    """One value of the msgpack subset the reference puts on a link.
 
     Read here rather than through umsgpack so that expect stays this
     program's own reading of raw; gen_request asserts the two agree. A
@@ -355,27 +358,48 @@ def msgpack_array(data):
 
         RNS/vendor/umsgpack.py:457#_pack2
     """
-    head, at, out = data[0], 1, []
-    if head & 0xf0 != 0x90:
-        raise ValueError("msgpack: %02x is not an array" % head)
+    kind, at = data[at], at + 1
 
-    for _ in range(head & 0x0f):
-        kind, at = data[at], at + 1
-        if kind == 0xc0:
-            out.append(None)
-            continue
-        if kind == 0xcb:
-            size = 8
-        elif kind == 0xc4:
-            size, at = data[at], at + 1
-        else:
-            raise ValueError("msgpack: %02x is not a type this reads" % kind)
-        out.append(data[at:at + size])
-        at += size
+    if kind == 0xc0:                       return None, at
+    if kind == 0xcb:                       return data[at:at + 8], at + 8
+    if kind < 0x80:                        return kind, at
 
+    if kind in (0xcc, 0xcd, 0xce):
+        size = 1 << (kind - 0xcc)
+        return int.from_bytes(data[at:at + size], "big"), at + size
+
+    if kind in (0xc4, 0xc5):
+        width = kind - 0xc3
+        size = int.from_bytes(data[at:at + width], "big")
+        at += width
+        return data[at:at + size], at + size
+
+    if kind & 0xe0 == 0xa0:
+        size = kind & 0x1f
+        return data[at:at + size].decode("utf-8"), at + size
+
+    if kind & 0xf0 == 0x90:
+        out = []
+        for _ in range(kind & 0x0f):
+            value, at = msgpack_read(data, at)
+            out.append(value)
+        return out, at
+
+    if kind & 0xf0 == 0x80:
+        out = {}
+        for _ in range(kind & 0x0f):
+            key, at = msgpack_read(data, at)
+            out[key], at = msgpack_read(data, at)
+        return out, at
+
+    raise ValueError("msgpack: %02x is not a type this reads" % kind)
+
+
+def msgpack_one(data):
+    value, at = msgpack_read(data)
     if at != len(data):
-        raise ValueError("msgpack: %d bytes after the array" % (len(data) - at))
-    return out
+        raise ValueError("msgpack: %d bytes after the value" % (len(data) - at))
+    return value
 
 
 # The kinds cmd/dump can rebuild raw for. signature is not among them:
@@ -383,7 +407,7 @@ def msgpack_array(data):
 # digest, so the vector can be decoded and not rebuilt.
 ENCODABLE = ("identity", "keyset", "destination", "announce", "plain",
              "pathrequest", "encrypted", "group", "linkrequest", "linkproof",
-             "linkdata", "proof", "ifac")
+             "linkdata", "proof", "resourceproof", "ifac")
 
 
 def determinism(kind, expect):
@@ -909,7 +933,11 @@ def gen_ifac(RNS, w, announce_raw_bytes):
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
-CONTEXTS     = {0x00: "none", 0x09: "request", 0x0a: "response", 0x0b: "path_response", 0x0e: "channel",
+CONTEXTS     = {0x00: "none",
+                0x01: "resource", 0x02: "resource_adv", 0x03: "resource_req",
+                0x04: "resource_hmu", 0x05: "resource_prf",
+                0x06: "resource_icl", 0x07: "resource_rcl",
+                0x09: "request", 0x0a: "response", 0x0b: "path_response", 0x0e: "channel",
                 0xfa: "keepalive", 0xfb: "link_identify", 0xfc: "link_close",
                 0xfd: "link_proof", 0xfe: "link_rtt", 0xff: "link_request_proof"}
 
@@ -925,6 +953,8 @@ ADDRLEN     = 16
 KEYHALF     = 32
 TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py:50#TOKEN_OVERHEAD
 HEADER1LEN  = 19        # RNS/Reticulum.py:147#HEADER_MINSIZE
+HASHLEN     = 32        # RNS/Identity.py:80#HASHLENGTH
+MAPHASHLEN  = 4         # RNS/Resource.py:102#MAPHASH_LEN
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 ECPUBSIZE   = 64        # RNS/Link.py:70#ECPUBSIZE, both public keys
 SIGNALLEN   = 3         # RNS/Link.py:80#LINK_MTU_SIZE, LINK_MTU_SIZE
@@ -1740,6 +1770,16 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
         field("link_id_match", "yes" if h["dest_hash"] == link_id else "no"),
     ]
 
+    # A resource part is not encrypted by the packet layer either: the
+    # resource encrypted its whole data through the link once and cut
+    # the token into parts. RNS/Packet.py:202#RESOURCE.
+    if h["context"] == RESOURCE:
+        return lines + [
+            field("encrypted",        "no"),
+            field("plaintext_length", "%d" % len(payload)),
+            field("plaintext",        hexf(payload)),
+        ]
+
     # Keepalives carry no data and are the one link packet the
     # reference does not encrypt. RNS/Packet.py:206#KEEPALIVE.
     if h["context"] == 0xfa:
@@ -1786,7 +1826,7 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     # own around it. RNS/Link.py:488#unpacked_request,
     # RNS/Link.py:849#packed_response.
     if h["context"] in (0x09, 0x0a) and plaintext is not None:
-        parts = msgpack_array(plaintext)
+        parts = msgpack_one(plaintext)
         if h["context"] == 0x09:
             lines += [
                 field("request_time",      parts[0].hex()),
@@ -1798,6 +1838,9 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
                 field("request_id",    hexf(parts[0])),
                 field("response_data", hexf(parts[1])),
             ]
+
+    if plaintext is not None:
+        lines += describe_resource(h["context"], plaintext)
 
     # An identify proof names the initiator, which nothing else on a
     # link does. Its signature covers the link id, so it cannot be
@@ -1923,11 +1966,11 @@ def gen_request(RNS, w, verify, session, initiator, request_raw, responder_priva
     assert umsgpack.unpackb(responder.decrypt(answered[0].raw[HEADER1LEN:]))[0] \
         == asked[0].getTruncatedHash()
 
-    # msgpack_array is this program's own reading. Where umsgpack
+    # msgpack_read is this program's own reading. Where umsgpack
     # exposes the same values, the two must agree.
     for packet in asked + answered:
         theirs = umsgpack.unpackb(responder.decrypt(packet.raw[HEADER1LEN:]))
-        mine   = msgpack_array(responder.decrypt(packet.raw[HEADER1LEN:]))
+        mine   = msgpack_one(responder.decrypt(packet.raw[HEADER1LEN:]))
         if packet.context == RNS.Packet.REQUEST:
             assert struct.unpack(">d", mine[0])[0] == theirs[0]
             assert mine[1:] == theirs[1:]
@@ -1946,6 +1989,123 @@ def gen_request(RNS, w, verify, session, initiator, request_raw, responder_priva
         w.vector("linkdata", name, purpose,
             [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
             describe_linkdata(request_raw, responder_private, packet.raw, verify))
+
+
+@contextlib.contextmanager
+def inline_threads(RNS):
+    """Resource.receive_part assembles in a thread, and assemble is what
+    sends the proof. Run the target where it is started, so that the
+    packet lands inside captured() rather than after it.
+
+        RNS/Resource.py:901#assemble
+    """
+    import threading
+
+    real = threading.Thread
+
+    class Inline:
+        def __init__(self, target=None, daemon=None, **kw):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    threading.Thread = Inline
+    try:
+        yield
+    finally:
+        threading.Thread = real
+
+
+def resource_transfer(RNS, tag, data, complete=True):
+    """One resource, carried from advertisement to proof.
+
+    Every packet is the reference's own. What is replaced is the
+    scheduling around it: the watchdog that would retransmit, and the
+    thread assembly runs in. Neither shapes a byte.
+
+    The receiver asks for the next window from inside receive_part as
+    well as from request_next, so the driver takes whatever was sent
+    rather than assuming which call sent it.
+    """
+    ResMod = sys.modules["RNS.Resource"]
+    real_watchdog = ResMod.Resource.watchdog_job
+    ResMod.Resource.watchdog_job = lambda self: None
+
+    session = link_session(RNS, tag)
+    sender  = session["link"]
+    sender.status = RNS.Link.ACTIVE
+    receiver = initiator_link(RNS, session)
+    receiver.status = RNS.Link.ACTIVE
+
+    seen = {}
+
+    def keep(packets):
+        """First of each context, and the exhausted part request too:
+        the flag is the one field of that packet with two states."""
+        for packet in packets:
+            seen.setdefault(packet.context, packet)
+            if packet.context == RNS.Packet.RESOURCE_REQ and packet.data[0]:
+                seen.setdefault("exhausted", packet)
+
+    try:
+        with pinned(RNS, tag + "-resource"), inline_threads(RNS):
+            with captured(RNS) as out:
+                resource = RNS.Resource(data, sender, auto_compress=False)
+            advertisement = out[0]
+            advertisement.link = receiver
+            advertisement.plaintext = receiver.decrypt(advertisement.raw[HEADER1LEN:])
+            keep(out)
+
+            with captured(RNS) as out:
+                incoming = ResMod.Resource.accept(advertisement, callback=lambda r: None)
+            keep(out)
+
+            # Either end sends a cancel only while it still believes the
+            # transfer is running, so the two of them come from a
+            # resource that is not carried to the end.
+            if not complete:
+                for end in (resource, incoming):
+                    with captured(RNS) as out:
+                        end.cancel()
+                    keep(out)
+                return session, resource, seen
+
+            pending = [p for p in out if p.context == RNS.Packet.RESOURCE_REQ]
+            while pending:
+                request, pending = pending[0], []
+
+                with captured(RNS) as answer:
+                    resource.request(sender.decrypt(request.raw[HEADER1LEN:]))
+                keep(answer)
+
+                for packet in answer:
+                    if packet.context == RNS.Packet.RESOURCE_HMU:
+                        incoming.hashmap_update_packet(
+                            receiver.decrypt(packet.raw[HEADER1LEN:]))
+                        continue
+                    if packet.context != RNS.Packet.RESOURCE:
+                        continue
+                    packet.link = receiver
+                    packet.plaintext = packet.data
+                    with captured(RNS) as more:
+                        incoming.receive_part(packet)
+                    keep(more)
+                    pending += [p for p in more
+                                if p.context == RNS.Packet.RESOURCE_REQ]
+
+                if incoming.status == ResMod.Resource.COMPLETE:
+                    break
+                if not pending:
+                    with captured(RNS) as out:
+                        incoming.request_next()
+                    keep(out)
+                    pending = [p for p in out
+                               if p.context == RNS.Packet.RESOURCE_REQ]
+    finally:
+        ResMod.Resource.watchdog_job = real_watchdog
+
+    return session, resource, seen
 
 
 def gen_linkpacketproof(RNS, w, verify, session, link, proved):
@@ -2253,6 +2413,162 @@ def gen_group(RNS, w):
                "RNS/Cryptography/PKCS7.py:35#pad stubbed to the identity")
 
 
+RESOURCE     = 0x01
+RESOURCE_ADV = 0x02
+RESOURCE_REQ = 0x03
+RESOURCE_HMU = 0x04
+RESOURCE_ICL = 0x06
+RESOURCE_RCL = 0x07
+
+
+def describe_resource(context, plaintext):
+    """What the plaintext holds for each resource context.
+
+    The advertisement is a msgpack map of eleven one-letter keys. The
+    part request is three concatenated pieces with no framing, read by
+    length. The two cancels are the resource hash and nothing else.
+
+        RNS/Resource.py:1329#dictionary, RNS/Resource.py:971#request_data
+    """
+    if context == RESOURCE_ADV:
+        adv = msgpack_one(plaintext)
+        return [
+            field("transfer_size",  "%d" % adv["t"]),
+            field("data_size",      "%d" % adv["d"]),
+            field("resource_parts", "%d" % adv["n"]),
+            field("resource_hash",  adv["h"].hex()),
+            field("resource_random", adv["r"].hex()),
+            field("original_hash",  adv["o"].hex()),
+            field("segment_index",  "%d" % adv["i"]),
+            field("total_segments", "%d" % adv["l"]),
+            field("request_id",     hexf(adv["q"])),
+            field("resource_flags", "%02x" % adv["f"]),
+            field("hashmap",        hexf(adv["m"])),
+        ]
+
+    if context == RESOURCE_REQ:
+        exhausted = plaintext[0]
+        at = 1
+        last = None
+        if exhausted:
+            last, at = plaintext[at:at + MAPHASHLEN], at + MAPHASHLEN
+        return [
+            field("hashmap_exhausted", "yes" if exhausted else "no"),
+            field("last_map_hash",     hexf(last)),
+            field("resource_hash",     plaintext[at:at + HASHLEN].hex()),
+            field("requested_hashes",  hexf(plaintext[at + HASHLEN:])),
+        ]
+
+    if context == RESOURCE_HMU:
+        segment, hashmap = msgpack_one(plaintext[HASHLEN:])
+        return [
+            field("resource_hash", plaintext[:HASHLEN].hex()),
+            field("segment_index", "%d" % segment),
+            field("hashmap",       hexf(hashmap)),
+        ]
+
+    if context in (RESOURCE_ICL, RESOURCE_RCL):
+        return [field("resource_hash", plaintext.hex())]
+
+    return []
+
+
+def describe_resourceproof(advertised, raw):
+    """A proof over a resource, which is not a proof over a packet.
+
+    Same packet type and the same 64 bytes as an implicit delivery
+    proof, and neither half means there what it means here: the first
+    32 name the resource and the second are a hash of its data, not a
+    signature over anything. The context byte is all that says so, and
+    it is why this is a kind of its own rather than a branch of proof.
+
+        RNS/Resource.py:760#proof_data
+    """
+    echo = [field("advertised_hash", advertised.hex())]
+
+    lines, h = describe_header(raw)
+    lines = echo + lines
+    if h is None:
+        return lines
+    payload = h["payload"]
+
+    if len(payload) != 2 * HASHLEN:
+        return lines + invalid("invalid-length",
+                               ("payload_length", len(payload)),
+                               ("accepted_length", 2 * HASHLEN))
+
+    return lines + [
+        field("resource_hash",  payload[:HASHLEN].hex()),
+        field("resource_proof", payload[HASHLEN:].hex()),
+        field("hash_match",     "yes" if payload[:HASHLEN] == advertised else "no"),
+    ]
+
+
+def gen_resource(RNS, w, verify):
+    """The seven contexts a resource transfer uses, less one.
+
+    A resource encrypts its data once, through the link, and then slices
+    the token into parts. So a part is a slice of one token and not a
+    token of its own: only the first carries the initialisation vector
+    and only the last carries the hmac, and no part can be opened alone.
+    The packet layer does not encrypt them either, for the same reason a
+    keepalive is not encrypted.
+
+        RNS/Resource.py:423#link.encrypt, RNS/Packet.py:202#RESOURCE
+    """
+    single, resource, seen = resource_transfer(RNS, "resource", b"reticulum" * 200)
+
+    # More parts than one hashmap segment holds, which is the only way
+    # to reach a request that says so and the update that answers it.
+    split_session, _, split = resource_transfer(RNS, "resource-split",
+                                                bytes(range(256)) * 200)
+
+    stop_session, _, stopped = resource_transfer(RNS, "resource-cancel",
+                                                 b"reticulum" * 200, complete=False)
+
+    cases = [
+        (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
+         "the msgpack map that opens a transfer"),
+        (single, seen[RNS.Packet.RESOURCE], "resource-part",
+         "one part, a slice of the token the whole resource was encrypted to"),
+        (single, seen[RNS.Packet.RESOURCE_REQ], "resource-request",
+         "a part request: the hashmap flag, the resource hash, and four-byte map hashes"),
+        (split_session, split["exhausted"], "resource-request-exhausted",
+         "the receiver has asked for every hash it was given and names the last"),
+        (split_session, split[RNS.Packet.RESOURCE_HMU], "resource-hashmap-update",
+         "the next segment of the hashmap, which no advertisement had room for"),
+        (stop_session, stopped[RNS.Packet.RESOURCE_ICL], "resource-cancel",
+         "the sender gives up; the payload is the resource hash"),
+        (stop_session, stopped[RNS.Packet.RESOURCE_RCL], "resource-cancel-receiver",
+         "the receiver gives up, with the same payload and a different context"),
+    ]
+    # msgpack_read is this program's own reading. The advertisement is
+    # the one resource payload the reference will read back, so it is
+    # read back.
+    adv = seen[RNS.Packet.RESOURCE_ADV]
+    theirs = sys.modules["RNS.Resource"].ResourceAdvertisement.unpack(adv.data)
+    mine = msgpack_one(adv.data)
+    assert (mine["t"], mine["d"], mine["n"], mine["h"], mine["r"], mine["o"],
+            mine["i"], mine["l"], mine["q"], mine["f"], mine["m"]) == \
+           (theirs.t, theirs.d, theirs.n, theirs.h, theirs.r, theirs.o,
+            theirs.i, theirs.l, theirs.q, theirs.f, theirs.m)
+
+    for session, packet, name, purpose in cases:
+        request_raw = session["request"].raw
+        responder_private = session["link"].prv.private_bytes()
+        w.vector("linkdata", name, purpose,
+            [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
+            describe_linkdata(request_raw, responder_private, packet.raw, verify))
+
+    proof = seen[RNS.Packet.RESOURCE_PRF]
+    assert proof.data[:HASHLEN] == resource.hash
+    assert proof.data[HASHLEN:] == resource.expected_proof
+    w.vector("resourceproof", "complete",
+        "the receiver has the whole resource and hashes it back",
+        [resource.hash.hex(), proof.raw.hex()],
+        describe_resourceproof(resource.hash, proof.raw))
+
+
 def private_to_public(private):
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -2358,6 +2674,7 @@ def main():
         gen_linkproof(RNS, w, verify, session)
         link, proved = gen_linkdata(RNS, w, verify, session)
         gen_linkpacketproof(RNS, w, verify, session, link, proved)
+        gen_resource(RNS, w, verify)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

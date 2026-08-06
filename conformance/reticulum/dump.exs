@@ -77,6 +77,13 @@ defmodule Dump do
 
     cond do
       c == Context.none() -> "none"
+      c == Context.resource() -> "resource"
+      c == Context.resource_adv() -> "resource_adv"
+      c == Context.resource_req() -> "resource_req"
+      c == Context.resource_hmu() -> "resource_hmu"
+      c == Context.resource_prf() -> "resource_prf"
+      c == Context.resource_icl() -> "resource_icl"
+      c == Context.resource_rcl() -> "resource_rcl"
       c == Context.path_response() -> "path_response"
       c == Context.channel() -> "channel"
       c == Context.keepalive() -> "keepalive"
@@ -444,7 +451,10 @@ defmodule Dump do
       f("link_id", hx(id))
       f("link_id_match", if(List.last(p.addresses) == id, do: "yes", else: "no"))
 
-      if context == Reticulum.Packet.Context.keepalive() do
+      # A resource part is not encrypted by the packet layer: the
+      # resource encrypted the whole stream and cut the token into parts.
+      if context in [Reticulum.Packet.Context.resource(),
+                     Reticulum.Packet.Context.keepalive()] do
         f("encrypted", "no")
         f("plaintext_length", Integer.to_string(byte_size(payload)))
         f("plaintext", if(payload == <<>>, do: "-", else: hx(payload)))
@@ -497,6 +507,33 @@ defmodule Dump do
               f("sequence", "-")
               f("declared_length", "-")
               f("message", "-")
+            end
+
+            # sgiath/reticulum names all seven resource contexts in
+            # lib/reticulum/packet/context.ex and has no Resource module
+            # at all, so there is nothing to call for any of them.
+            alias Reticulum.Packet.Context
+
+            if context == Context.resource_adv() do
+              Enum.each(
+                ~w(transfer_size data_size resource_parts resource_hash
+                   resource_random original_hash segment_index total_segments
+                   request_id resource_flags hashmap),
+                &f(&1, "-")
+              )
+            end
+
+            if context == Context.resource_req() do
+              Enum.each(~w(hashmap_exhausted last_map_hash resource_hash
+                           requested_hashes), &f(&1, "-"))
+            end
+
+            if context == Context.resource_hmu() do
+              Enum.each(~w(resource_hash segment_index hashmap), &f(&1, "-"))
+            end
+
+            if context in [Context.resource_icl(), Context.resource_rcl()] do
+              f("resource_hash", "-")
             end
 
             # sgiath/reticulum has no constant for either context and no

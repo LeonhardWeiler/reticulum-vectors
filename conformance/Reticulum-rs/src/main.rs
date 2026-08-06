@@ -405,6 +405,13 @@ fn context_name(c: u8) -> String {
     use reticulum::packet::PacketContext;
     match PacketContext::from(c) {
         PacketContext::None => "none".to_string(),
+        PacketContext::Resource => "resource".to_string(),
+        PacketContext::ResourceAdvertisement => "resource_adv".to_string(),
+        PacketContext::ResourceRequest => "resource_req".to_string(),
+        PacketContext::ResourceHashUpdate => "resource_hmu".to_string(),
+        PacketContext::ResourceProof => "resource_prf".to_string(),
+        PacketContext::ResourceInitiatorCancel => "resource_icl".to_string(),
+        PacketContext::ResourceReceiverCancel => "resource_rcl".to_string(),
         PacketContext::Request => "request".to_string(),
         PacketContext::Response => "response".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
@@ -615,7 +622,9 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "link_id", &hexs(&link_id));
     f(out, "link_id_match", if raw[2..18] == link_id[..] { "yes" } else { "no" });
 
-    if context == 0xfa {
+    // A resource part is not encrypted by the packet layer: the resource
+    // encrypted the whole stream and cut the token into parts.
+    if context == 0x01 || context == 0xfa {
         f(out, "encrypted", "no");
         f(out, "plaintext_length", &format!("{}", payload.len()));
         if payload.is_empty() { f(out, "plaintext", "-"); } else { f(out, "plaintext", &hexs(payload)); }
@@ -672,6 +681,30 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
         f(out, "sequence", "-");
         f(out, "declared_length", "-");
         f(out, "message", "-");
+    }
+
+    // Reticulum-rs names all seven resource contexts,
+    // reticulum-core/src/packet.rs:107, and reads none of them.
+    if context == 0x02 {
+        for name in ["transfer_size", "data_size", "resource_parts", "resource_hash",
+                     "resource_random", "original_hash", "segment_index",
+                     "total_segments", "request_id", "resource_flags", "hashmap"] {
+            f(out, name, "-");
+        }
+    }
+    if context == 0x03 {
+        for name in ["hashmap_exhausted", "last_map_hash", "resource_hash",
+                     "requested_hashes"] {
+            f(out, name, "-");
+        }
+    }
+    if context == 0x04 {
+        for name in ["resource_hash", "segment_index", "hashmap"] {
+            f(out, name, "-");
+        }
+    }
+    if context == 0x06 || context == 0x07 {
+        f(out, "resource_hash", "-");
     }
 
     // Reticulum-rs names both contexts, reticulum-core/src/packet.rs:115,

@@ -66,10 +66,12 @@ doc/packet.
     hops               decimal  the hop count, below 128
     transport_id       hex, -   header 2 only, otherwise -
     destination_hash   hex      the address field, 16 bytes
-    context            keyword  none, request, response, path_response,
-                                channel, keepalive, link_identify,
-                                link_close, link_proof, link_rtt,
-                                link_request_proof
+    context            keyword  none, resource, resource_adv,
+                                resource_req, resource_hmu, resource_prf,
+                                resource_icl, resource_rcl, request,
+                                response, path_response, channel,
+                                keepalive, link_identify, link_close,
+                                link_proof, link_rtt, link_request_proof
     payload_length     decimal  bytes after the header
 
 context falls back to hex for a byte with no name. It is the one field
@@ -222,6 +224,50 @@ request_data and response_data are "-" for both an absent value and an
 empty one: msgpack writes nil and a zero-length byte string
 differently, and this format spells both absences the same way. No
 vector carries the second.
+
+
+Resource
+
+See doc/resource. Six of the seven contexts a transfer uses are link
+data packets and decompose the plaintext; the seventh is a kind of its
+own.
+
+An advertisement carries eleven fields, in the order the reference
+writes the map.
+
+    transfer_size      decimal  bytes of encrypted data to be moved
+    data_size          decimal  bytes before compression and encryption
+    resource_parts     decimal  how many parts the data was cut into
+    resource_hash      hex      32 bytes, over the data and a random hash
+    resource_random    hex      4 bytes, so that equal data differs
+    original_hash      hex      32 bytes, the first segment's hash
+    segment_index      decimal  which segment this advertises
+    total_segments     decimal  how many there are
+    request_id         hex, -   the request this answers, when it is one
+    resource_flags     hex      one byte of six flags; see doc/resource
+    hashmap            hex      four bytes per part, as many as fit
+
+A part adds no field of its own. It is not encrypted by the packet
+layer and cannot be named without the advertisement; see doc/resource.
+
+A part request adds four.
+
+    hashmap_exhausted  keyword  yes, no
+    last_map_hash      hex, -   4 bytes, present when exhausted
+    requested_hashes   hex, -   four bytes per part asked for
+
+A cancel from either end carries resource_hash and nothing else.
+
+The proof is the kind resourceproof, and its raw carries the resource
+hash the receiver was advertised, because the packet does not say what
+it is proving beyond naming it.
+
+    advertised_hash    hex      echoed input: the hash from the
+                                advertisement
+    resource_proof     hex      32 bytes, SHA-256 of the data and the
+                                resource hash
+    hash_match         keyword  yes, no: resource_hash against
+                                advertised_hash
 
 
 Link request and link request proof

@@ -1,0 +1,15 @@
+advertised_hash    ca97e4d75ab916ab2dd22fd63b8709746154bab6cf2312ba9b748635def6cb02
+flags              0f
+header_type        1
+context_flag       unset
+transport_type     broadcast
+destination_type   link
+packet_type        proof
+hops               0
+transport_id       -
+destination_hash   ef25308f5f0761889af5380f76f4e0b8
+context            resource_prf
+payload_length     64
+resource_hash      ca97e4d75ab916ab2dd22fd63b8709746154bab6cf2312ba9b748635def6cb02
+resource_proof     936e2aefd864eb80ed0e79562fdc8e5772e2ac8fa3efeb57c8b5ba24a1cbc85c
+hash_match         yes

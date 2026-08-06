@@ -26,10 +26,11 @@
  * applied everywhere. A packet is bounded by the 500-byte MTU; the
  * largest input in the corpus is the 950-byte message of the adopted
  * signature vector. No vector carries more than four blobs or more
- * than 29 fields. */
+ * than 36 fields, which a resource advertisement reaches: eleven of
+ * its own on top of a link data packet's twenty-five. */
 #define MAXBLOB   2048
 #define MAXBLOBS  4
-#define MAXFIELDS 32
+#define MAXFIELDS 40
 #define FIELDW    18
 
 #define ADDRLEN      16
@@ -666,6 +667,13 @@ static const struct {
 	const char *name;
 } contexts[] = {
 	{ 0x00, "none" },
+	{ 0x01, "resource" },
+	{ 0x02, "resource_adv" },
+	{ 0x03, "resource_req" },
+	{ 0x04, "resource_hmu" },
+	{ 0x05, "resource_prf" },
+	{ 0x06, "resource_icl" },
+	{ 0x07, "resource_rcl" },
 	{ 0x09, "request" },
 	{ 0x0a, "response" },
 	{ 0x0b, "path_response" },
@@ -1247,6 +1255,37 @@ static size_t mp_array(struct mp *m)
 	return h & 0x0f;
 }
 
+static size_t mp_map(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	if ((h & 0xf0) != 0x80)
+		fatal("msgpack: %02x is not a map", h);
+	return h & 0x0f;
+}
+
+/* Every key in an advertisement is one character. */
+static char mp_key(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	if (h != 0xa1)
+		fatal("msgpack: %02x is not a one-character string", h);
+	return (char)*mp_take(m, 1);
+}
+
+static uint64_t mp_uint(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	if (h < 0x80)  return h;
+	if (h == 0xcc) return mp_be(mp_take(m, 1), 1);
+	if (h == 0xcd) return mp_be(mp_take(m, 2), 2);
+	if (h == 0xce) return mp_be(mp_take(m, 4), 4);
+	fatal("msgpack: %02x is not an unsigned integer", h);
+	return 0;
+}
+
 /* nil and an empty byte string are both length zero, which the format
  * spells "-" either way. No shape the corpus carries distinguishes
  * them; see doc/link. */
@@ -1277,6 +1316,87 @@ static void mp_end(struct mp *m)
 {
 	if (m->left != 0)
 		fatal("msgpack: %zu bytes after the value", m->left);
+}
+
+#define RESOURCE     0x01
+#define RESOURCE_ADV 0x02
+#define RESOURCE_REQ 0x03
+#define RESOURCE_HMU 0x04
+#define RESOURCE_ICL 0x06
+#define RESOURCE_RCL 0x07
+#define MAPHASHLEN   4		/* RNS/Resource.py:102#MAPHASH_LEN */
+#define HASHLEN      32		/* RNS/Identity.py:80#HASHLENGTH */
+
+/* What the plaintext holds for each resource context. The
+ * advertisement is a msgpack map of eleven one-letter keys, in the
+ * order the reference writes them; a part request is three pieces
+ * concatenated with no framing, read by length; a cancel is the
+ * resource hash and nothing else.
+ * RNS/Resource.py:1329#dictionary, RNS/Resource.py:971#request_data. */
+static void print_resource(unsigned context, const uint8_t *p, size_t len)
+{
+	static const char order[] = "tdnhroilqfm";
+	struct mp m = { p, len };
+	const uint8_t *bin;
+	size_t n, i;
+
+	if (context == RESOURCE_ADV) {
+		if (mp_map(&m) != sizeof order - 1)
+			fatal("advertisement: not eleven pairs");
+		for (i = 0; order[i] != '\0'; i++) {
+			if (mp_key(&m) != order[i])
+				fatal("advertisement: key %zu is not %c", i, order[i]);
+			switch (order[i]) {
+			case 't': field("transfer_size",  "%llu", (unsigned long long)mp_uint(&m)); break;
+			case 'd': field("data_size",      "%llu", (unsigned long long)mp_uint(&m)); break;
+			case 'n': field("resource_parts", "%llu", (unsigned long long)mp_uint(&m)); break;
+			case 'i': field("segment_index",  "%llu", (unsigned long long)mp_uint(&m)); break;
+			case 'l': field("total_segments", "%llu", (unsigned long long)mp_uint(&m)); break;
+			case 'f': field("resource_flags", "%02llx", (unsigned long long)mp_uint(&m)); break;
+			case 'h': bin = mp_bin(&m, &n); field_hex("resource_hash",   bin, n); break;
+			case 'r': bin = mp_bin(&m, &n); field_hex("resource_random", bin, n); break;
+			case 'o': bin = mp_bin(&m, &n); field_hex("original_hash",   bin, n); break;
+			case 'q': bin = mp_bin(&m, &n); field_hex("request_id",      bin, n); break;
+			case 'm': bin = mp_bin(&m, &n); field_hex("hashmap",         bin, n); break;
+			}
+		}
+		mp_end(&m);
+		return;
+	}
+
+	if (context == RESOURCE_REQ) {
+		size_t at = 1;
+
+		field("hashmap_exhausted", "%s", p[0] ? "yes" : "no");
+		if (p[0]) {
+			field_hex("last_map_hash", p + at, MAPHASHLEN);
+			at += MAPHASHLEN;
+		} else {
+			field("last_map_hash", "-");
+		}
+		field_hex("resource_hash", p + at, HASHLEN);
+		field_hex("requested_hashes", p + at + HASHLEN,
+		          len - at - HASHLEN);
+		return;
+	}
+
+	if (context == RESOURCE_HMU) {
+		struct mp u = { p + HASHLEN, len - HASHLEN };
+		const uint8_t *hashmap;
+		size_t hashmap_len;
+
+		if (mp_array(&u) != 2)
+			fatal("hashmap update: not two elements");
+		field_hex("resource_hash", p, HASHLEN);
+		field("segment_index", "%llu", (unsigned long long)mp_uint(&u));
+		hashmap = mp_bin(&u, &hashmap_len);
+		field_hex("hashmap", hashmap, hashmap_len);
+		mp_end(&u);
+		return;
+	}
+
+	if (context == RESOURCE_ICL || context == RESOURCE_RCL)
+		field_hex("resource_hash", p, len);
 }
 
 static void dump_linkdata(struct blob *b, int nblobs)
@@ -1312,6 +1432,18 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	field_hex("link_id", link_id, ADDRLEN);
 	field("link_id_match", "%s",
 	      memcmp(h.destination_hash, link_id, ADDRLEN) == 0 ? "yes" : "no");
+
+	/* A resource part is not encrypted by the packet layer either. The
+	 * resource encrypted its whole data through the link once and cut
+	 * the token into parts, so only the first part carries an iv and
+	 * only the last carries an hmac, and no part opens on its own.
+	 * RNS/Resource.py:423#link.encrypt, RNS/Packet.py:202#RESOURCE. */
+	if (h.context == RESOURCE) {
+		field("encrypted", "no");
+		field("plaintext_length", "%zu", h.payload_len);
+		field_hex("plaintext", h.payload, h.payload_len);
+		return;
+	}
 
 	/* Keepalives carry no data and are the one link packet the
 	 * reference does not encrypt. RNS/Packet.py:206#KEEPALIVE. */
@@ -1386,6 +1518,9 @@ static void dump_linkdata(struct blob *b, int nblobs)
 		}
 		mp_end(&m);
 	}
+
+	if (t.opened)
+		print_resource(h.context, t.plain, t.ptlen);
 
 	/* An identify proof names the initiator, which nothing else on a
 	 * link does. Its signature covers the link id, so it cannot be
@@ -1476,6 +1611,45 @@ static void dump_proof(struct blob *b, int nblobs)
 	field_hex("signer_ed25519", signer, KEYHALF);
 	field("signature_valid", "%s",
 	      ed25519_verify(signer, signature, packet_hash, sizeof packet_hash) ? "yes" : "no");
+}
+
+/* A proof over a resource, which is not a proof over a packet. It is
+ * the same packet type and the same 64 bytes as an implicit delivery
+ * proof, and neither half means here what it means there: the first 32
+ * name the resource and the second are a hash of its data, not a
+ * signature over anything. RNS/Resource.py:760#proof_data. */
+static void dump_resourceproof(struct blob *b, int nblobs)
+{
+	struct header h;
+	enum reason r;
+	size_t got = 0, need = 0;
+
+	if (nblobs != 2)
+		fatal("resourceproof: expected 2 blobs, got %d", nblobs);
+	if (b[0].len != HASHLEN)
+		fatal("resourceproof: resource hash is %zu bytes, expected %d",
+		      b[0].len, HASHLEN);
+
+	field_blob("advertised_hash", &b[0]);
+
+	if ((r = parse_header(b[1].data, b[1].len, &h, &got, &need)) != OK) {
+		print_invalid(r, got, need);
+		return;
+	}
+
+	print_header(&h);
+
+	if (h.payload_len != 2 * HASHLEN) {
+		field("invalid", "invalid-length");
+		field("payload_length", "%zu", h.payload_len);
+		field("accepted_length", "%d", 2 * HASHLEN);
+		return;
+	}
+
+	field_hex("resource_hash", h.payload, HASHLEN);
+	field_hex("resource_proof", h.payload + HASHLEN, HASHLEN);
+	field("hash_match", "%s",
+	      memcmp(h.payload, b[0].data, HASHLEN) == 0 ? "yes" : "no");
 }
 
 /* RNS/Reticulum.py:150#IFAC_SALT. */
@@ -1809,6 +1983,18 @@ static void encode_proof(struct kv *f, int n)
 	emit(&o);
 }
 
+static void encode_resourceproof(struct kv *f, int n)
+{
+	struct out o = { "", 0 };
+
+	emit_field(f, n, "advertised_hash");
+
+	put_header(&o, f, n);
+	put_field(&o, f, n, "resource_hash");
+	put_field(&o, f, n, "resource_proof");
+	emit(&o);
+}
+
 static void encode_linkproof(struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1922,6 +2108,7 @@ static const struct {
 	{ "linkproof",   dump_linkproof,   encode_linkproof   },
 	{ "linkdata",    dump_linkdata,    encode_linkdata    },
 	{ "proof",       dump_proof,       encode_proof       },
+	{ "resourceproof", dump_resourceproof, encode_resourceproof },
 	{ "ifac",        dump_ifac,        encode_ifac        },
 };
 

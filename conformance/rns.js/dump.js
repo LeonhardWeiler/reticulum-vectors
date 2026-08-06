@@ -413,7 +413,9 @@ function linkdata(blobs) {
     f("link_id", hex(linkId));
     f("link_id_match", p.destinationHash.equals(linkId) ? "yes" : "no");
 
-    if (p.context === 0xfa) {
+    // A resource part is not encrypted by the packet layer: the resource
+    // encrypted the whole stream and cut the token into parts.
+    if (p.context === 0x01 || p.context === 0xfa) {
         f("encrypted", "no");
         f("plaintext_length", String(p.data.length));
         f("plaintext", p.data.length ? hex(p.data) : "-");
@@ -463,6 +465,24 @@ function linkdata(blobs) {
         f("declared_length", "-");
         f("message", "-");
     }
+
+    // rns.js has all seven resource constants commented out at
+    // src/packet.js:20, so it does not name them either, and nothing
+    // reads what these packets carry.
+    if (p.context === 0x02) {
+        for (const n of ["transfer_size", "data_size", "resource_parts", "resource_hash",
+                         "resource_random", "original_hash", "segment_index",
+                         "total_segments", "request_id", "resource_flags", "hashmap"])
+            f(n, "-");
+    }
+    if (p.context === 0x03) {
+        for (const n of ["hashmap_exhausted", "last_map_hash", "resource_hash",
+                         "requested_hashes"]) f(n, "-");
+    }
+    if (p.context === 0x04) {
+        for (const n of ["resource_hash", "segment_index", "hashmap"]) f(n, "-");
+    }
+    if (p.context === 0x06 || p.context === 0x07) f("resource_hash", "-");
 
     // rns.js has both constants commented out at src/packet.js:28, so
     // it does not name the context either, and nothing reads what these

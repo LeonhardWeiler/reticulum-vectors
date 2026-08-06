@@ -402,6 +402,20 @@ func contextName(c byte) string {
 	switch c {
 	case rns.PacketCtxNone:
 		return "none"
+	case rns.PacketCtxResource:
+		return "resource"
+	case rns.PacketCtxResourceAdv:
+		return "resource_adv"
+	case rns.PacketCtxResourceReq:
+		return "resource_req"
+	case rns.PacketCtxResourceHMU:
+		return "resource_hmu"
+	case rns.PacketCtxResourcePrf:
+		return "resource_prf"
+	case rns.PacketCtxResourceICL:
+		return "resource_icl"
+	case rns.PacketCtxResourceRCL:
+		return "resource_rcl"
 	case rns.PacketCtxRequest:
 		return "request"
 	case rns.PacketCtxResponse:
@@ -719,7 +733,10 @@ func linkdata(b [][]byte) {
 	f("link_id", hx(linkID))
 	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
 
-	if p.Context == 0xfa {
+	// A resource part is not encrypted by the packet layer: the
+	// resource encrypted the whole stream through the link and cut the
+	// token into parts. rns/packet.go:PacketCtxResource.
+	if p.Context == rns.PacketCtxResource || p.Context == 0xfa {
 		f("encrypted", "no")
 		f("plaintext_length", fmt.Sprintf("%d", len(p.Data)))
 		if len(p.Data) > 0 {
@@ -811,6 +828,42 @@ func linkdata(b [][]byte) {
 	// go-reticulum's own msgpack, as link.go:1543 reads a request and
 	// link.go:1562 a response. The time comes back as a float64 and is
 	// printed as the eight bytes it was decoded from.
+	// go-reticulum's own advertisement decoder, rns/resource.go:2097.
+	// It has no parser for the part request, the hashmap update or a
+	// cancel: rns/resource.go reads those inline in the transfer loop
+	// and yields nothing.
+	if p.Context == rns.PacketCtxResourceAdv {
+		adv, err := rns.ResourceAdvertisement{}.Unpack(plaintext)
+		if err != nil {
+			panic(err)
+		}
+		f("transfer_size", fmt.Sprintf("%d", adv.T))
+		f("data_size", fmt.Sprintf("%d", adv.D))
+		f("resource_parts", fmt.Sprintf("%d", adv.N))
+		f("resource_hash", hx(adv.H))
+		f("resource_random", hx(adv.R))
+		f("original_hash", hx(adv.O))
+		f("segment_index", fmt.Sprintf("%d", adv.I))
+		f("total_segments", fmt.Sprintf("%d", adv.L))
+		f("request_id", hx(adv.Q))
+		f("resource_flags", fmt.Sprintf("%02x", adv.F))
+		f("hashmap", hx(adv.M))
+	}
+	if p.Context == rns.PacketCtxResourceReq {
+		f("hashmap_exhausted", "-")
+		f("last_map_hash", "-")
+		f("resource_hash", "-")
+		f("requested_hashes", "-")
+	}
+	if p.Context == rns.PacketCtxResourceHMU {
+		f("resource_hash", "-")
+		f("segment_index", "-")
+		f("hashmap", "-")
+	}
+	if p.Context == rns.PacketCtxResourceICL || p.Context == rns.PacketCtxResourceRCL {
+		f("resource_hash", "-")
+	}
+
 	if p.Context == rns.PacketCtxRequest || p.Context == rns.PacketCtxResponse {
 		var unpacked []any
 		if err := umsgpack.Unpackb(plaintext, &unpacked); err != nil {

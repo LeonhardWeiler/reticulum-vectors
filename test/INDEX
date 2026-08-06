@@ -53,6 +53,13 @@ linkdata/keepalive
 linkdata/minimal
 linkdata/request
 linkdata/request-no-data
+linkdata/resource-advertisement
+linkdata/resource-cancel
+linkdata/resource-cancel-receiver
+linkdata/resource-hashmap-update
+linkdata/resource-part
+linkdata/resource-request
+linkdata/resource-request-exhausted
 linkdata/response
 linkdata/rtt
 linkproof/altered-signature
@@ -76,6 +83,7 @@ proof/invalid-length
 proof/link-initiator
 proof/link-responder
 proof/proved-in-transport
+resourceproof/complete
 sign/upstream
 signature/altered
 signature/non-canonical-s

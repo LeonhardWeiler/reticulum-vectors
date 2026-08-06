@@ -393,6 +393,13 @@ fn context_name(c: u8) -> String {
     use rns_wire::context::PacketContext;
     match PacketContext::from_byte(c) {
         PacketContext::None => "none".to_string(),
+        PacketContext::Resource => "resource".to_string(),
+        PacketContext::ResourceAdv => "resource_adv".to_string(),
+        PacketContext::ResourceReq => "resource_req".to_string(),
+        PacketContext::ResourceHmu => "resource_hmu".to_string(),
+        PacketContext::ResourcePrf => "resource_prf".to_string(),
+        PacketContext::ResourceIcl => "resource_icl".to_string(),
+        PacketContext::ResourceRcl => "resource_rcl".to_string(),
         PacketContext::Request => "request".to_string(),
         PacketContext::Response => "response".to_string(),
         PacketContext::PathResponse => "path_response".to_string(),
@@ -609,7 +616,9 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "link_id_match",
       if p.header.destination_hash == link_id { "yes" } else { "no" });
 
-    if p.header.context.to_byte() == 0xfa {
+    // A resource part is not encrypted by the packet layer: the resource
+    // encrypted the whole stream and cut the token into parts.
+    if p.header.context.to_byte() == 0x01 || p.header.context.to_byte() == 0xfa {
         f(out, "encrypted", "no");
         f(out, "plaintext_length", &format!("{}", payload.len()));
         if payload.is_empty() { f(out, "plaintext", "-"); }
@@ -682,12 +691,66 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
         }
     }
 
+    let context = p.header.context.to_byte();
+
     use rns_link::link::Link;
+    use rns_protocol::resource_adv::ResourceAdvertisement;
+    use rns_protocol::resource::parse_hashmap_update;
+
+    // rsReticulum's own advertisement decoder,
+    // crates/rns-protocol/src/resource_adv.rs:122, and its hashmap
+    // update parser at resource.rs:151. It has no parser for a part
+    // request or a cancel.
+    if context == 0x02 {
+        match ResourceAdvertisement::unpack(&pt) {
+            Ok(a) => {
+                f(out, "transfer_size", &format!("{}", a.transfer_size));
+                f(out, "data_size", &format!("{}", a.data_size));
+                f(out, "resource_parts", &format!("{}", a.num_parts));
+                f(out, "resource_hash", &hexs(&a.resource_hash));
+                f(out, "resource_random", &hexs(&a.random_hash));
+                f(out, "original_hash", &hexs(&a.original_hash));
+                f(out, "segment_index", &format!("{}", a.segment_index));
+                f(out, "total_segments", &format!("{}", a.total_segments));
+                f(out, "request_id", &hexs(&a.request_id.unwrap_or_default()));
+                f(out, "resource_flags", &format!("{:02x}", a.flags.to_byte()));
+                f(out, "hashmap", &hexs(&a.hashmap));
+            }
+            Err(_) => for name in ["transfer_size", "data_size", "resource_parts",
+                                   "resource_hash", "resource_random", "original_hash",
+                                   "segment_index", "total_segments", "request_id",
+                                   "resource_flags", "hashmap"] {
+                f(out, name, "-");
+            },
+        }
+    }
+    if context == 0x03 {
+        f(out, "hashmap_exhausted", "-");
+        f(out, "last_map_hash", "-");
+        f(out, "resource_hash", "-");
+        f(out, "requested_hashes", "-");
+    }
+    if context == 0x04 {
+        match parse_hashmap_update(&pt) {
+            Ok((hash, segment, hashmap)) => {
+                f(out, "resource_hash", &hexs(&hash));
+                f(out, "segment_index", &format!("{}", segment));
+                f(out, "hashmap", &hexs(&hashmap));
+            }
+            Err(_) => {
+                f(out, "resource_hash", "-");
+                f(out, "segment_index", "-");
+                f(out, "hashmap", "-");
+            }
+        }
+    }
+    if context == 0x06 || context == 0x07 {
+        f(out, "resource_hash", "-");
+    }
 
     // rsReticulum's own parsers, rns-link/src/link.rs:884 and :968. The
     // timestamp comes back as f64 and is printed as the eight bytes it
     // was decoded from.
-    let context = p.header.context.to_byte();
     if context == 0x09 {
         match Link::parse_request(&pt) {
             Ok((_, path_hash, at, data)) => {
