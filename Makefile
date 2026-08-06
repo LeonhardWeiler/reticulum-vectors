@@ -39,8 +39,22 @@ gen:
 # The hashes are read through grep because the first of the two lines
 # carries a label and sha256sum skips it, checking one file of two and
 # exiting zero.
+#
+# The list of entry points in cmd/VENDOR is read the same way, against
+# nm. It is the one claim in that file about this program rather than
+# about the vendored one, and it had gone stale twice: once when
+# test/sign added signing and once when the link vectors added the
+# X25519 exchange. The sed strips tweetnacl's own suffixes, so the file
+# can name crypto_sign where the object names
+# crypto_sign_ed25519_tweet.
 verify: check
 	cd cmd && grep -oE '[0-9a-f]{64}  tweetnacl\.[ch]' VENDOR | sha256sum -c
+	{ grep -oE '^ +crypto_[a-z_]+' cmd/VENDOR | tr -d ' ' | LC_ALL=C sort -u; \
+	  nm cmd/dump.o | sed -n 's/.* U \(crypto_[a-z_0-9]*\)/\1/p' \
+	    | sed 's/_\(ed25519\|curve25519\)_tweet//' | LC_ALL=C sort -u; } \
+	  | LC_ALL=C sort | uniq -c \
+	  | awk '$$1 != 2 { print "cmd/VENDOR and cmd/dump.o disagree on " $$2; bad = 1 } \
+	         END { exit bad }'
 	tools/gen
 	tools/cite
 
