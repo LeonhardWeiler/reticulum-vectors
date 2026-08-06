@@ -15,6 +15,10 @@
 #	DUMP=./my-decoder cmd/check	check another implementation
 #	ENCODE=no cmd/check		skip the round trip
 #
+# The result line carries a checksum over test/INDEX and every raw and
+# expect, so that a count recorded elsewhere names the corpus it was
+# measured against.
+#
 # A decoder that implements some of the kinds and not others exits 77
 # for the ones it does not, and those vectors are reported as skipped
 # rather than failed. Requiring all of them before a decoder can get a
@@ -30,6 +34,16 @@
 root=$(dirname "$0")/..
 DUMP=${DUMP:-$root/cmd/dump}
 ENCODE=${ENCODE:-yes}
+
+# A foreign harness that hangs would hang this script for as long as
+# anyone is willing to wait. timeout is not POSIX but is on every system
+# these are built on; where it is missing the calls are made directly
+# and the old behaviour is what happens.
+if command -v timeout >/dev/null 2>&1; then
+	run() { timeout 30 "$@"; }
+else
+	run() { "$@"; }
+fi
 
 if [ ! -x "$DUMP" ]; then
 	echo "no dump program at $DUMP; run make" >&2
@@ -149,8 +163,15 @@ for dir in "$root"/test/*/*/; do
 	# stderr is kept out of the comparison. A decoder that writes a
 	# warning there would otherwise have it diffed against expect, and
 	# the vector would fail for something that is not a field.
-	out=$("$DUMP" "$kind" "$dir/raw" 2>"$err")
+	out=$(run "$DUMP" "$kind" "$dir/raw" 2>"$err")
 	status=$?
+
+	# timeout reports 124, and a decoder that takes half a minute on one
+	# vector has said something worth reading.
+	if [ "$status" -eq 124 ]; then
+		fail_with "$dir" "no answer after 30 seconds"
+		continue
+	fi
 
 	# A decoder that does not implement a kind says so with status 77
 	# and is not counted against. Nothing else may use that status: a
@@ -182,7 +203,7 @@ for dir in "$root"/test/*/*/; do
 	fi
 
 	if [ "$determinism" = encode ] && [ "$ENCODE" = yes ]; then
-		if ! back=$("$DUMP" -e "$kind" "$dir/expect" 2>"$err"); then
+		if ! back=$(run "$DUMP" -e "$kind" "$dir/expect" 2>"$err"); then
 			fail_with "$dir" "round trip: $(cat "$err")"
 			continue
 		fi
@@ -196,14 +217,23 @@ for dir in "$root"/test/*/*/; do
 	pass=$((pass + 1))
 done
 
+# What the result was measured against, so that a number recorded
+# elsewhere can be told apart from the same number measured against a
+# different corpus. Two vectors have changed shape without changing the
+# count, and nothing said so. cksum because it is POSIX and this is a
+# fingerprint rather than a signature: anyone who can edit test/ can
+# edit the number too.
+corpus=$(LC_ALL=C; cat "$root"/test/INDEX "$root"/test/*/*/raw \
+                       "$root"/test/*/*/expect | cksum | cut -d' ' -f1)
+
 if [ "$skip" -eq 0 ]; then
-	echo "$pass passed, $fail failed"
+	echo "$pass passed, $fail failed, corpus $corpus"
 else
 	# Naming the kinds keeps a partial result from reading as a whole
 	# one. A decoder is free to implement four kinds and say so.
 	# Unquoted, so the shell splits the list and joins it with single
 	# spaces. The empty first line of the accumulator drops out.
-	echo "$pass passed, $fail failed, $skip skipped:" \
+	echo "$pass passed, $fail failed, corpus $corpus, $skip skipped:" \
 	     $(printf '%s\n' "$skipped_kinds" | sort -u)
 fi
 

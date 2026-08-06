@@ -3,6 +3,12 @@ Conformance of independent implementations
 Run on 2026-08-06 against the 52 vectors test/ held at that date,
 through the harnesses in conformance/.
 
+That is a date and a count, which is what was available then. cmd/check
+now prints a checksum over the corpus alongside the result, and a rerun
+records it: a count says how many vectors passed, and the checksum says
+which corpus they were. Two vectors have since changed shape without
+changing the count.
+
 Twenty-four vectors have been added since, and no row below covers them.
 The rows are left at what was measured rather than restated against a
 corpus they were not run on.

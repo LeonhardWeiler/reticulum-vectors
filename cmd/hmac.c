@@ -6,6 +6,7 @@
 #include "hmac.h"
 #include "sha256.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define BLOCK 64
@@ -18,8 +19,13 @@ void hmac_sha256(const uint8_t *key, size_t keylen,
 	uint8_t digest[HASH];
 	size_t i;
 
+	/* Unreachable: dump.c refuses to compile unless its own bound fits
+	 * inside this one. It is here rather than nowhere because the
+	 * alternative to stopping is writing nothing to out and letting the
+	 * caller compare an uninitialised buffer, which reads as a failed
+	 * authentication and is indistinguishable from a real one. */
 	if (datalen > HMAC_MAXMSG)
-		return;			/* callers bound their input; see hmac.h */
+		abort();
 
 	memset(k, 0, BLOCK);
 	if (keylen > BLOCK)
@@ -62,7 +68,12 @@ void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
 		size_t n = 0, take;
 
 		memcpy(input + n, block, blocklen);        n += blocklen;
-		memcpy(input + n, context, contextlen);    n += contextlen;
+		/* Guarded because every caller here passes NULL with a length
+		 * of zero, and C11 7.24.1p2 leaves memcpy from a null pointer
+		 * undefined even then. */
+		if (contextlen > 0) {
+			memcpy(input + n, context, contextlen); n += contextlen;
+		}
 		input[n++] = (uint8_t)((counter + 1) % 256);
 
 		hmac_sha256(prk, HASH, input, n, block);

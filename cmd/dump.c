@@ -51,6 +51,12 @@
 #define MODE_DEFAULT 0x01	/* RNS/Link.py:134#MODE_DEFAULT */
 #define ENVELOPELEN  6		/* RNS/Channel.py:133#MSGTYPE */
 
+/* Two bounds in two headers can drift apart, and the one that would
+ * give way is inside hmac_sha256, which cannot report anything. This
+ * declaration has a negative array size when it does, so the drift is a
+ * compile error rather than a wrong verdict. */
+typedef char hmac_bound_fits[MAXBLOB <= HMAC_MAXMSG ? 1 : -1];
+
 static const char *argv0;
 
 static void fatal(const char *fmt, ...)
@@ -112,11 +118,15 @@ static void field_blob(const char *name, const struct blob *b)
 		field_hex(name, b->data, b->len);
 }
 
+/* Lower case only. Two raw files differing only in the case of their hex
+ * are the same input to a decoder and different files to diff and to
+ * git, and cmd/check compares the round trip with diff. Accepting upper
+ * case would let such a vector decode and then fail the round trip with
+ * a message about the layout. */
 static int unhex(int c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
 	return -1;
 }
 

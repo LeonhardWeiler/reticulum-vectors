@@ -349,12 +349,18 @@ def determinism(kind, expect):
 
 
 class Writer:
+    # Counted apart, because the number this program prints on a good
+    # day is the success signal of the whole repository. "229 files
+    # written" was that number, and it reads like a report of 229
+    # changes; the run that changes nothing is the run that passes.
     def __init__(self, root, force):
-        self.root    = root
-        self.force   = force
-        self.written = 0
-        self.differs = []
-        self.names   = []
+        self.root      = root
+        self.force     = force
+        self.identical = 0
+        self.changed   = 0
+        self.created   = 0
+        self.differs   = []
+        self.names     = []
 
     def vector(self, kind, name, purpose, raw, expect, source=GENERATED_SOURCE):
         meta = [
@@ -385,14 +391,19 @@ class Writer:
 
     def file(self, path, lines):
         body = self.body(lines)
-        if os.path.exists(path) and not self.force:
+        if os.path.exists(path):
             with open(path) as f:
-                if f.read() != body:
-                    self.differs.append(path)
+                if f.read() == body:
+                    self.identical += 1
                     return
+            if not self.force:
+                self.differs.append(path)
+                return
+            self.changed += 1
+        else:
+            self.created += 1
         with open(path, "w") as f:
             f.write(body)
-        self.written += 1
 
 
 def make_verifier(RNS):
@@ -2099,7 +2110,11 @@ def main():
 
     w.index()
 
-    print("%d files written" % w.written)
+    counted = [("%d identical" % w.identical)]
+    if w.changed: counted.append("%d changed" % w.changed)
+    if w.created: counted.append("%d new" % w.created)
+    print(", ".join(counted))
+
     if w.differs:
         print("%d files differ and were left alone:" % len(w.differs))
         for path in w.differs:
