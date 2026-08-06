@@ -23,12 +23,12 @@ what these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  60 / 64  17 / 17
-    rsReticulum         07ca721   2026-08-02  57 / 64  14 / 17
-    Reticulum-rs        be7a7fc   2026-07-31  48 / 64   8 / 17
-    microReticulum      40fa628   2026-07-20  47 / 64  10 / 17
-    rns.js              d4602ca   2025-02-10  37 / 64   2 / 17
-    sgiath/reticulum    0c4904e   2026-07-09  32 / 64   2 / 17
+    go-reticulum        06621cc   2026-04-28  62 / 64  17 / 17
+    rsReticulum         07ca721   2026-08-02  58 / 64  14 / 17
+    Reticulum-rs        be7a7fc   2026-07-31  49 / 64   8 / 17
+    microReticulum      40fa628   2026-07-20  49 / 64  10 / 17
+    rns.js              d4602ca   2025-02-10  39 / 64   2 / 17
+    sgiath/reticulum    0c4904e   2026-07-09  33 / 64   2 / 17
 
 Out of 64, not 78: every harness exits 77 for four kinds, and those
 fourteen vectors are skipped rather than counted against anyone.
@@ -41,28 +41,56 @@ fourteen vectors are skipped rather than counted against anyone.
 The link column is the fifteen vectors of the three link kinds plus the
 two delivery proofs made on a link, which are filed under proof.
 
-Three failures in this run are the harnesses' own and are not counted
-as findings. They are recorded here rather than quietly fixed, because
-a harness is evidence and a change to one changes what the numbers
-mean:
+No failure in this run is a harness's own. Four were. They are
+recorded here because a harness is evidence and a change to one changes
+what the numbers mean, and every row moved:
 
-    destination/empty-aspect       All six compute the right
-                                   destination hash and print the empty
-                                   aspect as an empty value rather than
-                                   as "-". A format rule of the corpus,
-                                   broken by six harnesses and by no
-                                   implementation.
+    go-reticulum      60 -> 62      microReticulum    47 -> 49
+    rsReticulum       57 -> 58      rns.js            37 -> 39
+    Reticulum-rs      48 -> 49      sgiath/reticulum  32 -> 33
 
-    encrypted/low-order-ephemeral  go-reticulum's crypto/ecdh refuses
-                                   the low-order point, which is what
-                                   the pinned backend does. The harness
-                                   reports the exception instead of the
-                                   six "-" fields that say no agreement
-                                   was reached.
+    destination/empty-aspect       All six computed the right
+                                   destination hash and printed the
+                                   empty aspect as an empty value
+                                   rather than as "-". A format rule of
+                                   the corpus, broken by six harnesses
+                                   and by no implementation. Every hex
+                                   printer now writes "-" for an empty
+                                   byte string, as cmd/dump does. Every
+                                   row gains one.
 
-    announce/short-header          microReticulum logs the rejection on
-                                   standard output, so the log line
-                                   lands in the field stream.
+    encrypted/low-order-ephemeral  Three implementations refuse the
+                                   low-order point, which is what the
+                                   pinned backend does, and three
+                                   harnesses reported the refusal as an
+                                   exception that replaced every field
+                                   after it. A refused agreement is a
+                                   result: the fields it gates print
+                                   "-", which is what expect holds.
+                                   go-reticulum and rns.js gain one.
+                                   sgiath/reticulum refuses it too and
+                                   still fails the vector, on finding 7.
+
+    announce/short-header          microReticulum logs through
+                                   RNS::doLog, which writes to stdout,
+                                   so the log line landed in the field
+                                   stream ahead of the fields. The
+                                   harness installs a log callback onto
+                                   stderr. It gains one.
+
+    every vector sgiath decodes    Its harness raised on a nil value
+                                   rather than printing it as absent,
+                                   and the raise replaced every field
+                                   after the first one finding 7
+                                   touches. The vectors still fail; they
+                                   now say how far the defect reaches.
+                                   No count moved.
+
+The first three were named in the previous run and left standing. That
+was the wrong call twice over: a footnote saying the evidence is wrong
+is not evidence, and the fourth was invisible for as long as the third
+hid it. A harness fault is fixed and its effect on the numbers is
+written down, which is what the four entries above are.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot
@@ -146,9 +174,10 @@ a bare signature check.
 
 Four of the six decrypt a packet from the reference correctly. The
 encrypted vectors turned up one implementation that cannot decrypt any
-of them, one that never gets as far as trying, and one whose ratchets
-do not work, all for reasons the announce vectors could not have
-shown.
+of them, one that agrees on the shared secret and can derive nothing
+from it because the salt is an identity hash it never computed, and one
+whose ratchets do not work, all for reasons the announce vectors could
+not have shown.
 
 One of the six carries a link from request to established traffic
 without a single divergence. Two cannot establish one with the
@@ -311,8 +340,11 @@ the defect is invisible until a ratchet is used.
 
 Finding 7: sgiath/reticulum cannot load an identity from a private key
 
-Affects sgiath/reticulum. Thirteen of its failures: every
-test/keyset/, every test/encrypted/, and test/sign/.
+Affects sgiath/reticulum. Fourteen of its failures: every
+test/keyset/, every test/encrypted/, and test/sign/. The fourteenth is
+encrypted/low-order-ephemeral, which the previous run charged to
+finding 16; the implementation refuses that point correctly and fails
+the vector here instead.
 
     lib/reticulum/identity.ex:54    enc_pub = :crypto.generate_key(:eddh, :x25519, enc_sec)
     lib/reticulum/identity.ex:55    sig_pub = :crypto.generate_key(:eddsa, :ed25519, sig_sec)
@@ -343,6 +375,14 @@ and the signer would work, but the harness cannot get as far as calling
 it: printing the public key comes first and raises on the tuple. An
 implementation that cannot state its own public key cannot announce,
 whatever its Ed25519 does.
+
+test/encrypted shows how narrow the defect is, which is only visible
+since the harness stopped raising at the first field it touches. The
+X25519 agreement is right: shared_key matches the reference on every
+encrypted vector, ratchet and all. What fails is the line after it. The
+salt of the derivation is the identity hash, that hash is nil, and
+HKDF raises on it, so every key, every verdict and every plaintext is
+absent. One field of the identity carries the whole of it.
 
 
 Finding 8: microReticulum does not build with GCC 16
@@ -559,14 +599,26 @@ proved-and-invalid, which is a different state.
 
 Finding 16: the low-order shared secret is returned rather than refused
 
-Affects rsReticulum, Reticulum-rs, microReticulum and sgiath/reticulum.
-Vector test/encrypted/low-order-ephemeral.
+Affects rsReticulum, Reticulum-rs and microReticulum. Vector
+test/encrypted/low-order-ephemeral.
 
 X25519 against a point of small order yields an all-zero secret that
-neither end contributed to. The pinned backend raises; these four
+neither end contributed to. The pinned backend raises; these three
 return the zero secret, derive a key from it, and report hmac_valid no
-rather than "-". go-reticulum's crypto/ecdh refuses it, which agrees
-with the pin; see the note above about how the harness reports that.
+rather than "-".
+
+Three refuse it, which agrees with the pin: go-reticulum through
+crypto/ecdh, rns.js through @noble/curves, and sgiath/reticulum through
+Erlang's :crypto.compute_key. The first two pass the vector. The third
+refuses the point and then cannot state the identity hash, which is
+finding 7 and not this one.
+
+The count in the previous run was four rather than three, and it was
+wrong: two of the three refusals were reported by their harnesses as
+exceptions, and an exception is indistinguishable from a wrong answer
+in a diff. A harness that turns a correct refusal into a failure
+manufactures a finding, which is the same defect as one that fills in
+a field the implementation never computed, in the other direction.
 
 Every reader of an announce can compute the derivation that follows,
 because the salt is the recipient's identity hash and that is public.

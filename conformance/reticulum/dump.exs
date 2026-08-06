@@ -16,7 +16,21 @@ defmodule Dump do
   @packet_types %{data: "data", announce: "announce", link_request: "linkrequest", proof: "proof"}
 
   def f(name, value), do: IO.puts(String.pad_trailing(name, @w) <> " " <> value)
+  # An empty byte string prints as "-", as cmd/dump's field_hex does.
+  # Hex cannot spell it, and a name followed by nothing cannot be told
+  # from a truncated line.
+  def hx(<<>>), do: "-"
+  # A value the implementation did not produce is absent, not a crash.
+  # from_private_key/1 leaves hash nil; see finding 7. Printing "-" and
+  # going on shows how far the defect reaches, which one error line
+  # replacing every remaining field does not.
+  def hx(nil), do: "-"
   def hx(b), do: Base.encode16(b, case: :lower)
+
+  def ratchet_public(nil), do: "-"
+
+  def ratchet_public(priv),
+    do: hx(:crypto.compute_key(:eddh, <<9>> <> :binary.copy(<<0>>, 31), priv, :x25519))
 
   def read_raw(path) do
     path
@@ -218,18 +232,15 @@ defmodule Dump do
         {:ok, id} = Identity.from_private_key(priv)
 
         agree = ratchet_priv || id.enc_sec
-        shared = :crypto.compute_key(:eddh, ephemeral, agree, :x25519)
-        derived = Crypto.hkdf(shared, id.hash, <<>>, 64)
-        half = div(byte_size(derived), 2)
-        <<signing::binary-size(half), encryption::binary>> = derived
 
-        fernet = Fernet.new(derived)
-        hmac_ok = Fernet.sig_valid?(fernet, token)
-
-        opts = if ratchet_priv, do: [ratchets: [ratchet_priv]], else: []
-        plaintext =
-          case Identity.decrypt(id, payload, opts) do
-            {:ok, pt} -> pt
+        # A refused agreement is a result, not a harness error. The
+        # pinned backend refuses a point of small order rather than
+        # returning the all-zero secret, and everything after the
+        # agreement is then unreachable rather than wrong.
+        shared =
+          try do
+            :crypto.compute_key(:eddh, ephemeral, agree, :x25519)
+          rescue
             _ -> nil
           end
 
@@ -239,28 +250,57 @@ defmodule Dump do
         f("ciphertext", hx(ct))
         f("hmac", hx(mac))
         f("identity_hash", hx(id.hash))
-
-        f(
-          "ratchet_public",
-          if(ratchet_priv,
-            do: hx(:crypto.compute_key(:eddh, :binary.copy(<<9>>, 1) <> :binary.copy(<<0>>, 31), ratchet_priv, :x25519)),
-            else: "-"
-          )
-        )
+        f("ratchet_public", ratchet_public(ratchet_priv))
 
         f("shared_key", hx(shared))
-        f("signing_key", hx(signing))
-        f("encryption_key", hx(encryption))
-        f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
 
-        case plaintext do
-          nil ->
-            f("plaintext_length", "-")
-            f("plaintext", "-")
+        # The salt of the derivation is the identity hash, which
+        # from_private_key/1 leaves nil; see finding 7. The agreement
+        # above succeeded, so the failure starts here and not before it.
+        derived =
+          if shared == nil do
+            nil
+          else
+            try do
+              Crypto.hkdf(shared, id.hash, <<>>, 64)
+            rescue
+              _ -> nil
+            end
+          end
 
-          pt ->
-            f("plaintext_length", Integer.to_string(byte_size(pt)))
-            f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+        if derived == nil do
+          Enum.each(
+            ~w(signing_key encryption_key hmac_valid plaintext_length plaintext),
+            &f(&1, "-")
+          )
+        else
+          half = div(byte_size(derived), 2)
+          <<signing::binary-size(half), encryption::binary>> = derived
+
+          fernet = Fernet.new(derived)
+          hmac_ok = Fernet.sig_valid?(fernet, token)
+
+          opts = if ratchet_priv, do: [ratchets: [ratchet_priv]], else: []
+
+          plaintext =
+            case Identity.decrypt(id, payload, opts) do
+              {:ok, pt} -> pt
+              _ -> nil
+            end
+
+          f("signing_key", hx(signing))
+          f("encryption_key", hx(encryption))
+          f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
+
+          case plaintext do
+            nil ->
+              f("plaintext_length", "-")
+              f("plaintext", "-")
+
+            pt ->
+              f("plaintext_length", Integer.to_string(byte_size(pt)))
+              f("plaintext", hx(pt))
+          end
         end
       end
     else

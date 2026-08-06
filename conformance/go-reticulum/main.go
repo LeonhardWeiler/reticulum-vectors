@@ -36,6 +36,16 @@ var out []string
 
 func f(name, value string) { out = append(out, fmt.Sprintf("%-*s %s", W, name, value)) }
 
+// An empty byte string prints as "-", as cmd/dump's field_hex does.
+// Hex cannot spell it, and a name followed by nothing cannot be told
+// from a truncated line.
+func hx(b []byte) string {
+	if len(b) == 0 {
+		return "-"
+	}
+	return hex.EncodeToString(b)
+}
+
 func readRaw(path string) [][]byte {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -66,10 +76,10 @@ func identity(b [][]byte) {
 		panic(err)
 	}
 	pub := id.GetPublicKey()
-	f("public_key", hex.EncodeToString(pub))
-	f("x25519_public", hex.EncodeToString(pub[:32]))
-	f("ed25519_public", hex.EncodeToString(pub[32:]))
-	f("identity_hash", hex.EncodeToString(id.Hash))
+	f("public_key", hx(pub))
+	f("x25519_public", hx(pub[:32]))
+	f("ed25519_public", hx(pub[32:]))
+	f("identity_hash", hx(id.Hash))
 }
 
 func keyset(b [][]byte) {
@@ -78,13 +88,13 @@ func keyset(b [][]byte) {
 		panic(err)
 	}
 	prv, pub := id.GetPrivateKey(), id.GetPublicKey()
-	f("private_key", hex.EncodeToString(prv))
-	f("x25519_private", hex.EncodeToString(prv[:32]))
-	f("ed25519_private", hex.EncodeToString(prv[32:]))
-	f("public_key", hex.EncodeToString(pub))
-	f("x25519_public", hex.EncodeToString(pub[:32]))
-	f("ed25519_public", hex.EncodeToString(pub[32:]))
-	f("identity_hash", hex.EncodeToString(id.Hash))
+	f("private_key", hx(prv))
+	f("x25519_private", hx(prv[:32]))
+	f("ed25519_private", hx(prv[32:]))
+	f("public_key", hx(pub))
+	f("x25519_public", hx(pub[:32]))
+	f("ed25519_public", hx(pub[32:]))
+	f("identity_hash", hx(id.Hash))
 }
 
 func destination(b [][]byte) {
@@ -110,18 +120,14 @@ func destination(b [][]byte) {
 		panic(err)
 	}
 
-	f("name", hex.EncodeToString(b[0]))
-	f("app_name", hex.EncodeToString([]byte(appName)))
+	f("name", hx(b[0]))
+	f("app_name", hx([]byte(appName)))
 	for _, a := range aspects {
-		f("aspect", hex.EncodeToString([]byte(a)))
+		f("aspect", hx([]byte(a)))
 	}
-	f("name_hash", hex.EncodeToString(nameHash))
-	if b[1] == nil {
-		f("identity_hash", "-")
-	} else {
-		f("identity_hash", hex.EncodeToString(b[1]))
-	}
-	f("destination_hash", hex.EncodeToString(dh))
+	f("name_hash", hx(nameHash))
+	f("identity_hash", hx(b[1]))
+	f("destination_hash", hx(dh))
 }
 
 func signature(b [][]byte) {
@@ -130,10 +136,10 @@ func signature(b [][]byte) {
 		panic(err)
 	}
 	digest := sha256.Sum256(b[1])
-	f("ed25519_public", hex.EncodeToString(b[0][32:]))
+	f("ed25519_public", hx(b[0][32:]))
 	f("message_length", fmt.Sprintf("%d", len(b[1])))
-	f("message_sha256", hex.EncodeToString(digest[:]))
-	f("signature", hex.EncodeToString(b[2]))
+	f("message_sha256", hx(digest[:]))
+	f("signature", hx(b[2]))
 	if id.Validate(b[2], b[1]) {
 		f("valid", "yes")
 	} else {
@@ -158,12 +164,12 @@ func sign(b [][]byte) {
 	}
 	prv := id.GetPrivateKey()
 	digest := sha256.Sum256(b[1])
-	f("private_key", hex.EncodeToString(prv))
-	f("ed25519_private", hex.EncodeToString(prv[32:]))
-	f("ed25519_public", hex.EncodeToString(id.GetPublicKey()[32:]))
+	f("private_key", hx(prv))
+	f("ed25519_private", hx(prv[32:]))
+	f("ed25519_public", hx(id.GetPublicKey()[32:]))
 	f("message_length", fmt.Sprintf("%d", len(b[1])))
-	f("message_sha256", hex.EncodeToString(digest[:]))
-	f("signature", hex.EncodeToString(sig))
+	f("message_sha256", hx(digest[:]))
+	f("signature", hx(sig))
 }
 
 // The fourth packet type. go-reticulum has a proof validator with
@@ -173,8 +179,8 @@ func sign(b [][]byte) {
 func proof(b [][]byte) {
 	provedRaw, signerPublic, raw := b[0], b[1], b[2]
 
-	f("proved_packet", hex.EncodeToString(provedRaw))
-	f("signer_public", hex.EncodeToString(signerPublic))
+	f("proved_packet", hx(provedRaw))
+	f("signer_public", hx(signerPublic))
 
 	proved := &rns.Packet{Raw: provedRaw}
 	if !proved.Unpack() {
@@ -208,9 +214,9 @@ func proof(b [][]byte) {
 	}
 
 	f("form", map[bool]string{true: "explicit", false: "implicit"}[explicit])
-	f("packet_hash", hex.EncodeToString(packetHash))
+	f("packet_hash", hx(packetHash))
 	if explicit {
-		f("proof_hash", hex.EncodeToString(payload[:32]))
+		f("proof_hash", hx(payload[:32]))
 	} else {
 		f("proof_hash", "-")
 	}
@@ -223,18 +229,18 @@ func proof(b [][]byte) {
 	// is unexported, so the key goes to the same ed25519.Verify that
 	// Link.Validate calls.
 	if p.DestinationType == 3 {
-		f("link_id", hex.EncodeToString(proved.DestinationHash))
+		f("link_id", hx(proved.DestinationHash))
 		f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, proved.DestinationHash)))
-		f("signature", hex.EncodeToString(signature))
-		f("signer_ed25519", hex.EncodeToString(signerPublic))
+		f("signature", hx(signature))
+		f("signer_ed25519", hx(signerPublic))
 		f("signature_valid", yesNo(ed25519.Verify(ed25519.PublicKey(signerPublic), packetHash, signature)))
 		return
 	}
 
-	f("proof_destination", hex.EncodeToString(packetHash[:addrLen]))
+	f("proof_destination", hx(packetHash[:addrLen]))
 	f("destination_match", yesNo(bytes.Equal(p.DestinationHash, packetHash[:addrLen])))
-	f("signature", hex.EncodeToString(signature))
-	f("signer_ed25519", hex.EncodeToString(signerPublic[32:]))
+	f("signature", hx(signature))
+	f("signer_ed25519", hx(signerPublic[32:]))
 	f("signature_valid", yesNo(receipt.ValidateProof(payload, p)))
 }
 
@@ -314,11 +320,11 @@ func announce(b [][]byte) {
 	f("packet_type", packetTypes[p.PacketType])
 	f("hops", fmt.Sprintf("%d", p.Hops))
 	if p.HeaderType == rns.HeaderType2 {
-		f("transport_id", hex.EncodeToString(p.TransportID))
+		f("transport_id", hx(p.TransportID))
 	} else {
 		f("transport_id", "-")
 	}
-	f("destination_hash", hex.EncodeToString(p.DestinationHash))
+	f("destination_hash", hx(p.DestinationHash))
 	switch p.Context {
 	case 0x00:
 		f("context", "none")
@@ -328,28 +334,28 @@ func announce(b [][]byte) {
 		f("context", fmt.Sprintf("%02x", p.Context))
 	}
 	f("payload_length", fmt.Sprintf("%d", len(payload)))
-	f("public_key", hex.EncodeToString(publicKey))
-	f("name_hash", hex.EncodeToString(nameHash))
-	f("random_hash", hex.EncodeToString(randomHash))
+	f("public_key", hx(publicKey))
+	f("name_hash", hx(nameHash))
+	f("random_hash", hx(randomHash))
 	if ratchet != nil {
-		f("ratchet", hex.EncodeToString(ratchet))
+		f("ratchet", hx(ratchet))
 	} else {
 		f("ratchet", "-")
 	}
-	f("signature", hex.EncodeToString(sig))
+	f("signature", hx(sig))
 	if len(appData) > 0 {
-		f("app_data", hex.EncodeToString(appData))
+		f("app_data", hx(appData))
 	} else {
 		f("app_data", "-")
 	}
-	f("identity_hash", hex.EncodeToString(announced.Hash))
-	f("expected_hash", hex.EncodeToString(expected))
+	f("identity_hash", hx(announced.Hash))
+	f("expected_hash", hx(expected))
 	if bytes.Equal(p.DestinationHash, expected) {
 		f("destination_match", "yes")
 	} else {
 		f("destination_match", "no")
 	}
-	f("signed_data", hex.EncodeToString(signed))
+	f("signed_data", hx(signed))
 	if announced.Validate(sig, signed) {
 		f("signature_valid", "yes")
 	} else {
@@ -372,11 +378,11 @@ func printHeader(p *rns.Packet, raw []byte) {
 	f("packet_type", packetTypes[p.PacketType])
 	f("hops", fmt.Sprintf("%d", p.Hops))
 	if p.HeaderType == rns.HeaderType2 {
-		f("transport_id", hex.EncodeToString(p.TransportID))
+		f("transport_id", hx(p.TransportID))
 	} else {
 		f("transport_id", "-")
 	}
-	f("destination_hash", hex.EncodeToString(p.DestinationHash))
+	f("destination_hash", hx(p.DestinationHash))
 	f("context", contextName(p.Context))
 	f("payload_length", fmt.Sprintf("%d", len(p.Data)))
 }
@@ -411,12 +417,8 @@ func encrypted(b [][]byte) {
 
 	// Echoes of the input lines, so that expect holds every byte of
 	// raw. Not a claim about go-reticulum: the harness was handed these.
-	f("recipient_private", hex.EncodeToString(priv))
-	if ratchetPriv == nil {
-		f("ratchet_private", "-")
-	} else {
-		f("ratchet_private", hex.EncodeToString(ratchetPriv))
-	}
+	f("recipient_private", hx(priv))
+	f("ratchet_private", hx(ratchetPriv))
 
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
@@ -468,9 +470,24 @@ func encrypted(b [][]byte) {
 	if err != nil {
 		panic(err)
 	}
+	// A refused agreement is a result, not a harness error. This curve
+	// refuses a point of small order rather than returning the all-zero
+	// secret, which is what the pinned backend does, and everything
+	// after the agreement is then unreachable rather than wrong.
 	shared, err := sk.ECDH(pp)
 	if err != nil {
-		panic(err)
+		printHeader(p, raw)
+		f("ephemeral_public", hx(ephemeral))
+		f("iv", hx(iv))
+		f("ciphertext", hx(ct))
+		f("hmac", hx(mac))
+		f("identity_hash", hx(id.Hash))
+		f("ratchet_public", hx(ratchetPub))
+		for _, n := range []string{"shared_key", "signing_key", "encryption_key",
+			"hmac_valid", "plaintext_length", "plaintext"} {
+			f(n, "-")
+		}
+		return
 	}
 
 	// derivedKeyLen is 64 at rns/identity.go:28, transcribed here
@@ -496,19 +513,15 @@ func encrypted(b [][]byte) {
 	plaintext, _ := id.Decrypt(payload, ratchets, false)
 
 	printHeader(p, raw)
-	f("ephemeral_public", hex.EncodeToString(ephemeral))
-	f("iv", hex.EncodeToString(iv))
-	f("ciphertext", hex.EncodeToString(ct))
-	f("hmac", hex.EncodeToString(mac))
-	f("identity_hash", hex.EncodeToString(id.Hash))
-	if ratchetPub == nil {
-		f("ratchet_public", "-")
-	} else {
-		f("ratchet_public", hex.EncodeToString(ratchetPub))
-	}
-	f("shared_key", hex.EncodeToString(shared))
-	f("signing_key", hex.EncodeToString(signing))
-	f("encryption_key", hex.EncodeToString(encryption))
+	f("ephemeral_public", hx(ephemeral))
+	f("iv", hx(iv))
+	f("ciphertext", hx(ct))
+	f("hmac", hx(mac))
+	f("identity_hash", hx(id.Hash))
+	f("ratchet_public", hx(ratchetPub))
+	f("shared_key", hx(shared))
+	f("signing_key", hx(signing))
+	f("encryption_key", hx(encryption))
 	if hmacOk {
 		f("hmac_valid", "yes")
 	} else {
@@ -522,7 +535,7 @@ func encrypted(b [][]byte) {
 		if len(plaintext) == 0 {
 			f("plaintext", "-")
 		} else {
-			f("plaintext", hex.EncodeToString(plaintext))
+			f("plaintext", hx(plaintext))
 		}
 	}
 }
@@ -578,10 +591,10 @@ func linkrequest(b [][]byte) {
 
 	signalled := len(p.Data) == ecPubSize+signalSize
 	printHeader(p, raw)
-	f("x25519_public", hex.EncodeToString(p.Data[:ecPubSize/2]))
-	f("ed25519_public", hex.EncodeToString(p.Data[ecPubSize/2:ecPubSize]))
+	f("x25519_public", hx(p.Data[:ecPubSize/2]))
+	f("ed25519_public", hx(p.Data[ecPubSize/2:ecPubSize]))
 	if signalled {
-		f("signalling", hex.EncodeToString(p.Data[ecPubSize:]))
+		f("signalling", hx(p.Data[ecPubSize:]))
 	} else {
 		f("signalling", "-")
 	}
@@ -591,14 +604,14 @@ func linkrequest(b [][]byte) {
 	} else {
 		f("mtu", "-")
 	}
-	f("link_id", hex.EncodeToString(link.LinkID))
+	f("link_id", hx(link.LinkID))
 }
 
 func linkproof(b [][]byte) {
 	requestRaw, identityPublic, raw := b[0], b[1], b[2]
 
-	f("link_request", hex.EncodeToString(requestRaw))
-	f("signer_public", hex.EncodeToString(identityPublic))
+	f("link_request", hx(requestRaw))
+	f("signer_public", hx(identityPublic))
 
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
@@ -645,15 +658,15 @@ func linkproof(b [][]byte) {
 	signed = append(signed, signalling...)
 
 	printHeader(p, raw)
-	f("link_id", hex.EncodeToString(linkID))
+	f("link_id", hx(linkID))
 	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
-	f("signature", hex.EncodeToString(sig))
-	f("x25519_public", hex.EncodeToString(x25519Public))
+	f("signature", hx(sig))
+	f("x25519_public", hx(x25519Public))
 	// linkModeFromProofPacket and linkMTUFromProofPacket are rns's own,
 	// at rns/link.go:2798 and rns/link.go:2755, and both are unexported.
 	// They are followed here rather than called.
 	if signalled {
-		f("signalling", hex.EncodeToString(signalling))
+		f("signalling", hx(signalling))
 		printMode(int(signalling[0]&0xe0) >> 5)
 		f("mtu", fmt.Sprintf("%d", (int(signalling[0])<<16|int(signalling[1])<<8|int(signalling[2]))&0x1fffff))
 	} else {
@@ -661,16 +674,16 @@ func linkproof(b [][]byte) {
 		printMode(linkDefaultMode)
 		f("mtu", "-")
 	}
-	f("signer_ed25519", hex.EncodeToString(signerEd))
-	f("signed_data", hex.EncodeToString(signed))
+	f("signer_ed25519", hx(signerEd))
+	f("signed_data", hx(signed))
 	f("signature_valid", yesNo(signer.Validate(sig, signed)))
 }
 
 func linkdata(b [][]byte) {
 	requestRaw, responderPrivate, raw := b[0], b[1], b[2]
 
-	f("link_request", hex.EncodeToString(requestRaw))
-	f("responder_private", hex.EncodeToString(responderPrivate))
+	f("link_request", hx(requestRaw))
+	f("responder_private", hx(responderPrivate))
 
 	if len(raw) < 2 {
 		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 2})
@@ -689,14 +702,14 @@ func linkdata(b [][]byte) {
 	linkID := requestLink.LinkID
 
 	printHeader(p, raw)
-	f("link_id", hex.EncodeToString(linkID))
+	f("link_id", hx(linkID))
 	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
 
 	if p.Context == 0xfa {
 		f("encrypted", "no")
 		f("plaintext_length", fmt.Sprintf("%d", len(p.Data)))
 		if len(p.Data) > 0 {
-			f("plaintext", hex.EncodeToString(p.Data))
+			f("plaintext", hx(p.Data))
 		} else {
 			f("plaintext", "-")
 		}
@@ -747,12 +760,12 @@ func linkdata(b [][]byte) {
 		}
 	}
 
-	f("iv", hex.EncodeToString(iv))
-	f("ciphertext", hex.EncodeToString(ct))
-	f("hmac", hex.EncodeToString(mac))
-	f("shared_key", hex.EncodeToString(shared))
-	f("signing_key", hex.EncodeToString(signing))
-	f("encryption_key", hex.EncodeToString(encryption))
+	f("iv", hx(iv))
+	f("ciphertext", hx(ct))
+	f("hmac", hx(mac))
+	f("shared_key", hx(shared))
+	f("signing_key", hx(signing))
+	f("encryption_key", hx(encryption))
 	f("hmac_valid", yesNo(macOK))
 	if plaintext == nil {
 		f("plaintext_length", "-")
@@ -761,7 +774,7 @@ func linkdata(b [][]byte) {
 	}
 	f("plaintext_length", fmt.Sprintf("%d", len(plaintext)))
 	if len(plaintext) > 0 {
-		f("plaintext", hex.EncodeToString(plaintext))
+		f("plaintext", hx(plaintext))
 	} else {
 		f("plaintext", "-")
 	}
@@ -771,11 +784,11 @@ func linkdata(b [][]byte) {
 	// unexported, so this follows those three lines with the same
 	// offsets rather than calling them.
 	if p.Context == 0x0e && len(plaintext) >= 6 {
-		f("msgtype", hex.EncodeToString(plaintext[0:2]))
+		f("msgtype", hx(plaintext[0:2]))
 		f("sequence", fmt.Sprintf("%d", binary.BigEndian.Uint16(plaintext[2:4])))
 		f("declared_length", fmt.Sprintf("%d", binary.BigEndian.Uint16(plaintext[4:6])))
 		if len(plaintext) > 6 {
-			f("message", hex.EncodeToString(plaintext[6:]))
+			f("message", hx(plaintext[6:]))
 		} else {
 			f("message", "-")
 		}
@@ -789,9 +802,9 @@ func linkdata(b [][]byte) {
 		if err := id.LoadPublicKey(pub); err != nil {
 			panic(err)
 		}
-		f("identity_public", hex.EncodeToString(pub))
-		f("identity_hash", hex.EncodeToString(rns.TruncatedHash(pub)))
-		f("identity_signed", hex.EncodeToString(signed))
+		f("identity_public", hx(pub))
+		f("identity_hash", hx(rns.TruncatedHash(pub)))
+		f("identity_signed", hx(signed))
 		f("identity_valid", yesNo(id.Validate(sig, signed)))
 	}
 }

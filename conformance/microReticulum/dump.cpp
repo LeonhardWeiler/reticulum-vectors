@@ -14,6 +14,7 @@
 #include <sstream>
 
 #include "Identity.h"
+#include "Log.h"
 #include "Destination.h"
 #include "Packet.h"
 #include "Bytes.h"
@@ -32,7 +33,17 @@ static void f(const char *name, const std::string &value) {
 	out.push_back(std::string(buf) + value);
 }
 
-static std::string hexs(const RNS::Bytes &b) { return b.toHex(); }
+// An empty byte string prints as "-", as cmd/dump's field_hex does.
+// Hex cannot spell it, and a name followed by nothing cannot be told
+// from a truncated line.
+static std::string hexs(const RNS::Bytes &b) { return b.size() ? std::string(b.toHex().c_str()) : "-"; }
+
+// The library logs to stdout, which is the field stream. Diagnostics go
+// to stderr instead, so that a rejection the harness reports correctly
+// is not preceded by the library's account of the same rejection.
+static void log_to_stderr(const char *msg, RNS::LogLevel level) {
+	fprintf(stderr, "[%s] %s\n", RNS::getLevelName(level), msg);
+}
 
 static std::vector<RNS::Bytes> read_raw(const char *path, std::vector<bool> &absent) {
 	std::ifstream in(path);
@@ -569,6 +580,8 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 
 int main(int argc, char **argv) {
 	if (argc != 3) { fprintf(stderr, "usage: micro kind rawfile\n"); return 2; }
+
+	RNS::set_log_callback(log_to_stderr);
 
 	std::vector<bool> absent;
 	std::vector<RNS::Bytes> blobs = read_raw(argv[2], absent);

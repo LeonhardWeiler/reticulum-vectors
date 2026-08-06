@@ -18,7 +18,10 @@ import Constants from "../src/rns.js/src/constants.js";
 const W = 18;
 const out = [];
 const f = (name, value) => out.push(name.padEnd(W) + " " + value);
-const hex = (b) => Buffer.from(b).toString("hex");
+// An empty byte string prints as "-", as cmd/dump's field_hex does.
+// Hex cannot spell it, and a name followed by nothing cannot be told
+// from a truncated line.
+const hex = (b) => Buffer.from(b).toString("hex") || "-";
 
 function readRaw(path) {
     return fs.readFileSync(path, "utf8")
@@ -212,7 +215,26 @@ function encrypted(blobs) {
     // rns.js has no ratchet path in decrypt(); the agreement is done
     // with its own primitive so the rest can still be compared.
     const agree = ratchetPriv === null ? id.privateKeyBytes : ratchetPriv;
-    const shared = Buffer.from(x25519.getSharedSecret(agree, ephemeral));
+
+    // A refused agreement is a result, not a harness error. The pinned
+    // backend refuses a point of small order rather than returning the
+    // all-zero secret, and everything after the agreement is then
+    // unreachable rather than wrong.
+    let shared = null;
+    try {
+        shared = Buffer.from(x25519.getSharedSecret(agree, ephemeral));
+    } catch (e) {
+        header(p, raw);
+        f("ephemeral_public", hex(ephemeral));
+        f("iv", hex(iv));
+        f("ciphertext", hex(ct));
+        f("hmac", hex(mac));
+        f("identity_hash", hex(id.hash));
+        f("ratchet_public", ratchetPriv === null ? "-" : hex(Buffer.from(x25519.getPublicKey(ratchetPriv))));
+        for (const n of ["shared_key", "signing_key", "encryption_key",
+                         "hmac_valid", "plaintext_length", "plaintext"]) f(n, "-");
+        return;
+    }
 
     // Follows src/identity.js:237. The derived length is rns.js's own.
     const derived = Cryptography.hkdf(32, shared, id.hash);

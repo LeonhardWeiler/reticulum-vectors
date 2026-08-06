@@ -29,7 +29,7 @@ python-rns writes, and it is not where to start.
     README              one vector printed in full
 
 
-Four rules
+Six rules
 
 1. Print what the implementation computed.
 
@@ -78,12 +78,40 @@ Four rules
    destination adds the name rules, announce adds the header and the
    signature, and by then most of the format is in hand.
 
+5. An empty byte string is "-".
+
+   Hex cannot spell one, and a name followed by nothing is a line that
+   cannot be told from a truncated one. cmd/dump does this once, in
+   field_hex, which is where to do it: one hex printer, one case.
+
+   All six harnesses got it wrong and only one vector reaches it,
+   test/destination/empty-aspect. Getting everything else right is not
+   evidence that this is right.
+
+6. An exception is not a field, and neither is a log line.
+
+   A refusal is a result. Where the reference refuses an input, an
+   implementation that refuses it agrees with the reference, and a
+   harness that lets the exception out reports that agreement as a
+   failure and invents a finding. Catch it and print "-" for the fields
+   it gates. test/encrypted/low-order-ephemeral is that vector: no key
+   agreement exists, and expect holds six dashes because of it.
+
+   A library that logs to standard output writes into the field stream.
+   Send its output to standard error before the first call; cmd/check
+   reads standard output and nothing else.
+
+   The general form: a field the implementation produced nothing for is
+   "-", a field it produced the wrong value for is that wrong value,
+   and neither may delete the fields after it. A harness that stops at
+   the first defect measures one.
+
 
 What to expect it to cost
 
-The six harnesses in conformance/ are 450 to 820 lines each, in six
+The six harnesses in conformance/ are 500 to 880 lines each, in six
 languages, and every one of them covers announce and the link kinds.
-The smallest, conformance/rns.js/dump.js, is 451 lines and is the one
+The smallest, conformance/rns.js/dump.js, is 496 lines and is the one
 to read first.
 
 Most of that length is neither parsing nor cryptography. It is

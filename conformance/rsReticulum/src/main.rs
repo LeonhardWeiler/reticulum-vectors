@@ -23,7 +23,13 @@ fn f(out: &mut Vec<String>, name: &str, value: &str) {
     out.push(format!("{:<W$} {}", name, value, W = W));
 }
 
+// An empty byte string prints as "-", as cmd/dump's field_hex does.
+// Hex cannot spell it, and a name followed by nothing cannot be told
+// from a truncated line.
 fn hexs(b: &[u8]) -> String {
+    if b.is_empty() {
+        return "-".to_string();
+    }
     b.iter().map(|x| format!("{:02x}", x)).collect()
 }
 
