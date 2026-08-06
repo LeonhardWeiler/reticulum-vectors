@@ -64,9 +64,9 @@ doc/packet.
     hops               decimal  the hop count, below 128
     transport_id       hex, -   header 2 only, otherwise -
     destination_hash   hex      the address field, 16 bytes
-    context            keyword  none, path_response, keepalive,
-                                link_identify, link_close, link_proof,
-                                link_rtt, link_request_proof
+    context            keyword  none, path_response, channel,
+                                keepalive, link_identify, link_close,
+                                link_proof, link_rtt, link_request_proof
     payload_length     decimal  bytes after the header
 
 context falls back to hex for a byte with no name. It is the one field
@@ -177,6 +177,19 @@ peer public key has small order. See doc/encryption.
 plaintext_length 0 with plaintext "-" is an empty plaintext.
 plaintext_length "-" is a failure. The two are not the same and the
 pair is what tells them apart.
+
+A channel packet adds four fields, which decompose the plaintext rather
+than the packet. See doc/link.
+
+    msgtype            hex      2 bytes, which message type it carries
+    sequence           decimal  0 to 65535, the envelope's own counter
+    declared_length    decimal  the length the envelope states
+    message            hex, -   everything after the six-byte envelope
+
+declared_length is what the envelope says and not what it carries. The
+reference writes the two to agree and never reads the field back, so a
+decoder that trusts it and one that ignores it can only be told apart
+by a packet the reference cannot produce. See doc/link.
 
 An identify proof on a link adds four fields. See doc/link.
 

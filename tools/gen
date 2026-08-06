@@ -822,9 +822,9 @@ def gen_ifac(RNS, w, announce_raw_bytes):
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
 XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
-CONTEXTS     = {0x00: "none", 0x0b: "path_response", 0xfa: "keepalive",
-                0xfb: "link_identify", 0xfc: "link_close", 0xfd: "link_proof",
-                0xfe: "link_rtt", 0xff: "link_request_proof"}
+CONTEXTS     = {0x00: "none", 0x0b: "path_response", 0x0e: "channel",
+                0xfa: "keepalive", 0xfb: "link_identify", 0xfc: "link_close",
+                0xfd: "link_proof", 0xfe: "link_rtt", 0xff: "link_request_proof"}
 
 # Only MODE_AES256_CBC is enabled at the pin, RNS/Link.py:133.
 LINK_MODES   = {0x01: "aes256_cbc"}
@@ -842,6 +842,7 @@ ECPUBSIZE   = 64        # RNS/Link.py:70, the two public keys together
 SIGNALLEN   = 3         # RNS/Link.py:80, LINK_MTU_SIZE
 MTU_BYTEMASK = 0x1fffff # RNS/Link.py:144
 MODE_DEFAULT = 0x01     # RNS/Link.py:134
+ENVELOPELEN  = 6        # RNS/Channel.py:133, three big-endian shorts
 
 
 # The Ed25519 group order, RFC 8032 section 5.1.
@@ -1676,6 +1677,17 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
         field("plaintext",        plaintext.hex() if plaintext else "-"),
     ]
 
+    # A channel envelope is six bytes of big-endian header and then the
+    # message. The length it declares is not read back: Envelope.unpack
+    # takes everything after the six bytes. RNS/Channel.py:118.
+    if h["context"] == 0x0e and plaintext is not None and len(plaintext) >= ENVELOPELEN:
+        lines += [
+            field("msgtype",        plaintext[:2].hex()),
+            field("sequence",       "%d" % int.from_bytes(plaintext[2:4], "big")),
+            field("declared_length", "%d" % int.from_bytes(plaintext[4:6], "big")),
+            field("message",        hexf(plaintext[ENVELOPELEN:])),
+        ]
+
     # An identify proof names the initiator, which nothing else on a
     # link does. Its signature covers the link id, so it cannot be
     # replayed onto another link. RNS/Link.py:464.
@@ -1695,6 +1707,8 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
 
 def gen_linkdata(RNS, w, verify, session):
     from RNS.vendor import umsgpack
+    from RNS.Buffer import StreamDataMessage
+    from RNS.Channel import Envelope, LinkChannelOutlet
 
     request_raw = session["request"].raw
     responder_private = session["link"].prv.private_bytes()
@@ -1707,14 +1721,34 @@ def gen_linkdata(RNS, w, verify, session):
     # would record the msgpack layout of a value no link ever reports.
     rtt = 0.0625
 
+    # Channel.send is the sequence counter, a retry ring and a watchdog
+    # around the two lines that make bytes, RNS/Channel.py:507. Those
+    # two are run here for the same reason link_session runs four lines
+    # of Link.__init__: the rest reaches for an instance and produces
+    # nothing. The envelope and the packet are still the reference's.
+    messages = [
+        StreamDataMessage(stream_id=1, data=b"reticulum"),
+        StreamDataMessage(stream_id=1, data=b"", eof=True),
+    ]
+
     with pinned(RNS, "linkdata"):
-        link = initiator_link(RNS, session)
+        link   = initiator_link(RNS, session)
+        outlet = LinkChannelOutlet(link)
         with captured(RNS) as sent:
             RNS.Packet(link, b"reticulum").send()
             link.identify(initiator_identity)
             RNS.Packet(link, umsgpack.packb(rtt), context=RNS.Packet.LRRTT).send()
             RNS.Packet(link, link.link_id, context=RNS.Packet.LINKCLOSE).send()
             link.send_keepalive()
+            for sequence, message in enumerate(messages):
+                envelope = Envelope(outlet, message=message, sequence=sequence)
+                outlet.send(envelope.pack())
+
+                # The reference must read back what it just wrote.
+                read = Envelope(outlet, raw=envelope.raw)
+                assert read.unpack({StreamDataMessage.MSGTYPE: StreamDataMessage}) \
+                    .pack() == message.pack()
+                assert read.sequence == sequence
 
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
@@ -1722,6 +1756,9 @@ def gen_linkdata(RNS, w, verify, session):
         ("rtt",       sent[2], "round trip time, msgpack encoded, sent by the initiator"),
         ("close",     sent[3], "teardown; the plaintext is the link id"),
         ("keepalive", sent[4], "one byte, and the one link packet that is not encrypted"),
+        ("channel",   sent[5], "a channel message, sequence 0, inside the six-byte envelope"),
+        ("channel-eof", sent[6],
+         "sequence 1, and a message that is its own two-byte header and nothing else"),
     ]
 
     for name, packet, purpose in cases:

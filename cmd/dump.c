@@ -47,6 +47,7 @@
 #define SIGNALLEN    3		/* RNS/Link.py:80 */
 #define MTU_BYTEMASK 0x1fffff	/* RNS/Link.py:144 */
 #define MODE_DEFAULT 0x01	/* RNS/Link.py:134 */
+#define ENVELOPELEN  6		/* RNS/Channel.py:133 */
 
 static const char *argv0;
 
@@ -648,6 +649,7 @@ static const struct {
 } contexts[] = {
 	{ 0x00, "none" },
 	{ 0x0b, "path_response" },
+	{ 0x0e, "channel" },
 	{ 0xfa, "keepalive" },
 	{ 0xfb, "link_identify" },
 	{ 0xfc, "link_close" },
@@ -1225,6 +1227,16 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	print_plaintext(&t);
 	if (!t.opened)
 		return;
+
+	/* A channel envelope is six bytes of big-endian header and then the
+	 * message. The length it declares is not read back: Envelope.unpack
+	 * takes everything after the six bytes. RNS/Channel.py:118. */
+	if (h.context == 0x0e && t.ptlen >= ENVELOPELEN) {
+		field_hex("msgtype", t.plain, 2);
+		field("sequence", "%u", (unsigned)(t.plain[2] << 8 | t.plain[3]));
+		field("declared_length", "%u", (unsigned)(t.plain[4] << 8 | t.plain[5]));
+		field_hex("message", t.plain + ENVELOPELEN, t.ptlen - ENVELOPELEN);
+	}
 
 	/* An identify proof names the initiator, which nothing else on a
 	 * link does. Its signature covers the link id, so it cannot be

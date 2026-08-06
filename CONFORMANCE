@@ -3,8 +3,8 @@ Conformance of independent implementations
 Run on 2026-08-06 against the 52 vectors test/ held at that date,
 through the harnesses in conformance/.
 
-Twenty vectors have been added since, and no row below covers them. The
-rows are left at what was measured rather than restated against a
+Twenty-two vectors have been added since, and no row below covers them.
+The rows are left at what was measured rather than restated against a
 corpus they were not run on.
 
     signature/non-canonical-s     the three that turn on which curve
@@ -34,6 +34,11 @@ corpus they were not run on.
     ifac/passphrase               the two halves of the interface key
     ifac/passphrase-only          and a code size that is not 16
     ifac/minimum-size
+
+    linkdata/channel              the channel envelope, which no
+    linkdata/channel-eof          harness reads and every one of them
+                                  will decrypt to a plaintext it does
+                                  not decompose
 
 Four of the eleven that are not new kinds are expected to change rows
 that pass today. The hop boundary separates three kinds of failure that

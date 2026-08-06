@@ -202,6 +202,7 @@ The context byte says what the plaintext holds. One context is not
 encrypted at all:
 
     0x00   none            application data
+    0x0e   channel         a channel envelope
     0xfa   keepalive       one byte, in clear, not a token: 0xff from
                            the initiator and 0xfe in reply
     0xfb   link identify   identity public key || signature
@@ -212,6 +213,47 @@ encrypted at all:
 
 A decoder that treats every packet on a link as encrypted fails on
 keepalives.
+
+
+Channel
+
+Context 0x0e. The plaintext is six bytes of header and then the
+message, all three fields big endian:
+
+    offset  size  field
+    0       2     message type
+    2       2     sequence
+    4       2     declared message length
+    6       -     the message
+
+    RNS/Channel.py:133
+
+The sequence counts messages sent, modulo 65536, and is what the
+receiver orders and deduplicates by. It belongs to the channel and not
+to the link: nothing in the link's own packets carries one.
+
+The declared length is written and never read. Envelope.unpack takes
+everything after offset 6 and does not compare it against the field, so
+a message whose length field disagrees with its length is delivered
+whole.
+
+    RNS/Channel.py:118
+
+The corpus carries the two vectors the reference can produce and none
+where the two disagree, because it cannot produce one: Envelope.pack
+writes the length from the message it packed. A decoder that truncates
+to the declared length is therefore indistinguishable here and wrong on
+the network.
+
+The message type is the message's own, not the channel's. 0xff00 is
+reserved for the stream messages RNS/Buffer.py sends; everything below
+0xf000 belongs to whatever registered it.
+
+    RNS/Channel.py:267
+
+test/linkdata/channel and test/linkdata/channel-eof carry two stream
+messages, sequence 0 and 1. What is inside them is the message type's
+business and is not decomposed here.
 
 
 Identify
@@ -261,5 +303,5 @@ either kind.
 
 expect opens with those input lines, as link_request and either
 signer_public or responder_private, so that it holds every byte of raw.
-test/linkrequest/invalid-length is decode class; the other twelve link
-vectors are encode class and cmd/check rebuilds all three lines.
+test/linkrequest/invalid-length is decode class; the other fourteen
+link vectors are encode class and cmd/check rebuilds all three lines.
