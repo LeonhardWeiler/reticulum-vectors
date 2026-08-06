@@ -39,7 +39,7 @@ PIN_BACKEND      = 0x02             # PROVIDER_PYCA
 PIN_BACKEND_NAME = "openssl backend"
 
 ROOT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHECKOUT = os.path.join(os.path.dirname(ROOT), "reticulum")
+CHECKOUT = os.path.join(os.path.dirname(ROOT), "upstream")
 
 FIELD_WIDTH = 18
 

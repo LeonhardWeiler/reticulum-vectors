@@ -86,6 +86,7 @@ Ed25519 signing and verification, SHA-512 and X25519 and is vendored
 unmodified, see cmd/VENDOR.
 
 gen needs Python and a checkout of the pinned reference implementation.
+It looks for one in ../upstream and takes --checkout PATH otherwise.
 Consumers of the corpus need neither.
 
 
