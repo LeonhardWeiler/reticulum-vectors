@@ -68,7 +68,8 @@ Layout
     CONFORMANCE results of running the corpus against other
                 implementations
     conformance/ the harnesses those results were produced with
-    doc/        byte layouts and derivation rules; start at doc/fields
+    doc/        byte layouts and derivation rules; start at doc/fields,
+                and at doc/harness to check your own implementation
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
     tools/      gen, the Python generator; cite, the citation check
@@ -113,6 +114,9 @@ against it:
 
     40 passed, 9 failed, 1 skipped: ifac
 
+doc/harness is the whole of what a program has to do to be substituted
+for dump here, and cmd/dump -l lists the kinds it can be asked for.
+
     make verify
 
 additionally regenerates every vector from the pinned reference
@@ -132,6 +136,65 @@ function rather than the rule inside it.
 That, and the regeneration, is the evidence behind the source line in
 every meta file. It needs Python and the checkout; cmd/check alone
 needs neither.
+
+
+One vector, whole
+
+test/pathrequest/tagged, in full. It is a packet, it uses no
+cryptography, and it is as long as a vector gets before the hex runs
+off the page.
+
+    meta
+
+        source             python-rns 1.4.2 (b48b96e6, openssl backend)
+        determinism        encode
+        purpose            the form an instance that is not a
+                           transport node sends
+
+    raw
+
+        08006b9f66014d9853faab220fba47d0276100fb48da0e82e6e01ba0c0145
+        13f74540dea024a8fdea0d68f0988ca6b6165cc5a
+
+    expect
+
+        flags              08
+        header_type        1
+        context_flag       unset
+        transport_type     broadcast
+        destination_type   plain
+        packet_type        data
+        hops               0
+        transport_id       -
+        destination_hash   6b9f66014d9853faab220fba47d02761
+        context            none
+        payload_length     32
+        wanted_hash        fb48da0e82e6e01ba0c014513f74540d
+        requester_id       -
+        tag                ea024a8fdea0d68f0988ca6b6165cc5a
+        unique_tag         fb48da0e82e6e01ba0c014513f74540dea024a8f
+                           dea0d68f0988ca6b6165cc5a
+        accepted           yes
+
+raw is one line and holds the whole packet. The two values that wrap
+above are one line each in the file; nothing in this format wraps.
+
+The first eleven fields are the header, which every packet kind
+carries. Then the payload: wanted_hash is the destination being asked
+after, requester_id is absent because a leaf instance sends no
+transport id, and tag is the rest. unique_tag and accepted are derived
+rather than read; see doc/packet.
+
+A decoder passes this vector when
+
+    my-decoder pathrequest test/pathrequest/tagged/raw
+
+prints those seventeen lines, in that order, byte for byte. The
+determinism class is encode, so cmd/check also runs
+
+    my-decoder -e pathrequest test/pathrequest/tagged/expect
+
+and requires the single line of raw back.
 
 
 Vector format

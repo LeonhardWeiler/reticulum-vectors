@@ -43,4 +43,15 @@ verify: check
 clean:
 	rm -f cmd/dump $(OBJ)
 
-.PHONY: check gen verify clean
+help:
+	@echo 'make            build cmd/dump'
+	@echo 'make check      run every vector against cmd/dump'
+	@echo 'make gen        regenerate the vectors; needs Python and the checkout'
+	@echo 'make verify     check, then regenerate and check every citation'
+	@echo 'make clean      remove cmd/dump and the objects'
+	@echo
+	@echo 'DUMP=./mine cmd/check       check another implementation'
+	@echo 'DUMP=./mine ENCODE=no ...   skip the round trip'
+	@echo 'cmd/dump -l                 list the kinds a decoder can be asked for'
+
+.PHONY: check gen verify clean help

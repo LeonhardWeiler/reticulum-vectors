@@ -2,6 +2,7 @@
  *
  *	dump kind rawfile		decode raw, print fields
  *	dump -e kind expectfile		rebuild raw from fields
+ *	dump -l				list the kinds it knows
  *
  * dump is a second implementation of the wire format, independent of
  * python-rns. That is its purpose. It deliberately shares no code with
@@ -1784,7 +1785,13 @@ int main(int argc, char **argv)
 	int n, encode = 0;
 
 	argv0 = argv[0];
-	if (argc == 4 && strcmp(argv[1], "-e") == 0) {
+	if (argc == 2 && strcmp(argv[1], "-l") == 0) {
+		/* The list a harness author needs before writing anything.
+		 * It is the table below and not a second copy of it. */
+		for (i = 0; i < sizeof kinds / sizeof kinds[0]; i++)
+			printf("%s\n", kinds[i].name);
+		return 0;
+	} else if (argc == 4 && strcmp(argv[1], "-e") == 0) {
 		encode = 1;
 		kind = argv[2];
 		path = argv[3];
@@ -1794,6 +1801,7 @@ int main(int argc, char **argv)
 	} else {
 		fprintf(stderr, "usage: %s kind rawfile\n", argv0);
 		fprintf(stderr, "       %s -e kind expectfile\n", argv0);
+		fprintf(stderr, "       %s -l\n", argv0);
 		return 2;
 	}
 

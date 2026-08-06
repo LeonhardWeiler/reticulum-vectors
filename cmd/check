@@ -20,13 +20,16 @@
 # rather than failed. Requiring all of them before a decoder can get a
 # result is the reason a new one starts with nothing to show.
 #
+# There is no list of kinds here. The kinds are the directories under
+# test/, a decoder that does not know one says so by its exit status,
+# and dump -l prints the ones dump knows. A fourth copy of the list
+# would be a fourth thing to keep in step.
+#
 # Exits non-zero if any vector fails.
 
 root=$(dirname "$0")/..
 DUMP=${DUMP:-$root/cmd/dump}
 ENCODE=${ENCODE:-yes}
-
-KINDS="identity keyset destination signature sign announce plain pathrequest encrypted group linkrequest linkproof linkdata proof ifac"
 
 if [ ! -x "$DUMP" ]; then
 	echo "no dump program at $DUMP; run make" >&2
@@ -137,11 +140,6 @@ for dir in "$root"/test/*/*/; do
 	# for them to disagree.
 	kind=$(basename "$(dirname "$dir")")
 	determinism=$(meta_field "$dir" determinism)
-
-	case " $KINDS " in
-		*" $kind "*) ;;
-		*) fail_with "$dir" "no decoder for kind $kind"; continue ;;
-	esac
 
 	case "$determinism" in
 		decode|encode) ;;

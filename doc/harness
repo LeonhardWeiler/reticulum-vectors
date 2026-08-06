@@ -1,0 +1,108 @@
+Harness
+
+How to check an implementation against this corpus in an afternoon.
+Everything here is a rule about a program you write; nothing here is
+about Reticulum. For the bytes, start at doc/fields.
+
+
+What a harness is
+
+One program that takes the same arguments cmd/dump takes and prints the
+same lines:
+
+    my-harness <kind> <rawfile>
+
+It reads the blobs from rawfile, hands them to the implementation, and
+prints one field per line: the name in the first 18 columns, the value
+after it. cmd/check runs it against every vector and diffs the output
+against expect.
+
+    DUMP=./my-harness ENCODE=no cmd/check
+
+ENCODE=no skips the round trip, which rebuilds raw from expect. No
+harness written so far implements it. It is worth having eventually,
+because decoding proves only that an implementation reads what
+python-rns writes, and it is not where to start.
+
+    cmd/dump -l         the kinds a decoder can be asked for
+    doc/fields          every field name, what it holds, which kinds
+    README              one vector printed in full
+
+
+Four rules
+
+1. Print what the implementation computed.
+
+   Not what the reference computed, and not what expect says. A field
+   the implementation does not produce is what the corpus is for. If it
+   has no hop limit, the harness has none either, the vector fails, and
+   the disagreement is the result.
+
+2. Where there is nothing to call, say so.
+
+   Some implementations validate an announce behind one entry point
+   that returns a boolean and never yields the fields. Following that
+   code line by line in the harness is allowed, and marking the place is
+   required, because such a field tests the transcription as much as the
+   implementation:
+
+       // Follows src/announce.js:26-49 with rns.js's own constants.
+
+   Where the implementation has no such code at all, print "-". A dash
+   fails the vector, and that is the honest outcome.
+
+3. Exit 77 for a kind you have not implemented.
+
+   Those vectors are reported as skipped and named, and are not counted
+   against the result:
+
+       40 passed, 9 failed, 1 skipped: ifac
+
+   Nothing else may use that status. A harness that implements a kind
+   and disagrees with the vector has found something, and that is the
+   result.
+
+   This is what makes a harness worth writing before it is finished.
+   Four kinds on the first day is a result; the alternative, requiring
+   all fifteen before anything can be measured, is why a new decoder
+   starts with nothing to show.
+
+4. One kind is a start.
+
+   test/identity is a SHA-256 of 64 bytes, truncated to 16. Five
+   vectors, four fields each, no packets and no cryptography beyond a
+   hash. If the implementation exposes an identity at all, that harness
+   is twenty lines and produces a real number.
+
+   From there: keyset adds the two curve base multiplications,
+   destination adds the name rules, announce adds the header and the
+   signature, and by then most of the format is in hand.
+
+
+What to expect it to cost
+
+The six harnesses in conformance/ are 450 to 820 lines each, in six
+languages, and every one of them covers announce and the link kinds.
+The smallest, conformance/rns.js/dump.js, is 451 lines and is the one
+to read first.
+
+Most of that length is neither parsing nor cryptography. It is
+reaching past an API that was written for an application rather than
+for an observer: pulling a private key out of a struct that does not
+export it, or reconstructing a link from a request packet because the
+constructor wants a running instance. Budget for that rather than for
+the protocol.
+
+
+Reporting a result
+
+CONFORMANCE holds one row per implementation, at a named commit, with
+the harness that produced it in conformance/. A row is only reproducible
+at that commit, so record it.
+
+The rules for what goes in that directory, and how the existing
+harnesses are built, are in conformance/README.
+
+A result is not a verdict on an implementation. It is a count of
+vectors, at one commit, through one harness, in the decode direction
+only.
