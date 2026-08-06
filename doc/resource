@@ -68,7 +68,7 @@ Four bytes is short enough to collide, and the reference says so: it
 keeps a guard list while cutting and remaps the whole resource if two
 parts hash alike.
 
-    RNS/Resource.py:452#collision_guard_list
+    RNS/Resource.py:453#collision_guard_list
 
 
 Advertisement, 0x02
@@ -99,7 +99,7 @@ transfers of identical data are two resources:
 
     hash = SHA-256(data || random_hash)
 
-    RNS/Resource.py:453#random_hash
+    RNS/Resource.py:437#random_hash
 
 The flags byte is six bits, low to high:
 

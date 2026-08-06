@@ -45,6 +45,12 @@ def sources():
     it is not looked at. git already knows what belongs here, and
     .gitignore already excludes the cloned implementations under
     conformance/src, which are not ours to check.
+
+    One consequence, which has already bitten: a file that has not been
+    added is not tracked and is not read, so make verify passes on a
+    new document with wrong citations and fails on the next run after
+    it is committed. That is the right way round, and it means a clean
+    verify before a first commit says less than one after it.
     """
     r = subprocess.run(GIT, capture_output=True, text=True)
     if r.returncode != 0:
