@@ -75,6 +75,14 @@ Layout
     cmd/        dump, a decoder written in C; check, a shell script
     tools/      gen, the Python generator; cite, the citation check
 
+What a consumer needs is test/, doc/ and cmd/. The other two are the
+larger half of the repository and neither is part of the corpus:
+tools/ needs Python and the pinned checkout, and conformance/ is 4343
+lines of harness in six languages, needing Go, Rust, Node, Elixir and a
+C++ compiler between them. They are here because a result is only
+evidence if the thing that produced it is on file. Nothing under either
+is needed to check an implementation against these vectors.
+
 doc/fields is the index of every name an expect file can carry, what it
 holds and which kinds carry it. It is the shortest path from this
 README to a working harness, and cmd/check keeps it honest: a name in a
