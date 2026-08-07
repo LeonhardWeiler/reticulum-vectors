@@ -4,7 +4,7 @@
 # nothing else.
 #
 #     DUMP=conformance/example/dump.py ENCODE=no cmd/check
-#     5 passed, 0 failed, corpus 4048137228, 89 skipped: announce ...
+#     5 passed, 0 failed, corpus 453359467, 97 skipped: announce ...
 #
 # Every other harness in this directory calls an implementation. This
 # one has none to call, and derives the four fields from hashlib, so
