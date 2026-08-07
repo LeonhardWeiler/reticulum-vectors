@@ -216,9 +216,9 @@ to one by name:
         expect    field decomposition, byte-identical to what dump prints
 
 test/INDEX names every vector, one per line, and cmd/check refuses to
-run against a test/ that holds anything else. A corpus that counts what
-it finds and calls the total a result cannot tell a complete copy from
-a pruned one; both report zero failures.
+run against a test/ that holds anything else. Why is written at the
+check that enforces it and in README where a consumer meets the format,
+and a third wording would be a third thing to keep in step.
 
 meta format:
 
