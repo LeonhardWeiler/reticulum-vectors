@@ -11,14 +11,13 @@ test/INDEX and every raw and expect. A count does not identify a
 corpus; two vectors changed shape without changing the count between
 two of the runs below.
 
-It has moved three times, and the first was a defect: it was taken over
-a shell glob, a glob is ordered by the locale of whoever runs it, and
-the same corpus fingerprinted as 678091306 under C and as 4275070876
-under en_US.UTF-8. It is taken over test/INDEX now and is the same
-everywhere. Then group/zero-padding was added, which every harness
-skips: 4048137228, rows unchanged, one more skipped. Then the eight
-rejection vectors below were added, which is the first corpus change
-since this file existed that moved every row.
+It has moved three times, and only the first changed what it means: a
+glob is ordered by the locale of whoever runs it, so the same corpus
+fingerprinted as 678091306 under C and as 4275070876 under
+en_US.UTF-8. It is taken over test/INDEX now. Then group/zero-padding:
+4048137228, rows unchanged, one more skipped. Then the eight rejection
+vectors below, the first corpus change since this file existed that
+moved every row.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
