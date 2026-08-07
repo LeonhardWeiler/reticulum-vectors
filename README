@@ -38,6 +38,12 @@ cmd/dump reads raw again without sharing a line of code with it. Two
 readings that agree is the point; one reading copied twice would not
 be.
 
+Those two share no code and they do share a reader. Where the reading
+itself is wrong, both are wrong together and the round trip agrees with
+itself. CONFORMANCE is the answer to that and the only one there is:
+six implementations, six languages, six authors who read the reference
+without reading this. That is what makes it more than a scoreboard.
+
 
 Every private key here is public
 
