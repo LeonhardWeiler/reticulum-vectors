@@ -505,6 +505,38 @@ class Writer:
             f.write(body)
 
 
+def derived_from(w, kind, base, blobs, describe):
+    """Vectors built here out of another vector's bytes.
+
+    Twenty-nine of them are one base vector with something cut or
+    altered, and each was written out the same four ways: the new bytes
+    into the blob list, the describe the kind already has, a purpose,
+    and a source naming the vector it came from. Only the bytes and the
+    purpose differ between two cases of a kind.
+
+    The source is composed here rather than passed in. It is the
+    provenance line, it is what tells a reader that no reference
+    produced these bytes, and it was one sentence typed twenty-nine
+    times by hand. per adds a citation for a case whose transformation
+    follows a named rule of the reference; cite checks it wherever it
+    ends up.
+
+    Returns the maker rather than taking a list of cases, because the
+    comment above a case is why the vector exists and belongs against
+    that case and not inside a table entry.
+
+    Not named derived: three describe_ functions already call the key
+    they derive that, and those are the one part of this program that
+    shares no code with cmd/dump, so nothing in them moves for a name.
+    """
+    def one(name, raw, purpose, base=base, per=None):
+        source = "constructed by tools/gen from %s/%s" % (kind, base)
+        if per is not None:
+            source += ", per " + per
+        w.vector(kind, name, purpose, blobs(raw), describe(raw), source=source)
+    return one
+
+
 def make_verifier(RNS):
     """Ed25519 verification, as the reference implementation performs it.
 
@@ -652,26 +684,30 @@ def gen_signature(RNS, w, verify):
     assert not verify(public[32:], mangled, message)
     assert internal_accepts(public[32:], mangled, message)
 
-    cases = [
-        ("upstream", good, "adopted signature over the upstream message", UPSTREAM_SIG_SOURCE),
-        ("altered", bad, "the same signature with the first byte altered",
-         "constructed by tools/gen from signature/upstream"),
-        ("non-canonical-s", mangled,
-         "the same signature with S re-encoded as S+L; the pinned backend rejects it",
-         "constructed by tools/gen from signature/upstream"),
-    ]
+    def blobs(signature):
+        return [public.hex(), message.hex(), signature.hex()]
 
-    for name, signature, purpose, source in cases:
-        w.vector("signature", name, purpose,
-            [public.hex(), message.hex(), signature.hex()],
-            [
-                field("ed25519_public", public[32:].hex()),
-                field("message_length", "%d" % len(message)),
-                field("message_sha256", hashlib.sha256(message).hexdigest()),
-                field("signature",      signature.hex()),
-                field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
-            ],
-            source=source)
+    def described(signature):
+        return [
+            field("ed25519_public", public[32:].hex()),
+            field("message_length", "%d" % len(message)),
+            field("message_sha256", hashlib.sha256(message).hexdigest()),
+            field("signature",      signature.hex()),
+            field("valid",          "yes" if verify(public[32:], signature, message) else "no"),
+        ]
+
+    w.vector("signature", "upstream",
+        "adopted signature over the upstream message",
+        blobs(good), described(good),
+        source=UPSTREAM_SIG_SOURCE)
+
+    built = derived_from(w, "signature", "upstream", blobs, described)
+
+    built("altered", bad,
+        "the same signature with the first byte altered")
+
+    built("non-canonical-s", mangled,
+        "the same signature with S re-encoded as S+L; the pinned backend rejects it")
 
 
 def gen_sign(RNS, w):
@@ -784,22 +820,28 @@ def gen_proof(RNS, w, verify):
     assert lookup_field(described, "destination_match") == "yes"
     assert lookup_field(described, "signature_valid") == "yes"
 
+    public = recipient.get_public_key()
+
     # Neither of the two accepted payload lengths. The reference reads
     # 64 as implicit and 96 as explicit and drops everything else; this
     # is the rejection that names both.
-    short = made["implicit"].raw[:-1]
-    w.vector("proof", "invalid-length",
-        "63-byte payload, neither of the two accepted lengths",
-        [proved.raw.hex(), recipient.get_public_key().hex(), short.hex()],
-        describe_proof(proved.raw, recipient.get_public_key(), short, verify),
-        source="constructed by tools/gen from proof/implicit")
+    built = derived_from(w, "proof", "implicit",
+                    lambda r: [proved.raw.hex(), public.hex(), r.hex()],
+                    lambda r: describe_proof(proved.raw, public, r, verify))
 
-    w.vector("proof", "proved-in-transport",
+    built("invalid-length", made["implicit"].raw[:-1],
+        "63-byte payload, neither of the two accepted lengths")
+
+    # The one derived vector in the corpus that alters the packet the
+    # proof is about rather than the proof, so its blobs run the other
+    # way: the proof below is the base vector's, byte for byte.
+    relaying = derived_from(w, "proof", "implicit",
+                       lambda r: [r.hex(), public.hex(), made["implicit"].raw.hex()],
+                       lambda r: describe_proof(r, public, made["implicit"].raw, verify))
+
+    relaying("proved-in-transport", relayed,
         "the proved packet at three hops in header 2; the proof is unchanged and still verifies",
-        [relayed.hex(), recipient.get_public_key().hex(), made["implicit"].raw.hex()],
-        described,
-        source="constructed by tools/gen from proof/implicit, "
-               "per RNS/Transport.py:1369#HEADER_2")
+        per="RNS/Transport.py:1369#HEADER_2")
 
 
 def describe_proof(proved_raw, signer_public, raw, verify):
@@ -1164,70 +1206,57 @@ def gen_announce(RNS, w, tmpdir, verify):
 
     # Derived cases. Each states in its source how it was built, since
     # none of them is something the reference implementation emitted.
-    derived = [
-        ("in-transport", transport_insert(base, 1, transport_id),
-         "header 2, one hop, transport id inserted",
-         "constructed by tools/gen from announce/minimal, "
-         "per RNS/Transport.py:1369#HEADER_2"),
+    built = derived_from(w, "announce", "minimal",
+                    lambda raw: [raw.hex()],
+                    lambda raw: describe_announce(raw, verify))
 
-        ("destination-mismatch", base[:2] + bytes(ADDRLEN) + base[2+ADDRLEN:],
-         "destination hash replaced with zeroes; the announce decodes but does not match",
-         "constructed by tools/gen from announce/minimal"),
+    built("in-transport", transport_insert(base, 1, transport_id),
+        "header 2, one hop, transport id inserted",
+        per="RNS/Transport.py:1369#HEADER_2")
 
-        ("short-payload", base[:-1],
-         "one byte short of the minimum payload",
-         "constructed by tools/gen from announce/minimal"),
+    built("destination-mismatch", base[:2] + bytes(ADDRLEN) + base[2+ADDRLEN:],
+        "destination hash replaced with zeroes; the announce decodes but does not match")
 
-        # One byte short of a header 1 header. Nothing about the packet
-        # can be read, not even the context byte, so the rejection names
-        # a length and not a payload. Until doc/fields was checked
-        # against test/, this rule was described in doc/packet with an
-        # example and carried by no vector.
-        ("short-header", base[:18],
-         "18 bytes, one short of a header 1 header",
-         "constructed by tools/gen from announce/minimal"),
+    built("short-payload", base[:-1],
+        "one byte short of the minimum payload")
 
-        # The other threshold, and the only one that is not a header
-        # length: how long a header has to be does not follow from the
-        # bytes until the header type is read, and the header type is in
-        # the first of them. A decoder that reaches for byte 0 alone and
-        # then for the length is right about this packet by accident.
-        ("no-header", base[:1],
-         "one byte, too short to say which of the two header lengths applies",
-         "constructed by tools/gen from announce/minimal"),
+    # One byte short of a header 1 header. Nothing about the packet can
+    # be read, not even the context byte, so the rejection names a
+    # length and not a payload. Until doc/fields was checked against
+    # test/, this rule was described in doc/packet with an example and
+    # carried by no vector.
+    built("short-header", base[:18],
+        "18 bytes, one short of a header 1 header")
 
-        ("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],
-         "hop count at the limit, which the reference implementation rejects",
-         "constructed by tools/gen from announce/minimal"),
+    # The other threshold, and the only one that is not a header length:
+    # how long a header has to be does not follow from the bytes until
+    # the header type is read, and the header type is in the first of
+    # them. A decoder that reaches for byte 0 alone and then for the
+    # length is right about this packet by accident.
+    built("no-header", base[:1],
+        "one byte, too short to say which of the two header lengths applies")
 
-        # The other side of the same boundary. Without it a decoder with
-        # no hop limit and a decoder whose limit is off by one both fail
-        # hop-limit and are indistinguishable; every implementation
-        # measured in CONFORMANCE failed it, two of them for different
-        # reasons. The hop count is not part of the signed data, so this
-        # announce still verifies.
-        ("hop-limit-below", base[:1] + bytes([MAX_HOPS - 1]) + base[2:],
-         "hop count one below the limit, which decodes",
-         "constructed by tools/gen from announce/minimal"),
+    built("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],
+        "hop count at the limit, which the reference implementation rejects")
 
-        ("altered-signature",
-         base[:-SIGLEN] + bytes([base[-SIGLEN] ^ 0x01]) + base[-SIGLEN+1:],
-         "first signature byte altered; the announce decodes and matches, but the signature does not verify",
-         "constructed by tools/gen from announce/minimal"),
+    # The other side of the same boundary. Without it a decoder with no
+    # hop limit and a decoder whose limit is off by one both fail
+    # hop-limit and are indistinguishable; every implementation measured
+    # in CONFORMANCE failed it, two of them for different reasons. The
+    # hop count is not part of the signed data, so this announce still
+    # verifies.
+    built("hop-limit-below", base[:1] + bytes([MAX_HOPS - 1]) + base[2:],
+        "hop count one below the limit, which decodes")
 
-        # announce/minimal carries no app data, so the signature is the
-        # tail of the packet. The same re-encoding as test/signature,
-        # on a whole packet, because that is where it costs something.
-        ("non-canonical-s", base[:-SIGLEN] + non_canonical(base[-SIGLEN:]),
-         "signature S re-encoded as S+L; the announce decodes and matches, and the pinned backend rejects it",
-         "constructed by tools/gen from announce/minimal"),
-    ]
+    built("altered-signature",
+        base[:-SIGLEN] + bytes([base[-SIGLEN] ^ 0x01]) + base[-SIGLEN+1:],
+        "first signature byte altered; the announce decodes and matches, but the signature does not verify")
 
-    for name, raw, purpose, source in derived:
-        w.vector("announce", name, purpose,
-            [raw.hex()],
-            describe_announce(raw, verify),
-            source=source)
+    # announce/minimal carries no app data, so the signature is the tail
+    # of the packet. The same re-encoding as test/signature, on a whole
+    # packet, because that is where it costs something.
+    built("non-canonical-s", base[:-SIGLEN] + non_canonical(base[-SIGLEN:]),
+        "signature S re-encoded as S+L; the announce decodes and matches, and the pinned backend rejects it")
 
     return base
 
@@ -1298,13 +1327,12 @@ def gen_plain(RNS, w):
     # exercised it: all the others carry a byte the format has a name
     # for. It is a plain packet because the fallback is in the header
     # and a plain packet is the shortest thing with one.
-    base = made["payload"]
-    unnamed = base[:HEADER1LEN-1] + bytes([0x08]) + base[HEADER1LEN:]
-    w.vector("plain", "unnamed-context",
-        "a context byte this format has no name for, which prints as hex",
-        [unnamed.hex()],
-        describe_plain(unnamed),
-        source="constructed by tools/gen from plain/payload")
+    base  = made["payload"]
+    built = derived_from(w, "plain", "payload",
+                    lambda r: [r.hex()], describe_plain)
+
+    built("unnamed-context", base[:HEADER1LEN-1] + bytes([0x08]) + base[HEADER1LEN:],
+        "a context byte this format has no name for, which prints as hex")
 
 
 def describe_pathrequest(raw):
@@ -1663,22 +1691,18 @@ def gen_linkrequest(RNS, w, session):
         [raw.hex()],
         describe_linkrequest(raw))
 
+    built = derived_from(w, "linkrequest", "signalling",
+                    lambda r: [r.hex()],
+                    describe_linkrequest)
+
     # Without signalling is the shorter form validate_request still
     # accepts at RNS/Link.py:187#LINK_MTU_SIZE. It opens the same link:
     # the signalling bytes are excluded from the link id.
-    unsignalled = raw[:-SIGNALLEN]
-    w.vector("linkrequest", "no-signalling",
-        "the 64-byte form; same link id, mode falls back to the default",
-        [unsignalled.hex()],
-        describe_linkrequest(unsignalled),
-        source="constructed by tools/gen from linkrequest/signalling")
+    built("no-signalling", raw[:-SIGNALLEN],
+        "the 64-byte form; same link id, mode falls back to the default")
 
-    short = raw[:-1]
-    w.vector("linkrequest", "invalid-length",
-        "66-byte payload, neither of the two accepted lengths",
-        [short.hex()],
-        describe_linkrequest(short),
-        source="constructed by tools/gen from linkrequest/signalling")
+    built("invalid-length", raw[:-1],
+        "66-byte payload, neither of the two accepted lengths")
 
     # MODE_AES128_CBC, which the reference defines and does not enable:
     # signalling_bytes raises on any mode outside ENABLED_MODES
@@ -1692,11 +1716,8 @@ def gen_linkrequest(RNS, w, session):
     assert lookup_field(describe_linkrequest(modeless), "mode") == "00"
     assert RNS.Link.MODE_AES128_CBC not in RNS.Link.ENABLED_MODES
 
-    w.vector("linkrequest", "unnamed-mode",
-        "a mode the reference defines and does not enable, which prints as hex",
-        [modeless.hex()],
-        describe_linkrequest(modeless),
-        source="constructed by tools/gen from linkrequest/signalling")
+    built("unnamed-mode", modeless,
+        "a mode the reference defines and does not enable, which prints as hex")
 
     # The same request after a transport node rewrote it. The link id is
     # taken over the packet with the four high flag bits cleared, the hop
@@ -1709,12 +1730,9 @@ def gen_linkrequest(RNS, w, session):
     relayed = transport_insert(raw, 1, transport_id)
     assert lookup_field(describe_linkrequest(relayed), "link_id") == link_id.hex()
 
-    w.vector("linkrequest", "in-transport",
+    built("in-transport", relayed,
         "header 2, one hop; the same link id as linkrequest/signalling",
-        [relayed.hex()],
-        describe_linkrequest(relayed),
-        source="constructed by tools/gen from linkrequest/signalling, "
-               "per RNS/Transport.py:1369#HEADER_2")
+        per="RNS/Transport.py:1369#HEADER_2")
 
 
 def describe_linkproof(request_raw, identity_public, raw, verify):
@@ -1787,36 +1805,30 @@ def gen_linkproof(RNS, w, verify, session):
         blobs + [raw.hex()],
         describe_linkproof(request_raw, public, raw, verify))
 
+    built = derived_from(w, "linkproof", "signalling",
+                    lambda r: blobs + [r.hex()],
+                    lambda r: describe_linkproof(request_raw, public, r, verify))
+
     # The 96-byte form validate_proof also accepts, at
     # RNS/Link.py:405#initiator.
     # The reference never emits it: prove always signals. Removing the
     # bytes removes them from the signed material too, so the signature
     # no longer verifies, which is the point of the vector.
     removed = raw[:-SIGNALLEN]
-    w.vector("linkproof", "signalling-removed",
-        "signalling bytes removed; the proof still decodes and the signature does not verify",
-        blobs + [removed.hex()],
-        describe_linkproof(request_raw, public, removed, verify),
-        source="constructed by tools/gen from linkproof/signalling")
+    built("signalling-removed", removed,
+        "signalling bytes removed; the proof still decodes and the signature does not verify")
 
-    altered = raw[:19] + bytes([raw[19] ^ 0x01]) + raw[20:]
-    w.vector("linkproof", "altered-signature",
-        "first signature byte altered",
-        blobs + [altered.hex()],
-        describe_linkproof(request_raw, public, altered, verify),
-        source="constructed by tools/gen from linkproof/signalling")
+    built("altered-signature", raw[:19] + bytes([raw[19] ^ 0x01]) + raw[20:],
+        "first signature byte altered")
 
     # Neither accepted length. linkproof and linkrequest each have two,
     # and they are not the same two: a proof carries a signature where a
     # request carries an Ed25519 key. A decoder that checks the request
     # and takes the proof on trust passes linkrequest/invalid-length and
     # opens a link on 95 bytes of nothing.
-    short = removed[:-1]
-    w.vector("linkproof", "invalid-length",
+    built("invalid-length", removed[:-1],
         "95-byte payload, neither of the two accepted lengths",
-        blobs + [short.hex()],
-        describe_linkproof(request_raw, public, short, verify),
-        source="constructed by tools/gen from linkproof/signalling-removed")
+        base="signalling-removed")
 
 
 def describe_linkdata(request_raw, responder_private, raw, verify):
@@ -1995,25 +2007,21 @@ def gen_linkdata(RNS, w, verify, session):
         described = describe_linkdata(request_raw, responder_private, packet.raw, verify)
         w.vector("linkdata", name, purpose, blobs, described)
 
-    base = sent[0].raw
-    altered = base[:-1] + bytes([base[-1] ^ 0x01])
-    w.vector("linkdata", "altered-hmac",
-        "last byte of the token hmac altered; nothing is decrypted",
-        [request_raw.hex(), responder_private.hex(), altered.hex()],
-        describe_linkdata(request_raw, responder_private, altered, verify),
-        source="constructed by tools/gen from linkdata/minimal")
+    base  = sent[0].raw
+    built = derived_from(w, "linkdata", "minimal",
+                    lambda r: [request_raw.hex(), responder_private.hex(), r.hex()],
+                    lambda r: describe_linkdata(request_raw, responder_private, r, verify))
+
+    built("altered-hmac", base[:-1] + bytes([base[-1] ^ 0x01]),
+        "last byte of the token hmac altered; nothing is decrypted")
 
     # The one rejection in the corpus that happens after the header was
     # printed. A link data packet is not known to carry a token until
     # the context byte is read, so the header is printed first and the
     # length rule applies to what is left. That makes it the vector the
     # class derivation in determinism() is written against; see there.
-    short = base[:HEADER1LEN + TOKEN_OVERHEAD - 1]
-    w.vector("linkdata", "short-payload",
-        "47-byte payload, one short of an empty token, in a context that says there is one",
-        [request_raw.hex(), responder_private.hex(), short.hex()],
-        describe_linkdata(request_raw, responder_private, short, verify),
-        source="constructed by tools/gen from linkdata/minimal")
+    built("short-payload", base[:HEADER1LEN + TOKEN_OVERHEAD - 1],
+        "47-byte payload, one short of an empty token, in a context that says there is one")
 
     gen_request(RNS, w, verify, session, link, request_raw, responder_private)
     return link, sent[0]
@@ -2470,22 +2478,18 @@ def gen_group(RNS, w):
         [group_key.hex(), packet.raw.hex()],
         describe_group(packet.raw, group_key))
 
-    altered = packet.raw[:-1] + bytes([packet.raw[-1] ^ 0x01])
-    w.vector("group", "altered-hmac",
-        "last byte of the token hmac altered; nothing is decrypted",
-        [group_key.hex(), altered.hex()],
-        describe_group(altered, group_key),
-        source="constructed by tools/gen from group/minimal")
+    built = derived_from(w, "group", "minimal",
+                    lambda r: [group_key.hex(), r.hex()],
+                    lambda r: describe_group(r, group_key))
+
+    built("altered-hmac", packet.raw[:-1] + bytes([packet.raw[-1] ^ 0x01]),
+        "last byte of the token hmac altered; nothing is decrypted")
 
     # One byte short of an iv and an hmac with nothing between them. A
     # group packet carries no ephemeral key, so its threshold is the
     # token overhead alone and not the one test/encrypted applies.
-    short = packet.raw[:HEADER1LEN + TOKEN_OVERHEAD - 1]
-    w.vector("group", "short-payload",
-        "47-byte payload, one short of an empty token",
-        [group_key.hex(), short.hex()],
-        describe_group(short, group_key),
-        source="constructed by tools/gen from group/minimal")
+    built("short-payload", packet.raw[:HEADER1LEN + TOKEN_OVERHEAD - 1],
+        "47-byte payload, one short of an empty token")
 
     # PKCS7.pad writes 1..16, so the reference cannot be asked for a
     # token with a padding length of zero, and PKCS7.unpad accepts one:
@@ -2743,12 +2747,12 @@ def gen_resource(RNS, w, verify):
     # has two, and the two kinds are the same packet type at a different
     # context byte. A decoder that reads 63 bytes here as an implicit
     # delivery proof has taken a hash for a signature.
-    short = proof.raw[:-1]
-    w.vector("resourceproof", "invalid-length",
-        "63-byte payload, one short of the resource hash and its proof",
-        [resource.hash.hex(), short.hex()],
-        describe_resourceproof(resource.hash, short),
-        source="constructed by tools/gen from resourceproof/complete")
+    built = derived_from(w, "resourceproof", "complete",
+                    lambda r: [resource.hash.hex(), r.hex()],
+                    lambda r: describe_resourceproof(resource.hash, r))
+
+    built("invalid-length", proof.raw[:-1],
+        "63-byte payload, one short of the resource hash and its proof")
 
 
 def private_to_public(private):
@@ -2798,12 +2802,12 @@ def gen_encrypted(RNS, w):
             describe_encrypted(raw, private, ratchet))
 
     private, ratchet, raw = made["minimal"]
-    altered = raw[:-1] + bytes([raw[-1] ^ 0x01])
-    w.vector("encrypted", "altered-hmac",
-        "last byte of the token hmac altered; nothing is decrypted",
-        [private.hex(), "-", altered.hex()],
-        describe_encrypted(altered, private, None),
-        source="constructed by tools/gen from encrypted/minimal")
+    built = derived_from(w, "encrypted", "minimal",
+                    lambda r: [private.hex(), "-", r.hex()],
+                    lambda r: describe_encrypted(r, private, None))
+
+    built("altered-hmac", raw[:-1] + bytes([raw[-1] ^ 0x01]),
+        "last byte of the token hmac altered; nothing is decrypted")
 
     # The ephemeral key replaced with the all-zero point, which has
     # order 1. The header is 19 bytes and the key is the first 32 of the
@@ -2817,22 +2821,15 @@ def gen_encrypted(RNS, w):
     assert InternalX25519.from_private_bytes(private[:KEYHALF]) \
         .exchange(bytes(KEYHALF)) == bytes(KEYHALF)
 
-    w.vector("encrypted", "low-order-ephemeral",
-        "ephemeral key replaced with a point of small order; no shared secret exists",
-        [private.hex(), "-", low_order.hex()],
-        describe_encrypted(low_order, private, None),
-        source="constructed by tools/gen from encrypted/minimal")
+    built("low-order-ephemeral", low_order,
+        "ephemeral key replaced with a point of small order; no shared secret exists")
 
     # One byte short of an ephemeral key and an empty token. This is the
     # first rule the kind applies to its own payload, and the threshold
     # is its own: an encrypted packet carries a key the other two token
     # kinds do not.
-    short = raw[:HEADER1LEN + KEYHALF + TOKEN_OVERHEAD - 1]
-    w.vector("encrypted", "short-payload",
-        "79-byte payload, one short of an ephemeral key and an empty token",
-        [private.hex(), "-", short.hex()],
-        describe_encrypted(short, private, None),
-        source="constructed by tools/gen from encrypted/minimal")
+    built("short-payload", raw[:HEADER1LEN + KEYHALF + TOKEN_OVERHEAD - 1],
+        "79-byte payload, one short of an ephemeral key and an empty token")
 
 
 def main():
