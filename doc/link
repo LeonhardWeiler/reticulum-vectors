@@ -344,6 +344,13 @@ against 0xc4 0x00, and this format spells both "-". Only the nil case
 has a vector; a request with no data is what Link.request produces when
 it is called with a path alone.
 
+The array header is one byte and everything inside it carries its own
+length, so msgpack bounds the read from the second byte on. The first
+byte it does not: an empty plaintext is rejected as short-plaintext with
+a minimum of 1. test/linkdata/request-short carries it, packed and
+encrypted by the reference over a payload the layers above it never
+build.
+
 
 Channel
 
@@ -384,6 +391,11 @@ reserved for the stream messages RNS/Buffer.py sends; everything below
 test/linkdata/channel and test/linkdata/channel-eof carry two stream
 messages, sequence 0 and 1. What is inside them is the message type's
 business and is not decomposed here.
+
+The six bytes are a length rule like any other: a plaintext shorter than
+the header is rejected as short-plaintext with a minimum of 6, and the
+fields above it stand. test/linkdata/channel-short carries five bytes in
+this context.
 
 
 Identify

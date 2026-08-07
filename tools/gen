@@ -1903,7 +1903,14 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     # A channel envelope is six bytes of big-endian header and then the
     # message. The length it declares is not read back: Envelope.unpack
     # takes everything after the six bytes. RNS/Channel.py:118#unpack.
-    if h["context"] == 0x0e and plaintext is not None and len(plaintext) >= ENVELOPELEN:
+    #
+    # Too short for it is the same rule the resource contexts name, for
+    # the same reason: the reader is bounded by a length and not by
+    # framing. cmd/dump names it in the same place.
+    if h["context"] == 0x0e and plaintext is not None:
+        if len(plaintext) < ENVELOPELEN:
+            return lines + invalid("short-plaintext",
+                                   ("minimum_length", ENVELOPELEN))
         lines += [
             field("msgtype",        plaintext[:2].hex()),
             field("sequence",       "%d" % int.from_bytes(plaintext[2:4], "big")),
@@ -1913,9 +1920,13 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
 
     # A request is a three-element array and a response a two-element
     # one, both msgpack and neither with a length or type byte of its
-    # own around it. RNS/Link.py:488#unpacked_request,
+    # own around it. The array header is one byte and everything inside
+    # it carries its own length, so an empty plaintext is the one case
+    # msgpack cannot report on. RNS/Link.py:488#unpacked_request,
     # RNS/Link.py:849#packed_response.
     if h["context"] in (0x09, 0x0a) and plaintext is not None:
+        if len(plaintext) < 1:
+            return lines + invalid("short-plaintext", ("minimum_length", 1))
         parts = msgpack_one(plaintext)
         if h["context"] == 0x09:
             lines += [
@@ -1991,6 +2002,16 @@ def gen_linkdata(RNS, w, verify, session):
                     .pack() == message.pack()
                 assert read.sequence == sequence
 
+            # Two payloads the reference's own layers never build, in
+            # packets the reference itself encrypted and packed. Every
+            # context above is read by a length rule, and the two here
+            # are the rule broken: five bytes where an envelope header
+            # is six, and nothing at all where a msgpack array starts.
+            # Sent last so that no packet above depends on them.
+            RNS.Packet(link, b"\xff\x00\x00\x00\x00",
+                       context=RNS.Packet.CHANNEL).send()
+            RNS.Packet(link, b"", context=RNS.Packet.REQUEST).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2000,6 +2021,10 @@ def gen_linkdata(RNS, w, verify, session):
         ("channel",   sent[5], "a channel message, sequence 0, inside the six-byte envelope"),
         ("channel-eof", sent[6],
          "sequence 1, and a message that is its own two-byte header and nothing else"),
+        ("channel-short", sent[7],
+         "five bytes of plaintext in the channel context, one short of an envelope header"),
+        ("request-short", sent[8],
+         "an empty plaintext in the request context, where a msgpack array is expected"),
     ]
 
     for name, packet, purpose in cases:

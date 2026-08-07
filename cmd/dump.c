@@ -1321,18 +1321,24 @@ static void mp_end(struct mp *m)
 #define MAPHASHLEN   4		/* RNS/Resource.py:102#MAPHASH_LEN */
 #define HASHLEN      32		/* RNS/Identity.py:80#HASHLENGTH */
 
-/* A part request and a hashmap update are read by length and have no
- * framing to run out of, so the plaintext they came in is the only
- * bound there is. Where it is too short the rule is named, as it is for
- * a packet that is too short; the length itself is already on the line
- * above, as plaintext_length.
+/* A plaintext too short for the context it arrived in. Every context
+ * whose reader is bounded by a length rather than by framing names this
+ * rule: a part request, a hashmap update, a channel envelope and the
+ * two msgpack bodies. One rule, one name, one threshold printed; the
+ * length itself is already on the line above, as plaintext_length.
+ *
+ * It was three answers before. A part request named the rule, a channel
+ * envelope printed nothing at all and left the reader to notice which
+ * fields were missing, and a request ran into msgpack and stopped the
+ * program with half a record on standard output. doc/harness rule 6
+ * forbids exactly that, and dump is what a harness is written from.
  *
  * The advertisement needs no such check: msgpack carries its own
  * lengths and mp_take refuses to read past them. The two cancels need
  * none either: the payload is the resource hash and however many bytes
  * arrived are the ones printed, which is what the reference compares.
  * RNS/Resource.py:1102#cancel. */
-static int resource_short(size_t len, size_t need)
+static int short_plaintext(size_t len, size_t need)
 {
 	if (len >= need)
 		return 0;
@@ -1384,9 +1390,9 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 
 		/* The flag decides how much follows it, so it is read only
 		 * after the byte holding it is known to be there. */
-		if (resource_short(len, 1))
+		if (short_plaintext(len, 1))
 			return;
-		if (resource_short(len, 1 + (p[0] ? MAPHASHLEN : 0) + HASHLEN))
+		if (short_plaintext(len, 1 + (p[0] ? MAPHASHLEN : 0) + HASHLEN))
 			return;
 
 		field("hashmap_exhausted", "%s", p[0] ? "yes" : "no");
@@ -1409,7 +1415,7 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 
 		/* The hash is fixed width and the msgpack array follows it, so
 		 * one byte past the hash is the least that can be read. */
-		if (resource_short(len, HASHLEN + 1))
+		if (short_plaintext(len, HASHLEN + 1))
 			return;
 
 		u.p    = p + HASHLEN;
@@ -1511,7 +1517,9 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	/* A channel envelope is six bytes of big-endian header and then the
 	 * message. The length it declares is not read back: Envelope.unpack
 	 * takes everything after the six bytes. RNS/Channel.py:118#unpack. */
-	if (h.context == 0x0e && t.ptlen >= ENVELOPELEN) {
+	if (h.context == 0x0e) {
+		if (short_plaintext(t.ptlen, ENVELOPELEN))
+			return;
 		field_hex("msgtype", t.plain, 2);
 		field("sequence", "%u", (unsigned)(t.plain[2] << 8 | t.plain[3]));
 		field("declared_length", "%u", (unsigned)(t.plain[4] << 8 | t.plain[5]));
@@ -1526,6 +1534,12 @@ static void dump_linkdata(struct blob *b, int nblobs)
 		struct mp m = { t.plain, t.ptlen };
 		const uint8_t *p;
 		size_t n;
+
+		/* The array header is one byte and everything else is inside
+		 * it, where mp_take is the bound. A plaintext with nothing in
+		 * it at all is the one case msgpack cannot report on. */
+		if (short_plaintext(t.ptlen, 1))
+			return;
 
 		if (h.context == 0x09) {
 			if (mp_array(&m) != 3)

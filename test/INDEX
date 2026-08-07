@@ -50,12 +50,14 @@ keyset/upstream-4
 linkdata/altered-hmac
 linkdata/channel
 linkdata/channel-eof
+linkdata/channel-short
 linkdata/close
 linkdata/identify
 linkdata/keepalive
 linkdata/minimal
 linkdata/request
 linkdata/request-no-data
+linkdata/request-short
 linkdata/resource-advertisement
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver
