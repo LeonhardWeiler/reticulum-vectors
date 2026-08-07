@@ -73,8 +73,7 @@ Layout
                 and at doc/harness to check your own implementation
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
-    tools/      gen, the Python generator; cite, the citation check;
-                counts, which resolves the counts in the prose
+    tools/      gen, the Python generator; cite, the citation check
 
 What a consumer needs is test/, doc/ and cmd/. The other two are the
 larger half of the repository and neither is part of the corpus:
@@ -139,9 +138,8 @@ repository.
 
 additionally regenerates every vector from the pinned reference
 implementation and fails if a single byte would change, checks every
-RNS citation in doc/, in the programs and in the meta files, folds the
-vector printed below back out of this file and diffs it, and resolves
-the counts the prose states against the corpus that holds them.
+RNS citation in doc/, in the programs and in the meta files, and diffs
+the vector printed below against the files it came from.
 
 A citation carries the line and a piece of what is on it:
 
@@ -174,7 +172,7 @@ off the page.
     raw
 
         08006b9f66014d9853faab220fba47d0276100fb48da0e82e6e01ba0c0145
-            13f74540dea024a8fdea0d68f0988ca6b6165cc5a
+        13f74540dea024a8fdea0d68f0988ca6b6165cc5a
 
     expect
 
@@ -197,10 +195,9 @@ off the page.
         accepted           yes
 
 raw is one line and holds the whole packet. The three values that wrap
-above are one line each in the file; nothing in this format wraps. A
-wrapped line is indented past the column its value starts in, and that
-is the whole rule make verify needs to fold the block back into the
-three files and diff it against them.
+above are one line each in the file; nothing in this format wraps. make
+verify strips the layout from this block and diffs what is left against
+the three files, so the bytes here cannot drift from the vector.
 
 The first eleven fields are the header, which every packet kind
 carries. Then the payload: wanted_hash is the destination being asked
@@ -253,12 +250,12 @@ agreeing.
 
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. All but sixteen vectors are of that class. The
-sixteen decode-class vectors name their reason:
+the result against raw. Nearly every vector is of that class. Those
+that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
                                   by length and digest, not by content
-    twelve rejections             the bytes that broke the rule are not
+    the rejections                the bytes that broke the rule are not
                                   printed, so expect names the rule and
                                   the numbers behind it instead
 

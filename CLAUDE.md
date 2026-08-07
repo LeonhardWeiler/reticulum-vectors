@@ -178,10 +178,9 @@ cmd/check.
         tools/
             gen             python, generates vectors against the pinned RNS
             cite            python, checks every line citation
-            counts          python, resolves the counts in the prose
 
-Nine documents. One C program. One shell script. Three tools that are
-not part of the contract, because a consumer runs none of them.
+Nine documents. One C program. One shell script. Two tools that are
+not part of the contract, because a consumer runs neither.
 
 That accounts for what a consumer reads and not for what a clone holds:
 conformance/ holds six harnesses in six languages, and it is the larger
@@ -323,35 +322,30 @@ Where it looks is `git ls-files` and not a list of its own. A list of
 where to check fails in the direction that says nothing: the file
 nobody added to it is not reported, it is simply never read.
 
-`counts` is Python and reads the corpus rather than the checkout, which
-is why it is its own program and not a second mode of `cite`: joined,
-a check that needs no checkout would suddenly need one. It resolves
-what the corpus can count — vectors of the decode class, documents,
-harnesses — against the prose that states it.
+There was a third tool for one week. `counts` resolved the totals the
+prose states — vectors of the decode class, documents, harnesses —
+against the corpus that holds them, through a table of English
+phrasings. It found one real error on the day it was written and it was
+deleted seven days later, and the reason it was deleted is the rule:
 
-It resolves rather than forbids, and the difference is the whole
-design. A ban on counting was measured first and does not work: most
-counts in this repository are local and name what they count in the
-same sentence, and forbidding them would rewrite every such line to
-reach the few that can drift.
+    A tool here checks bytes. Prose that cannot be checked is prose to
+    delete, not prose to parse.
 
-What no parser can do is tell those apart. `counts` carries a table of
-phrasings and checks the ones it can resolve; a count in a phrasing the
-table does not hold is unchecked, and that is a limit of the check and
-not a licence. Write a total the way the corpus already writes one, or
-name what it counts in the sentence that states it. This is the rule
-`gen`'s composed values obey too: what no program can enforce is
-written down.
+It needed a table of phrasings, because no parser tells a total from a
+local count. It needed an exemption for `CONFORMANCE`, whose counts are
+dated measurements. It needed a second exemption for its own source,
+which it read `decode += 1` and `documents = [` out of as a claim about
+the corpus. A check that needs an exemption for itself is a check whose
+rule is wrong.
 
-`CONFORMANCE` is exempt. Its counts are measurements against the corpus
-of a named date, and a row is reproducible only at its commit, so those
-numbers have to be allowed to go stale.
+What replaced it costs nothing to run: the totals it guarded are out of
+the prose. A number in a sentence either names what it counts in that
+sentence, where it cannot drift, or it does not belong in the sentence.
 
-None of the three is shipped as part of the corpus contract. They are
-the way vectors are produced and kept honest, not the way they are
-consumed. `make verify` runs all three; `gen` and `cite` need Python
-and the checkout, `counts` needs Python alone. `make check` runs none
-of them and needs a C compiler.
+Neither remaining tool is shipped as part of the corpus contract. They
+are the way vectors are produced and kept honest, not the way they are
+consumed. `make verify` runs both, and needs Python and the checkout.
+`make check` runs neither and needs a C compiler.
 
 ### Nothing has to be started, and that is two rules
 
