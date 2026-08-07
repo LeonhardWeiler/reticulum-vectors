@@ -73,7 +73,8 @@ Layout
                 and at doc/harness to check your own implementation
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
-    tools/      gen, the Python generator; cite, the citation check
+    tools/      gen, the Python generator; cite, the citation check;
+                counts, which resolves the counts in the prose
 
 What a consumer needs is test/, doc/ and cmd/. The other two are the
 larger half of the repository and neither is part of the corpus:
@@ -137,8 +138,10 @@ repository.
     make verify
 
 additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change, and checks
-every RNS citation in doc/, in the programs and in the meta files.
+implementation and fails if a single byte would change, checks every
+RNS citation in doc/, in the programs and in the meta files, folds the
+vector printed below back out of this file and diffs it, and resolves
+the counts the prose states against the corpus that holds them.
 
 A citation carries the line and a piece of what is on it:
 
@@ -251,7 +254,7 @@ agreeing.
 A vector of the encode class carries in expect everything raw contains,
 so raw can be rebuilt from it; cmd/check does exactly that and diffs
 the result against raw. All but sixteen vectors are of that class. The
-sixteen that are not name their reason:
+sixteen decode-class vectors name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
                                   by length and digest, not by content

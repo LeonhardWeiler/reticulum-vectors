@@ -31,10 +31,10 @@ check: cmd/dump
 gen:
 	tools/gen
 
-# Every meta file claims a source, doc/ cites the reference by line, and
-# cmd/VENDOR says the vendored file is unmodified. verify is the
-# evidence for all three. Needs Python and the checkout; check alone
-# does not.
+# Every meta file claims a source, doc/ cites the reference by line,
+# cmd/VENDOR says the vendored file is unmodified, and the prose counts
+# what the corpus holds. verify is the evidence for all four. Needs
+# Python and the checkout; check alone does not.
 #
 # The hashes are read through grep because the first of the two lines
 # carries a label and sha256sum skips it, checking one file of two and
@@ -109,6 +109,7 @@ verify: check
 	         END { exit bad }'
 	tools/gen
 	tools/cite
+	tools/counts
 
 clean:
 	rm -f cmd/dump $(OBJ)
