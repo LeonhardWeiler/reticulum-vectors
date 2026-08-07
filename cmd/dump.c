@@ -1613,6 +1613,17 @@ static void dump_proof(struct blob *b, int nblobs)
 	 * Ed25519 public rather than the two halves of an identity. Which
 	 * of the two applies is in the flags byte and nowhere else. */
 	on_link = h.destination_type == 3;
+
+	/* Which half is the signing key follows from the flags, and the two
+	 * forms take keys of two lengths. Without this, a 64-byte key beside
+	 * a proof on a link verifies against the X25519 half and prints
+	 * signature_valid no, which is a wrong field value where the corpus
+	 * can have a message instead. */
+	if (b[1].len != (on_link ? (size_t)KEYHALF : (size_t)KEYSIZE))
+		fatal("proof: %s takes a %d-byte key, got %zu",
+		      on_link ? "a proof on a link" : "a proof to a destination",
+		      on_link ? KEYHALF : KEYSIZE, b[1].len);
+
 	signer  = on_link ? b[1].data : b[1].data + KEYHALF;
 
 	print_header(&h);

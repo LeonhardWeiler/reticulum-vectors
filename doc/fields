@@ -38,11 +38,13 @@ would still compare equal, so both cmd/dump and tools/gen refuse one.
 
 Echoed inputs
 
-raw carries more than the object for seven kinds, because the object
-cannot be read without it. expect echoes those lines so that it holds
-every byte of raw and the encode direction has something to rebuild
-from. Each is the line of raw named in the kind's own document.
+Where raw carries more than the object, because the object cannot be
+read without it, expect echoes those lines: expect then holds every byte
+of raw and the encode direction has something to rebuild from. Each is
+the line of raw named in the kind's own document. These are all of them.
 
+    advertised_hash    hex      resourceproof: the hash the receiver was
+                                advertised
     recipient_private  hex      encrypted: the 64-byte identity private key
     ratchet_private    hex, -   encrypted: the 32-byte ratchet scalar, or -
     link_request       hex      linkproof, linkdata: the request packet
@@ -268,8 +270,8 @@ The proof is the kind resourceproof, and its raw carries the resource
 hash the receiver was advertised, because the packet does not say what
 it is proving beyond naming it.
 
-    advertised_hash    hex      echoed input: the hash from the
-                                advertisement
+    advertised_hash    hex      the echoed input above: the hash from
+                                the advertisement
     resource_proof     hex      32 bytes, SHA-256 of the data and the
                                 resource hash
     hash_match         keyword  yes, no: resource_hash against

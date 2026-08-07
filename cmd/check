@@ -187,7 +187,9 @@ if [ -n "$uncrossed" ]; then
 fi
 
 fail_with() {
-	echo "FAIL $1"
+	# Named from the repository root. The path this script builds runs
+	# through cmd/.., and a reader has to see test/ in a failure.
+	echo "FAIL ${1#"$root"/}"
 	shift
 	printf '%s\n' "$@" | sed 's/^/    /'
 	fail=$((fail + 1))
@@ -335,7 +337,10 @@ done
 # same list that decides what the corpus is.
 corpus=$( { cat "$index"
             while read -r v; do
-                    cat "$root/test/$v/raw" "$root/test/$v/expect"
+                    # Quiet: a vector missing a file has already been
+                    # reported by name, and cat would say so again from
+                    # inside a pipeline whose output is a checksum.
+                    cat "$root/test/$v/raw" "$root/test/$v/expect" 2>/dev/null
             done < "$index"
           } | cksum | cut -d' ' -f1)
 
