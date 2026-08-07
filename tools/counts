@@ -39,7 +39,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GIT = ["git", "-C", ROOT, "ls-files", "-z"]
 
-EXEMPT = {"CONFORMANCE"}
+# CONFORMANCE is exempt for the reason above. This file is exempt
+# because it is the one whose subject is these words: a phrasing may
+# span a line break, so the prose it resolves can wrap, and in code the
+# same rule reads "decode += 1" and "documents = [" as a claim that
+# there is one document.
+EXEMPT = {"CONFORMANCE", "tools/counts"}
 
 # The prose writes small numbers out, so the check has to read them.
 WORDS = ("zero one two three four five six seven eight nine ten eleven "
