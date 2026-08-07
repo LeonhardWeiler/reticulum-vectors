@@ -360,7 +360,10 @@ if [ "$seen" -eq 0 ]; then
 	echo "no vectors under $root/test" >&2
 	exit 2
 fi
-if [ "$pass" -eq 0 ]; then
+
+# Nothing ran, which is not a result. A decoder that exits 77 for every
+# kind has measured itself against no vector at all.
+if [ "$pass" -eq 0 ] && [ "$fail" -eq 0 ]; then
 	echo "nothing was checked" >&2
 	exit 2
 fi
