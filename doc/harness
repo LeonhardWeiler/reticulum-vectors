@@ -64,7 +64,7 @@ Six rules
    Those vectors are reported as skipped and named, and are not counted
    against the result:
 
-       40 passed, 9 failed, corpus 610068843, 1 skipped: ifac
+       40 passed, 9 failed, corpus <fingerprint>, 1 skipped: ifac
 
    Nothing else may use that status. A harness that implements a kind
    and disagrees with the vector has found something, and that is the
@@ -81,7 +81,7 @@ Six rules
    code, and it runs:
 
        DUMP=conformance/example/dump.py ENCODE=no cmd/check
-       5 passed, 0 failed, corpus 2146661904, 99 skipped: announce ...
+       5 passed, 0 failed, corpus <fingerprint>, 99 skipped: announce ...
 
    It calls no implementation, which is the one thing it does that a
    real harness must not do. Everything else about it is the shape to

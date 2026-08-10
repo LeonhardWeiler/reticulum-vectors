@@ -44,7 +44,7 @@ A decoder that covers some kinds and not others exits 77 for the rest.
 Those vectors are reported as skipped and named, and are not counted
 against it:
 
-    40 passed, 9 failed, corpus 610068843, 1 skipped: ifac
+    40 passed, 9 failed, corpus <fingerprint>, 1 skipped: ifac
 
 doc/harness is the whole of what a program has to do to be substituted
 for dump here, and cmd/dump -l lists the kinds it can be asked for. It
