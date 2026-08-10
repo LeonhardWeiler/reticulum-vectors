@@ -1,0 +1,39 @@
+# Regenerate every vector from the pinned reference and require that
+# not one byte changed, then read the three claims in cmd/VENDOR and
+# test/INDEX against what they describe.
+#
+# Separate from check.yml because this needs the network, Python and
+# the pinned checkout, and check.yml needs none of them. That split is
+# the corpus contract: a consumer runs check.
+#
+# gen refuses a checkout with uncommitted changes, which a fresh clone
+# never has. It looks for one in ../upstream, so the clone goes beside
+# the workspace.
+name: verify
+
+on: [push, pull_request]
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # cryptography is what puts python-rns on the openssl backend,
+      # which is part of the pin. pyserial is imported by RNS at load.
+      - run: pip install 'cryptography>=3.4.7' 'pyserial>=3.5'
+
+      - name: Clone the pinned reference
+        run: |
+          git clone --filter=blob:none \
+            https://github.com/markqvist/Reticulum ../upstream
+          git -C ../upstream checkout \
+            b48b96e61676504e0a4e527b33b9a0b4495c6872
+
+      # -s so the summary holds the four result lines and not the
+      # recipes that produced them.
+      - run: set -o pipefail; make -s verify | tee -a "$GITHUB_STEP_SUMMARY"
