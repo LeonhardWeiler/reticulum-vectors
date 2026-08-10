@@ -421,21 +421,11 @@ def determinism(kind, expect):
     """encode when expect holds every byte of raw.
 
     That is so exactly when the kind has an encoder and the object
-    decoded. Deriving the class here rather than declaring it per vector
-    keeps the claim from being wrong; cmd/check then tests it, in both
-    directions, which is what makes a rule of thumb safe to use here.
-
-    A broken rule is not by itself the decode class. What decides is
-    which rule: short-plaintext is the one that stops after the packet
-    decoded whole, so the token is printed, every byte of raw is in
-    expect, and the vector rebuilds. Every other rejection stopped at
-    bytes it then did not print.
-
-    Which rule, and not a proxy for it. "The packet printed its flags
-    first" is the same answer for every rejection before the header is
-    printed and the wrong one for linkdata, which prints the header
-    before it looks at the token because the context byte decides
-    whether there is a token at all.
+    decoded. short-plaintext is therefore the one rejection that stays
+    in the encode class: it stops after the packet decoded whole, so
+    the token is printed and the vector rebuilds. Every other rejection
+    stopped at bytes it then did not print. CLAUDE.md says why the
+    class is derived here rather than declared per vector.
     """
     if kind not in ENCODABLE:
         return "decode"
@@ -523,13 +513,9 @@ def derived_from(w, kind, base, blobs, describe):
     purpose differ between two cases of a kind; the blob list, the
     describe the kind already has, and the source are the same.
 
-    The source is composed here rather than passed in, because it is the
-    provenance line and it says the same thing every time: no reference
-    produced these bytes. per adds a citation for a case whose
+    The source says the same thing every time and is composed here: no
+    reference produced these bytes. per adds a citation for a case whose
     transformation follows a named rule of the reference.
-
-    Returns the maker rather than taking a list of cases, so that the
-    comment saying why a vector exists sits against that vector.
     """
     def one(name, raw, purpose, base=base, per=None):
         source = "constructed by tools/gen from %s/%s" % (kind, base)
@@ -2653,14 +2639,10 @@ def gen_resource_short(RNS, w, verify, session):
     context byte and not the length walks off the end of the plaintext,
     and the four cases below are the four ways it can.
 
-    Only the plaintext is chosen here. Everything around it is the
-    reference's: Link.encrypt draws the initialisation vector, and
-    Packet.pack writes the header, so raw is its output as it is for
-    every other vector of this kind.
-
-    No receiver sends these. They are the negative half of a rule that
-    is otherwise only in code, and cmd/check holds both readings of it
-    against each other.
+    No receiver sends these, and only the plaintext is chosen here.
+    Everything around it is the reference's: Link.encrypt draws the
+    initialisation vector and Packet.pack writes the header, so raw is
+    its output as it is for every other vector of this kind.
     """
     cases = [
         ("resource-request-empty", RNS.Packet.RESOURCE_REQ, b"",
