@@ -379,12 +379,10 @@ static void truncated_hash(const uint8_t *p, size_t n, uint8_t *out, size_t take
 	memcpy(out, full, take);
 }
 
-static void dump_identity(struct blob *b, int nblobs)
+static void dump_identity(struct blob *b)
 {
 	uint8_t hash[ADDRLEN];
 
-	if (nblobs != 1)
-		fatal("identity: expected 1 blob, got %d", nblobs);
 	if (b[0].len != KEYSIZE)
 		fatal("identity: public key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 
@@ -396,13 +394,11 @@ static void dump_identity(struct blob *b, int nblobs)
 	field_hex("identity_hash",  hash, ADDRLEN);
 }
 
-static void dump_keyset(struct blob *b, int nblobs)
+static void dump_keyset(struct blob *b)
 {
 	uint8_t pub[KEYSIZE];
 	uint8_t hash[ADDRLEN];
 
-	if (nblobs != 1)
-		fatal("keyset: expected 1 blob, got %d", nblobs);
 	if (b[0].len != KEYSIZE)
 		fatal("keyset: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 
@@ -419,15 +415,13 @@ static void dump_keyset(struct blob *b, int nblobs)
 	field_hex("identity_hash",   hash, ADDRLEN);
 }
 
-static void dump_destination(struct blob *b, int nblobs)
+static void dump_destination(struct blob *b)
 {
 	uint8_t name_hash[NAMEHASHLEN];
 	uint8_t material[NAMEHASHLEN + ADDRLEN];
 	uint8_t dest_hash[ADDRLEN];
 	size_t  matlen, start, i;
 
-	if (nblobs != 2)
-		fatal("destination: expected 2 blobs, got %d", nblobs);
 	if (!b[1].absent && b[1].len != ADDRLEN)
 		fatal("destination: identity hash is %zu bytes, expected %d", b[1].len, ADDRLEN);
 
@@ -462,13 +456,11 @@ static void dump_destination(struct blob *b, int nblobs)
 	field_hex("destination_hash", dest_hash, ADDRLEN);
 }
 
-static void dump_signature(struct blob *b, int nblobs)
+static void dump_signature(struct blob *b)
 {
 	const uint8_t *ed_pub;
 	uint8_t digest[32];
 
-	if (nblobs != 3)
-		fatal("signature: expected 3 blobs, got %d", nblobs);
 	if (b[0].len != KEYSIZE)
 		fatal("signature: public key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 	if (b[2].len != SIGLEN)
@@ -489,12 +481,10 @@ static void dump_signature(struct blob *b, int nblobs)
  * it is produced. An implementation that verifies correctly and signs
  * with a nonce of its own choosing passes every other vector here and
  * emits announces and link proofs nothing accepts. */
-static void dump_sign(struct blob *b, int nblobs)
+static void dump_sign(struct blob *b)
 {
 	uint8_t pub[KEYHALF], sig[SIGLEN], digest[32];
 
-	if (nblobs != 2)
-		fatal("sign: expected 2 blobs, got %d", nblobs);
 	if (b[0].len != KEYSIZE)
 		fatal("sign: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 
@@ -827,7 +817,7 @@ static void print_plaintext(const struct token *t)
 	field_hex("plaintext", t->plain, t->ptlen);
 }
 
-static void dump_encrypted(struct blob *b, int nblobs)
+static void dump_encrypted(struct blob *b)
 {
 	struct header h;
 	struct token t;
@@ -838,8 +828,6 @@ static void dump_encrypted(struct blob *b, int nblobs)
 	uint8_t ratchet_pub[KEYHALF];
 	int agreed;
 
-	if (nblobs != 3)
-		fatal("encrypted: expected 3 blobs, got %d", nblobs);
 	if (b[0].len != KEYSIZE)
 		fatal("encrypted: private key is %zu bytes, expected %d", b[0].len, KEYSIZE);
 	if (!b[1].absent && b[1].len != KEYHALF)
@@ -898,14 +886,12 @@ static void dump_encrypted(struct blob *b, int nblobs)
  * symmetric key: no ephemeral key in front of it and no derivation
  * behind it, so the two halves of the key are the key as configured.
  * RNS/Destination.py#GROUP. */
-static void dump_group(struct blob *b, int nblobs)
+static void dump_group(struct blob *b)
 {
 	struct header h;
 	struct token t;
 	struct fault f;
 
-	if (nblobs != 2)
-		fatal("group: expected 2 blobs, got %d", nblobs);
 	if (b[0].len != DERIVEDLEN)
 		fatal("group: group key is %zu bytes, expected %d", b[0].len, DERIVEDLEN);
 
@@ -931,14 +917,12 @@ static void dump_group(struct blob *b, int nblobs)
 	print_plaintext(&t);
 }
 
-static void dump_announce(struct blob *b, int nblobs)
+static void dump_announce(struct blob *b)
 {
 	struct header h;
 	struct announce a;
 	struct fault f;
 
-	if (nblobs != 1)
-		fatal("announce: expected 1 blob, got %d", nblobs);
 
 	if (!parse_header(b[0].data, b[0].len, &h, &f) ||
 	    !parse_announce(&h, &a, &f)) {
@@ -952,13 +936,11 @@ static void dump_announce(struct blob *b, int nblobs)
 /* A packet to a plain destination. Destination.encrypt returns the
  * plaintext unchanged for this type, so the payload is the data, with
  * no ephemeral key, no token and no padding. RNS/Destination.py#PLAIN. */
-static void dump_plain(struct blob *b, int nblobs)
+static void dump_plain(struct blob *b)
 {
 	struct header h;
 	struct fault f;
 
-	if (nblobs != 1)
-		fatal("plain: expected 1 blob, got %d", nblobs);
 
 	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
 		print_fault(&f);
@@ -975,7 +957,7 @@ static void dump_plain(struct blob *b, int nblobs)
  * of the three are present: the reader decides by length alone, so a
  * 17-byte tag is read as a transport id and a tag of one.
  * RNS/Transport.py#TRUNCATED_HASHLENGTH. */
-static void dump_pathrequest(struct blob *b, int nblobs)
+static void dump_pathrequest(struct blob *b)
 {
 	struct header h;
 	struct fault f;
@@ -983,8 +965,6 @@ static void dump_pathrequest(struct blob *b, int nblobs)
 	const uint8_t *wanted, *requester, *tag;
 	uint8_t unique[ADDRLEN * 2];
 
-	if (nblobs != 1)
-		fatal("pathrequest: expected 1 blob, got %d", nblobs);
 
 	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
 		print_fault(&f);
@@ -1095,15 +1075,13 @@ static void print_signalling(const uint8_t *p)
 		field("mtu", "-");
 }
 
-static void dump_linkrequest(struct blob *b, int nblobs)
+static void dump_linkrequest(struct blob *b)
 {
 	struct header h;
 	struct fault f;
 	uint8_t link_id[ADDRLEN];
 	int signalled;
 
-	if (nblobs != 1)
-		fatal("linkrequest: expected 1 blob, got %d", nblobs);
 
 	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
 		print_fault(&f);
@@ -1128,7 +1106,7 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 	field_hex("link_id", link_id, ADDRLEN);
 }
 
-static void dump_linkproof(struct blob *b, int nblobs)
+static void dump_linkproof(struct blob *b)
 {
 	struct header h, rh;
 	struct fault f;
@@ -1137,8 +1115,6 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	uint8_t link_id[ADDRLEN], signed_data[MAXBLOB];
 	int signalled;
 
-	if (nblobs != 3)
-		fatal("linkproof: expected 3 blobs, got %d", nblobs);
 	if (b[1].len != KEYSIZE)
 		fatal("linkproof: identity key is %zu bytes, expected %d", b[1].len, KEYSIZE);
 
@@ -1461,7 +1437,7 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 		field_hex("resource_hash", p, len);
 }
 
-static void dump_linkdata(struct blob *b, int nblobs)
+static void dump_linkdata(struct blob *b)
 {
 	struct header h, rh;
 	struct token t;
@@ -1471,8 +1447,6 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	uint8_t identity_hash[ADDRLEN], signed_data[ADDRLEN + KEYSIZE];
 	int agreed;
 
-	if (nblobs != 3)
-		fatal("linkdata: expected 3 blobs, got %d", nblobs);
 	if (b[1].len != KEYHALF)
 		fatal("linkdata: private key is %zu bytes, expected %d", b[1].len, KEYHALF);
 
@@ -1604,7 +1578,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
  * It is addressed to the first 16 bytes of the proved packet's hash
  * rather than to a destination, which is how the sender recognises the
  * answer to its own packet. RNS/Packet.py#get_hash. */
-static void dump_proof(struct blob *b, int nblobs)
+static void dump_proof(struct blob *b)
 {
 	struct header h, ph;
 	struct fault f;
@@ -1612,8 +1586,6 @@ static void dump_proof(struct blob *b, int nblobs)
 	uint8_t packet_hash[32];
 	int explicit_form, on_link;
 
-	if (nblobs != 3)
-		fatal("proof: expected 3 blobs, got %d", nblobs);
 	if (b[1].len != KEYSIZE && b[1].len != KEYHALF)
 		fatal("proof: signer key is %zu bytes, expected %d or %d",
 		      b[1].len, KEYSIZE, KEYHALF);
@@ -1688,13 +1660,11 @@ static void dump_proof(struct blob *b, int nblobs)
  * proof, and neither half means here what it means there: the first 32
  * name the resource and the second are a hash of its data, not a
  * signature over anything. RNS/Resource.py#proof_data. */
-static void dump_resourceproof(struct blob *b, int nblobs)
+static void dump_resourceproof(struct blob *b)
 {
 	struct header h;
 	struct fault f;
 
-	if (nblobs != 2)
-		fatal("resourceproof: expected 2 blobs, got %d", nblobs);
 	if (b[0].len != HASHLEN)
 		fatal("resourceproof: resource hash is %zu bytes, expected %d",
 		      b[0].len, HASHLEN);
@@ -1787,15 +1757,13 @@ static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
  * Transport does, and a frame on an interface with a named network or a
  * passphrase is not a packet until it has been unmasked. See
  * doc/packet. */
-static void dump_ifac(struct blob *b, int nblobs)
+static void dump_ifac(struct blob *b)
 {
 	static uint8_t unmasked[MAXBLOB], packet[MAXBLOB];
 	const uint8_t *ifac;
 	uint8_t origin[KEYSIZE], key[KEYSIZE], expected[SIGLEN];
 	size_t originlen, ifac_size, plen;
 
-	if (nblobs != 4)
-		fatal("ifac: expected 4 blobs, got %d", nblobs);
 	if (b[0].absent && b[1].absent)
 		fatal("ifac: neither a network name nor a passphrase");
 	if (b[2].len != 1)
@@ -2069,35 +2037,40 @@ static void encode_linkdata(struct kv *f, int n)
 
 /* Every kind, and for each the two directions. A kind with neither a
  * layout nor an encoder is one no vector can claim the encode class
- * for: its raw holds something expect does not record. */
+ * for: its raw holds something expect does not record.
+ *
+ * blobs is how many lines the kind's raw holds. It is checked here
+ * rather than in each decoder because a decoder that has to count its
+ * own arguments before reading them is a decoder that can forget to. */
 static const struct {
 	const char *name;
-	void (*decode)(struct blob *, int);
+	int blobs;
+	void (*decode)(struct blob *);
 	void (*encode)(struct kv *, int);	/* where a layout will not do */
 	const char *layout;
 } kinds[] = {
-	{ "identity",    dump_identity,    NULL, "public_key" },
-	{ "keyset",      dump_keyset,      NULL, "private_key" },
-	{ "destination", dump_destination, NULL, "name identity_hash" },
-	{ "signature",   dump_signature,   NULL, NULL },
-	{ "sign",        dump_sign,        NULL, NULL },
-	{ "announce",    dump_announce,    NULL,
+	{ "identity",    1, dump_identity,    NULL, "public_key" },
+	{ "keyset",      1, dump_keyset,      NULL, "private_key" },
+	{ "destination", 2, dump_destination, NULL, "name identity_hash" },
+	{ "signature",   3, dump_signature,   NULL, NULL },
+	{ "sign",        2, dump_sign,        NULL, NULL },
+	{ "announce",    1, dump_announce,    NULL,
 	  "= public_key name_hash random_hash ratchet signature app_data" },
-	{ "plain",       dump_plain,       NULL, "= plaintext" },
-	{ "pathrequest", dump_pathrequest, NULL, "= wanted_hash requester_id tag" },
-	{ "encrypted",   dump_encrypted,   NULL,
+	{ "plain",       1, dump_plain,       NULL, "= plaintext" },
+	{ "pathrequest", 1, dump_pathrequest, NULL, "= wanted_hash requester_id tag" },
+	{ "encrypted",   3, dump_encrypted,   NULL,
 	  "recipient_private ratchet_private = ephemeral_public iv ciphertext hmac" },
-	{ "group",       dump_group,       NULL, "group_key = iv ciphertext hmac" },
-	{ "linkrequest", dump_linkrequest, NULL,
+	{ "group",       2, dump_group,       NULL, "group_key = iv ciphertext hmac" },
+	{ "linkrequest", 1, dump_linkrequest, NULL,
 	  "= x25519_public ed25519_public signalling" },
-	{ "linkproof",   dump_linkproof,   NULL,
+	{ "linkproof",   3, dump_linkproof,   NULL,
 	  "link_request signer_public = signature x25519_public signalling" },
-	{ "linkdata",    dump_linkdata,    encode_linkdata, NULL },
-	{ "proof",       dump_proof,       NULL,
+	{ "linkdata",    3, dump_linkdata,    encode_linkdata, NULL },
+	{ "proof",       3, dump_proof,       NULL,
 	  "proved_packet signer_public = proof_hash signature" },
-	{ "resourceproof", dump_resourceproof, NULL,
+	{ "resourceproof", 2, dump_resourceproof, NULL,
 	  "advertised_hash = resource_hash resource_proof" },
-	{ "ifac",        dump_ifac,        encode_ifac, NULL },
+	{ "ifac",        4, dump_ifac,        encode_ifac, NULL },
 };
 
 int main(int argc, char **argv)
@@ -2134,7 +2107,11 @@ int main(int argc, char **argv)
 			continue;
 		if (!encode) {
 			n = readraw(path, blobs, MAXBLOBS);
-			kinds[i].decode(blobs, n);
+			if (n != kinds[i].blobs)
+				fatal("%s: expected %d blob%s, got %d", kind,
+				      kinds[i].blobs,
+				      kinds[i].blobs == 1 ? "" : "s", n);
+			kinds[i].decode(blobs);
 		} else if (kinds[i].encode == NULL && kinds[i].layout == NULL) {
 			fatal("kind %s is not of the encode class", kind);
 		} else {
