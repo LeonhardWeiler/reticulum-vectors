@@ -2,29 +2,17 @@
 
 ## What this is
 
-Verified Reticulum protocol data as files.
+README says what the corpus is, what the pin is and why the backend is
+part of it. It is not repeated here; a rule written twice is a rule that
+can disagree with itself.
 
-The corpus records what Python RNS actually puts on the wire, in a form
-that can be checked without running Python. What consumes it is any
-implementation that wants to know whether it agrees with the reference;
-none of them is this repository's concern, and the word for all of them
-here is consumer.
+What this file adds is how to work on the repository. It is read by
+whoever changes it, not by whoever uses it.
 
-It is not a specification. It does not define correct behaviour. It
-records observed behaviour of one implementation at one version.
-
-Reference implementation pin:
-
-    python-rns 1.4.2, commit b48b96e6, openssl backend
-
-Every vector records this pin. When the pin moves, vectors are
-regenerated and differences are examined, not silently accepted.
-
-The backend belongs in the pin. python-rns ships two curve
-implementations and picks one at import time by what is installed, and
-they disagree on a non-canonical Ed25519 S and on a low-order X25519
-point. Vectors turn on the difference; tools/gen refuses to run under
-the other backend. doc/identity and doc/encryption name them.
+One word is used throughout and is defined here: a consumer is any
+implementation that wants to know whether it agrees with the reference.
+Which implementation that is is never this repository's concern, and
+consumer is the word for all of them.
 
 ---
 
@@ -67,28 +55,13 @@ belong in the corpus.
 
 # Determinism
 
-Most Reticulum objects cannot be produced twice: an announce carries a
-random hash, an encrypted packet an ephemeral key and a random IV, a
-link handshake ephemeral keys.
+What the two classes mean, that the class turns on whether expect is
+total and not on whether the bytes can be produced twice, and which two
+things put a vector in the decode class: README, section "Vector
+format".
 
-That is not what the class turns on. The class says whether expect is
-total:
-
-    determinism: encode    expect holds every byte of raw
-    determinism: decode    it does not
-
-Randomness is no obstacle. expect records what the random bytes came
-out as, so raw follows from expect even when nothing can produce those
-bytes a second time. Where raw carries an input that is not the object
-itself — the recipient key of an encrypted packet, the link request a
-proof answers — expect echoes it as a field and stays total.
-
-Only two things put a vector in the decode class: expect records a
-field by digest rather than by content, or the object broke a rule and
-the bytes it broke it on are therefore not printed. A broken rule is
-not by itself the second case; test/linkdata holds four vectors that
-are broken inside a plaintext the packet around them decoded whole, and
-they rebuild.
+What that section does not say, because it is a rule about this
+repository and not about a vector:
 
 The class is derived by tools/gen from which rule was broken, never
 declared by hand, and it is enforced in both directions. cmd/check
@@ -106,21 +79,14 @@ cmd/check.
 
 # Repository Structure
 
-    README, CONFORMANCE     what this is; what other implementations score
-    doc/                    nine documents, byte layouts and derivations
-    test/                   the vectors, one directory each, sixteen kinds
-    cmd/                    dump.c and its cryptography; check, a shell script
-    conformance/            one harness per implementation measured
-    tools/gen               python, generates the vectors against the pinned RNS
-    .github/                two workflows, which check this repository and
-                            promise nothing to anyone else
+README, section "Layout", lists the directories and says which three a
+consumer needs. What it does not say:
 
 One C program. One shell script. One tool that is not part of the
 contract, because a consumer does not run it.
 
-A consumer needs test/, doc/ and cmd/. conformance/ is the larger half
-of a clone, needing Go, Rust, Node, Elixir and a C++ compiler between
-its six harnesses, and README says so where it lists the layout.
+The two workflows under .github/ check this repository. They promise
+nothing to anyone else.
 
 Nothing here is published as an interface. There was a composite action
 for one day, so that a consumer's workflow could be three lines. Three
@@ -152,55 +118,32 @@ writing it so that it stays true.
 
 ## test/
 
-One directory per vector, named after what it records rather than
-numbered, so that inserting a case renumbers nothing and doc/ can refer
-to one by name:
+The three files, the naming, test/INDEX, the three meta fields and the
+rule that every value is hex, a number or a keyword: README, section
+"Vector format". When writing a vector rather than reading one, two
+more rules apply.
 
-    test/announce/ratchet/
-
-        meta      provenance and determinism class
-        raw       the input, hex, one blob per line
-        expect    field decomposition, byte-identical to what dump prints
-
-test/INDEX names every vector, one per line, and cmd/check refuses to
-run against a test/ that holds anything else.
-
-meta has three fields, all required:
-
-    source        python-rns 1.4.2 (b48b96e6)
-    determinism   encode
-    purpose       announce with ratchet, no app_data
-
-The kind is the directory the vector is filed under and is not repeated
-here. Adopted vectors record their origin in source instead:
+An adopted vector records where it came from in source, in place of the
+pin:
 
     source        python-rns tests/identity.py#fixed_keys (b48b96e6)
 
-Every value in expect is hex, a decimal number, or a keyword from a
-fixed set. Byte strings are always hex, names included: printed as
-text, a newline inside one would end the line early and let a vector
-forge or hide a field.
-
-Negative vectors are stored the same way. A failure names the rule
-broken and the numbers behind it, so that two decoders cannot agree by
-accident while failing for different reasons:
+A rejection names the rule broken and the numbers behind it, so that
+two decoders cannot agree by accident while failing for different
+reasons. Where the number is already in the output it is not repeated:
 
     invalid            short-payload
     payload_length     147
     minimum_length     148
 
-Where the number is already in the output the rejection does not repeat
-it.
-
 ---
 
 ## cmd/
 
-`dump` is the only compiled program. It decodes one object and prints
-its fields in the format used by `expect`. With `-e` it runs the other
-way, rebuilding raw from expect, which is how the encode class is
-enforced. It is the second implementation of the wire format, and that
-is its purpose: it proves the vectors are usable without Python.
+`dump` is the only compiled program, and it is the second
+implementation of the wire format. That is its purpose: it proves the
+vectors are usable without Python. What it prints and what `-e` does are
+in README.
 
 The encode direction is a table of field names, one row per kind,
 because in that direction an absent field is `-` and contributes no
@@ -325,10 +268,7 @@ transcribed and absent; this is that rule turned on the generator.
 # Cryptography in C
 
 Vectors drive the dependency, not the other way around. Only what a
-vector requires is written or vendored.
-
-SHA-256, HMAC-SHA256, HKDF and AES-256-CBC are written out; tweetnacl
-is vendored unmodified for Ed25519, SHA-512 and X25519.
+vector requires is written or vendored. README lists which is which.
 
 AES is decryption only and 256-bit only, because every token in the
 corpus is one the reference produced from a 64-byte derived key. Only
@@ -341,9 +281,8 @@ vector that needs it, and none does.
 
 # Upstream License
 
-Reticulum is licensed permissively with two added restrictions: no use
-in systems intended to harm humans, and no use in AI or language model
-training datasets.
+The two added restrictions are in README and in LICENSE. What follows
+from them for work done here:
 
 Deriving documentation and generating vectors is unaffected. Copying
 code or documentation text requires attribution. The upstream checkout
