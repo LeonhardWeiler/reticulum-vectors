@@ -1353,6 +1353,7 @@ static void mp_field_double(struct mp *m, const char *name)
 #define RESOURCE_RCL 0x07
 #define MAPHASHLEN   4		/* RNS/Resource.py#MAPHASH_LEN */
 #define HASHLEN      32		/* RNS/Identity.py#HASHLENGTH */
+#define EXHAUSTED    0xff	/* RNS/Resource.py#HASHMAP_IS_EXHAUSTED */
 
 /* A plaintext too short for the context it arrived in. Every context
  * whose reader is bounded by a length rather than by framing names this
@@ -1411,16 +1412,21 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 
 	if (context == RESOURCE_REQ) {
 		size_t at = 1;
+		int exhausted;
 
 		/* The flag decides how much follows it, so it is read only
-		 * after the byte holding it is known to be there. */
+		 * after the byte holding it is known to be there. It is one
+		 * value and not a boolean: the reference compares the byte
+		 * against HASHMAP_IS_EXHAUSTED, so every other byte, 0x01
+		 * included, says the hashmap is not exhausted. */
 		if (short_plaintext(len, 1))
 			return;
-		if (short_plaintext(len, 1 + (p[0] ? MAPHASHLEN : 0) + HASHLEN))
+		exhausted = p[0] == EXHAUSTED;
+		if (short_plaintext(len, 1 + (exhausted ? MAPHASHLEN : 0) + HASHLEN))
 			return;
 
-		field("hashmap_exhausted", "%s", p[0] ? "yes" : "no");
-		if (p[0]) {
+		field("hashmap_exhausted", "%s", exhausted ? "yes" : "no");
+		if (exhausted) {
 			field_hex("last_map_hash", p + at, MAPHASHLEN);
 			at += MAPHASHLEN;
 		} else {

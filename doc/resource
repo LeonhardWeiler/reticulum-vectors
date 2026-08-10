@@ -127,12 +127,19 @@ Three pieces concatenated, with no count, no type byte and no
 delimiter. The reader takes them by length:
 
     offset  size  field
-    0       1     hashmap exhausted: 0x00 or 0xff
+    0       1     hashmap exhausted: 0xff, and 0x00 otherwise
     1       4     the last map hash, only when exhausted
     -       32    the resource hash
     -       -     four bytes per part requested
 
     RNS/Resource.py#request_data
+
+The flag is one value compared against HASHMAP_IS_EXHAUSTED, not a
+byte tested for truth. A sender writes 0x00 or 0xff and nothing else,
+and a reader that treats every non-zero byte as exhausted looks for the
+last map hash where a 0x01 has no last map hash to find.
+
+    RNS/Resource.py#HASHMAP_IS_EXHAUSTED
 
 The flag decides where the resource hash begins. A decoder that reads a
 fixed offset is right on every request until the receiver runs out of

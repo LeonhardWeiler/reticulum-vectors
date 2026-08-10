@@ -4,7 +4,7 @@ Run on 2026-08-10 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 2146661904
+    corpus 72746484
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -78,6 +78,13 @@ fail both.
 
     linkdata/channel-short         failed by all six, finding 22
     linkdata/request-short         failed by all six, finding 22
+
+The corpus count did not move for this run and the fingerprint did. One
+vector was regenerated, test/linkdata/resource-request-exhausted-short,
+because the corpus and not an implementation had the rule wrong; the
+entry after the harness faults says what it was. Not one count of the
+six moved, which is the outcome to expect from a vector that every one
+of them fails either way.
 
 Five harness faults have been found and fixed, and no harness changed
 for the run above. They are recorded here because a harness is evidence
@@ -154,6 +161,37 @@ place: that a packet on a link carries at least a token. A vector found
 it in six programs at once because it was the first one to ask. What
 the implementations behind them do is finding 23, and it is a milder
 sentence.
+
+
+One corpus fault, found by an implementation that is not on the list
+
+The first byte of a part request is the hashmap exhausted flag, and
+what the reference does with it is compare it:
+
+    RNS/Resource.py#HASHMAP_IS_EXHAUSTED
+        wants_more_hashmap = True if request_data[0] == ... else False
+
+cmd/dump and tools/gen both read the byte as a boolean instead, so
+every non-zero value said exhausted, and the flag decides whether four
+bytes of last map hash sit between it and the resource hash. One vector
+turned on the difference, because tools/gen had chosen 0x01 for the
+flag when it built the plaintext:
+
+    test/linkdata/resource-request-exhausted-short
+        plaintext        01aaaaaaaa
+        minimum_length   37          the mapped threshold, from 0x01
+
+Quad4-Software/Reticulum-Go compares the byte against 0xff, as the
+reference does, answered 33, and was right. The comparison is now in
+both programs, the plaintext is 0xff and the vector was regenerated;
+its raw changed because the plaintext did, and the pinned randomness
+gave it the same initialisation vector. No other vector carries a flag
+byte that is neither 0x00 nor 0xff.
+
+This is the first defect a foreign implementation has found in the
+corpus rather than the other way round, and it is the argument for
+harnesses in one sentence: an implementation that disagrees with a
+vector is evidence about the vector too.
 
 Five of the six produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The sixth cannot

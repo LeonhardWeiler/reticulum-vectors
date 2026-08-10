@@ -15,13 +15,13 @@ link_id            ef25308f5f0761889af5380f76f4e0b8
 link_id_match      yes
 encrypted          yes
 iv                 1a3baf7c1062b27a95d1e571abec0c9f
-ciphertext         8688bf793d86c09038c04359608e2ea9
-hmac               2e5aa6d90eda33c34ded11de9795626923c6f27b153fa70207d117ad0e334606
+ciphertext         3ff974ea2afe8de3d66fd75ce2846d6a
+hmac               f2a58a80220ef150065ed0e9685089b589b46647dbd03974ab0bdc7955686b07
 shared_key         9190a0ebc490abb05a4a9651fe8720e966f2e0d44dccba9637a983eae57c4733
 signing_key        c844bc189c78b131e3d8a7cdb0b5156eb7c5b8d589319f70b9359384ea077974
 encryption_key     47d35ae63923abc82f81333e4de942f9d019d6a398a288c04046f2fe448ba30e
 hmac_valid         yes
 plaintext_length   5
-plaintext          01aaaaaaaa
+plaintext          ffaaaaaaaa
 invalid            short-plaintext
 minimum_length     37

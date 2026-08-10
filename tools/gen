@@ -1006,6 +1006,7 @@ TOKEN_OVERHEAD = 48     # RNS/Cryptography/Token.py#TOKEN_OVERHEAD
 HEADER1LEN  = 19        # RNS/Reticulum.py#HEADER_MINSIZE
 HASHLEN     = 32        # RNS/Identity.py#HASHLENGTH
 MAPHASHLEN  = 4         # RNS/Resource.py#MAPHASH_LEN
+EXHAUSTED   = 0xff      # RNS/Resource.py#HASHMAP_IS_EXHAUSTED
 MAX_HOPS    = 128       # RNS.Transport.PATHFINDER_M
 ECPUBSIZE   = 64        # RNS/Link.py#ECPUBSIZE, both public keys
 SIGNALLEN   = 3         # RNS/Link.py#LINK_MTU_SIZE, LINK_MTU_SIZE
@@ -2566,7 +2567,10 @@ def describe_resource(context, plaintext):
         # again here would put the field in the output twice.
         if len(plaintext) < 1:
             return invalid("short-plaintext", ("minimum_length", 1))
-        exhausted = plaintext[0]
+        # One value and not a boolean: the reference compares the byte
+        # against HASHMAP_IS_EXHAUSTED, so every other byte, 0x01
+        # included, says the hashmap is not exhausted.
+        exhausted = plaintext[0] == EXHAUSTED
         need = 1 + (MAPHASHLEN if exhausted else 0) + HASHLEN
         if len(plaintext) < need:
             return invalid("short-plaintext", ("minimum_length", need))
@@ -2650,7 +2654,7 @@ def gen_resource_short(RNS, w, verify, session):
         ("resource-request-short", RNS.Packet.RESOURCE_REQ, b"\x00",
          "the flag says the hashmap is not exhausted; the resource hash is missing"),
         ("resource-request-exhausted-short", RNS.Packet.RESOURCE_REQ,
-         b"\x01" + b"\xaa" * MAPHASHLEN,
+         bytes([EXHAUSTED]) + b"\xaa" * MAPHASHLEN,
          "the flag says exhausted, so the last map hash is read and the hash is not"),
         ("resource-hashmap-update-short", RNS.Packet.RESOURCE_HMU, bytes(HASHLEN - 1),
          "a hashmap update one byte short of the resource hash it opens with"),
