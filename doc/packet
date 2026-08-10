@@ -103,10 +103,11 @@ threshold from a missing one:
     test/announce/hop-limit         128 hops, rejected
     test/announce/hop-limit-below   127 hops, decodes
 
-Every implementation measured in CONFORMANCE fails the first, and they
-do not fail it for the same reason: one threshold is a hop too high,
-another a hop too low, and three implementations have no threshold at
-all. Only the pair separates them.
+Six of the seven implementations measured in CONFORMANCE fail the
+first, and they do not fail it for the same reason: one threshold is a
+hop too high, another a hop too low, and three implementations have no
+threshold at all. Only the pair separates them, and one implementation
+now passes both.
 
 The hop count is not part of any signed material, so the second vector
 verifies exactly as test/announce/minimal does.

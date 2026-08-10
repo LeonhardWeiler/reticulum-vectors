@@ -41,8 +41,10 @@ be.
 Those two share no code and they do share a reader. Where the reading
 itself is wrong, both are wrong together and the round trip agrees with
 itself. CONFORMANCE is the answer to that and the only one there is:
-six implementations, six languages, six authors who read the reference
-without reading this. That is what makes it more than a scoreboard.
+seven implementations, six languages, seven authors who read the
+reference without reading this. That is what makes it more than a
+scoreboard, and one of them has already found a rule the corpus had
+wrong.
 
 
 Every private key here is public
@@ -83,9 +85,9 @@ Layout
 
 What a consumer needs is test/, doc/ and cmd/. The other two are the
 larger half of the repository and neither is part of the corpus:
-tools/ needs Python and the pinned checkout, and conformance/ holds six
-harnesses in six languages, needing Go, Rust, Node, Elixir and a C++
-compiler between them. They are here because a result is only evidence
+tools/ needs Python and the pinned checkout, and conformance/ holds
+seven harnesses in six languages, needing Go, Rust, Node, Elixir and a
+C++ compiler between them. They are here because a result is only evidence
 if the thing that produced it is on file. Nothing under either is
 needed to check an implementation against these vectors.
 

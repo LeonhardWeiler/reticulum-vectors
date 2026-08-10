@@ -23,6 +23,7 @@ these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
+    Reticulum-Go        48f1517   2026-07-25  78 / 85  31 / 36
     go-reticulum        06621cc   2026-04-28  70 / 85  23 / 36
     rsReticulum         07ca721   2026-08-02  67 / 85  21 / 36
     microReticulum      40fa628   2026-07-20  54 / 85  13 / 36
@@ -30,8 +31,12 @@ these implementations write.
     rns.js              d4602ca   2025-02-10  41 / 85   2 / 36
     sgiath/reticulum    0c4904e   2026-07-09  34 / 85   2 / 36
 
-Out of 85, not 104: every harness exits 77 for five kinds, and those
-nineteen vectors are skipped rather than counted against anyone.
+Two implementations are Go and their names differ by a hyphen and a
+capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
+svanichkin/go-reticulum. They share no code.
+
+Out of 85, not 104: every harness exits 77 for at least five kinds, and
+those nineteen vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
     pathrequest     6
@@ -39,14 +44,25 @@ nineteen vectors are skipped rather than counted against anyone.
     ifac            4
     resourceproof   2
 
+One of the nineteen is no longer a skip for everyone. Reticulum-Go's
+harness runs the ifac kind and passes all four, so its own run reads
+82 / 89; the row above is the same run restricted to the 85 the other
+six can be compared on. See "The interface access codes, measured
+once" below.
+
 The link column is every vector of the three link kinds plus the two
 delivery proofs made on a link, which are filed under proof. Eleven of
 them are the resource contexts.
 
+The four paragraphs that follow are the history of the corpus against
+the six implementations measured before Reticulum-Go. Where they say
+"all six" they mean those six at that time, and the seventh answers
+some of them differently; finding 22 has the current table.
+
 Not one passing count moved when the corpus grew from 90 vectors to 94.
 The four added are the four ways a resource plaintext can be too short
 for the context byte that named it, and every implementation measured
-here fails all four. Three of them (go-reticulum, rsReticulum,
+then failed all four. Three of them (go-reticulum, rsReticulum,
 Reticulum-rs) decrypt the token correctly and print the plaintext, and
 then have nothing to say about its length; the other three do not reach
 that far. See the finding below.
@@ -81,7 +97,7 @@ fail both.
 
 The corpus count did not move for this run and the fingerprint did. One
 vector was regenerated, test/linkdata/resource-request-exhausted-short,
-because the corpus and not an implementation had the rule wrong; the
+because the corpus and not the implementation had the rule wrong; the
 entry after the harness faults says what it was. Not one count of the
 six moved, which is the outcome to expect from a vector that every one
 of them fails either way.
@@ -163,7 +179,7 @@ the implementations behind them do is finding 23, and it is a milder
 sentence.
 
 
-One corpus fault, found by an implementation that is not on the list
+One corpus fault, found by a seventh implementation
 
 The first byte of a part request is the hashmap exhausted flag, and
 what the reference does with it is compare it:
@@ -181,40 +197,40 @@ flag when it built the plaintext:
         plaintext        01aaaaaaaa
         minimum_length   37          the mapped threshold, from 0x01
 
-Quad4-Software/Reticulum-Go compares the byte against 0xff, as the
-reference does, answered 33, and was right. The comparison is now in
-both programs, the plaintext is 0xff and the vector was regenerated;
-its raw changed because the plaintext did, and the pinned randomness
-gave it the same initialisation vector. No other vector carries a flag
-byte that is neither 0x00 nor 0xff.
+Reticulum-Go compares the byte against 0xff, as the reference does,
+answered 33, and was right. The comparison is now in both programs, the
+plaintext is 0xff and the vector was regenerated; its raw changed
+because the plaintext did, and the pinned randomness gave it the same
+initialisation vector. No other vector carries a flag byte that is
+neither 0x00 nor 0xff.
 
 This is the first defect a foreign implementation has found in the
 corpus rather than the other way round, and it is the argument for
 harnesses in one sentence: an implementation that disagrees with a
 vector is evidence about the vector too.
 
-Five of the six produce the adopted signature from the private key and
-the message, bit for bit, through their own signer. The sixth cannot
+Six of the seven produce the adopted signature from the private key and
+the message, bit for bit, through their own signer. The seventh cannot
 load an identity from a private key at all; see finding 7.
 
-All six agree on both forms of a delivery proof to a destination, and
-all six agree on both delivery proofs made on a link once the harness
+All seven agree on both forms of a delivery proof to a destination, and
+all seven agree on both delivery proofs made on a link once the harness
 hands them the key that signs one. Which key that is, they do not
-decide: only go-reticulum and rsReticulum have a link proof path at
-all, and the other four verify no proof on a link anywhere. See
-doc/link.
+decide: only Reticulum-Go, go-reticulum and rsReticulum have a link
+proof path at all, and the other four verify no proof on a link
+anywhere. See doc/link.
 
-The channel envelope is read by one implementation of the six.
-go-reticulum has Envelope.Unpack and reads all six bytes; rsReticulum
-has Envelope::unpack and reads four of them, discarding the declared
-length exactly as the reference does, so it cannot reproduce the two
-bytes it did not keep. The other four define the context byte and have
-no code behind it.
+The channel envelope is read by two implementations of the seven.
+Reticulum-Go has Channel.HandleInbound and go-reticulum Envelope.Unpack,
+and both read all six bytes; rsReticulum has Envelope::unpack and reads
+four of them, discarding the declared length exactly as the reference
+does, so it cannot reproduce the two bytes it did not keep. The other
+four define the context byte and have no code behind it.
 
 
 What a result covers
 
-Not every field came from the implementation. Five of the six expose
+Not every field came from the implementation. Six of the seven expose
 no entry point that yields the parsed announce fields; their validator
 returns a boolean and nothing else. For those the harness follows the
 implementation's own code step by step, using its constants and its
@@ -225,6 +241,7 @@ much as the implementation.
     --------------------------------------------------------------------
     rsReticulum       called       called           called   called
     microReticulum    called       transcribed      called   called
+    Reticulum-Go      called       transcribed      called   transcribed
     go-reticulum      called       transcribed      called   transcribed
     Reticulum-rs      called       transcribed      called   absent
     rns.js            called       transcribed      called   absent
@@ -245,7 +262,7 @@ hmac_valid, the plaintext, and where the implementation offers one, its
 own accept or reject. All findings below rest on called code or on
 source, not on transcription.
 
-Every one of the six derives the link id through its own code. Five
+Every one of the seven derives the link id through its own code. Six
 have a function for it; sgiath/reticulum has none, and its packet hash
 is called instead, which is the same derivation minus the step that
 belongs to links. See finding 9.
@@ -262,18 +279,19 @@ sgiath/reticulum keep the private key unexported or expose no exchange.
 Each uses its language's standard curve, which is what those
 implementations use internally.
 
-All six agree on the destination hash for names with at least one
+All seven agree on the destination hash for names with at least one
 aspect, the announce payload layout, the assembly of signed data
 including the position of app data, Ed25519 verification, and both
 forms of a delivery proof.
 
-Every one of the six computes the packet hash through its own function
-and verifies the proof signature with its own verifier. go-reticulum
-has a proof validator with exported fields, so its signature_valid is
-that validator's own accept or reject over the whole proof rather than
-a bare signature check.
+Every one of the seven computes the packet hash through its own
+function and verifies the proof signature with its own verifier.
+Reticulum-Go and go-reticulum both have a proof validator with
+exported fields, so their signature_valid is that validator's own
+accept or reject over the whole proof rather than a bare signature
+check.
 
-Four of the six decrypt a packet from the reference correctly. The
+Five of the seven decrypt a packet from the reference correctly. The
 encrypted vectors turned up one implementation that cannot decrypt any
 of them, one that agrees on the shared secret and can derive nothing
 from it because the salt is an identity hash it never computed, and one
@@ -286,19 +304,28 @@ reference at all, a third establishes one and then decrypts nothing on
 it, and a fourth establishes one without ever reading what was
 signalled.
 
+Reticulum-Go is a second. It establishes the link, derives the same
+keys, decrypts every packet on it, and reads more of what those packets
+carry than any of the six. All five of its link failures are
+thresholds on a payload too short to be what its context byte said it
+was: findings 22, 23, 26 and 27. Not one of them is a packet it reads
+wrongly.
+
 
 Finding 1: the hop limit is not applied at parse time
 
-Affects every implementation tested. Vector test/announce/hop-limit.
+Affects six of the seven implementations tested. Vector
+test/announce/hop-limit.
 
 python-rns rejects a packet whose hop count is at or above
 PATHFINDER_M, that is 128, inside Packet.unpack, before any other
-field is examined (RNS/Packet.py#PATHFINDER_M). None of the
-implementations do
-this. All decode the packet fully and report it as a valid announce.
+field is examined (RNS/Packet.py#PATHFINDER_M). Six of the seven
+implementations do not. All six decode the packet fully and report it
+as a valid announce.
 
 Where a limit exists at all, it sits further in and reads differently:
 
+    Reticulum-Go      packet.go:219       hops >= 128, inside Unpack
     go-reticulum      transport.go:4400   hops >= 128 + 1
     rsReticulum       ingress.rs:372      hops >= 128 - 1, announces only
     sgiath            transport.ex:36     routing_max_hops, source only
@@ -310,15 +337,17 @@ go-reticulum's threshold is one higher than the reference. A packet at
 exactly 128 hops is dropped by python-rns and forwarded by
 go-reticulum.
 
-test/announce/hop-limit-below, the other side of the boundary, passes
-in all six. The pair was added to separate a threshold one hop too high
-from one a hop too low from none at all, and it separated nothing: no
-implementation applies any threshold at the parse step, so all six
-accept 127 and all six accept 128. The thresholds listed above sit
-further in, where a vector that is one packet cannot reach them.
+Reticulum-Go is the one that puts the check where the reference puts
+it, and it checks the same boundary; its COMPATIBILITY.md dates the
+change to python-rns 1.3.8 and names Packet.Unpack as the place. It
+passes both vectors of the pair.
 
-This is the one finding shared by every implementation, which suggests
-the rule is not obvious from reading the reference. It is now
+test/announce/hop-limit-below, the other side of the boundary, passes
+in all seven. The pair was added to separate a threshold one hop too
+high from one a hop too low from none at all, and against the first six
+it separated nothing: none of them applied any threshold at the parse
+step, so all six accepted 127 and all six accepted 128. The seventh is
+what the pair was for, and it lands on the right side of both. It is
 doc/packet, section Hops.
 
 
@@ -599,20 +628,22 @@ request carrying the same keys all open the same link id.
 It reads no signalling either; that is finding 14.
 
 
-Finding 14: four of six read no link signalling
+Finding 14: three of seven read no link signalling
 
 Affects Reticulum-rs, rns.js and sgiath/reticulum outright, and
-go-reticulum only in that its readers are unexported. Vectors
-test/linkrequest/ and test/linkproof/.
+Reticulum-Go and go-reticulum only in that their readers are
+unexported. Vectors test/linkrequest/ and test/linkproof/.
 
 The three signalling bytes of a link request carry the mode in the top
 three bits and the MTU in the low twenty-one
 (RNS/Link.py#signalling_bytes). Three
-of the six implementations have no function anywhere that reads them:
+of the seven implementations have no function anywhere that reads them:
 
     rsReticulum       SignallingData::unpack, both directions
     microReticulum    mode_from_lr_packet, mtu_from_lr_packet, and the
                       proof counterparts
+    Reticulum-Go      signallingBytes at pkg/link/link.go:3065 and its
+                      two readers, all unexported
     go-reticulum      linkModeFromProofPacket at rns/link.go:2798,
                       unexported
     Reticulum-rs      none
@@ -647,12 +678,12 @@ of cmd/check names the exact vector and field behind every claim above.
 
 The proofs, and nothing found
 
-Two of the six verify no link request proof anywhere (finding 14) and
-one of them cannot load an identity from a private key at all (finding
-7), so the delivery proof looked like the place to find a third
-divergence. There is none. All six read both forms, compute the same
-packet hash, address the proof to the same 16 bytes, and reach the same
-verdict.
+Two of the seven verify no link request proof anywhere (finding 14)
+and one of them cannot load an identity from a private key at all
+(finding 7), so the delivery proof looked like the place to find a
+third divergence. There is none. All seven read both forms, compute the
+same packet hash, address the proof to the same 16 bytes, and reach the
+same verdict.
 
 That is worth stating rather than leaving as an absence. sgiath/
 reticulum fails half this corpus and gets proofs exactly right, because
@@ -665,22 +696,40 @@ receiver already computed, and no implementation trusts them in place
 of its own hash.
 
 
-Not yet measured: interface access codes
+The interface access codes, measured once
 
-test/ifac is skipped by all six harnesses. Skipped is not a pass and
-not a failure: it means nobody has looked.
+test/ifac was skipped by all six harnesses until the seventh. Skipped
+is not a pass and not a failure: it means nobody has looked.
 
-Every one of the six has IFAC code and none exposes it outside
+Six of the seven have IFAC code and none of the six exposes it outside
 interface plumbing, which needs a socket, a configuration and a running
 instance. A harness could follow the code instead, as it does for the
 announce fields, but then all six cells would be transcription: six
 copies of one reading, which agree by construction and measure nothing.
-That is why the row is missing rather than filled in.
+That is why those six cells are still missing rather than filled in.
+
+Reticulum-Go is the exception and it is one of packaging rather than of
+protocol. Its pkg/ifac is a package with no interface in it: New takes
+a size, a network name and a passphrase, Key returns the 64 bytes the
+mask is derived from, and Unmask takes a frame and returns the packet
+and a verdict. The harness calls all three.
+
+    ifac/announce          passed    a network name alone
+    ifac/passphrase        passed    both, the two hashes in order
+    ifac/passphrase-only   passed    a passphrase alone
+    ifac/minimum-size      passed    a one-byte code
+
+Four of four, on the first implementation ever asked. The key
+derivation, the salt, the order of the two hashes in the origin, the
+per-byte mask and the two header bytes that are masked while the code
+between them is not: all of it agrees with the reference byte for byte.
+One value in the vector is still followed rather than called, the
+64-byte origin itself, which New builds and keeps no copy of.
 
 A frame with bit 7 set is not a packet, and an implementation that
 reads one as a packet gets random flags, a random hop count and a
-destination hash that matches nothing. It is worth measuring and it has
-not been measured.
+destination hash that matches nothing. That is what the kind is for,
+and six of the seven remain unmeasured against it.
 
 
 Finding 15: a 63-byte proof payload is read as an implicit proof
@@ -689,13 +738,20 @@ Affects every implementation tested. Vector test/proof/invalid-length.
 
 python-rns reads 64 bytes as an implicit proof and 96 as an explicit
 one and drops every other length (RNS/Packet.py#EXPL_LENGTH). None
-of the six checks the length. All take the 63 bytes as a signature,
+of the seven checks the length. All take the 63 bytes as a signature,
 verify it, and report a decoded proof that does not verify, where the
 reference reports nothing at all.
 
 The distinction matters where a proof arrives truncated: the reference
-leaves the packet unproved and the receipt open, and these six mark it
-proved-and-invalid, which is a different state.
+leaves the packet unproved and the receipt open, and these seven mark
+it proved-and-invalid, which is a different state.
+
+Reticulum-Go comes closest without arriving. Its PacketReceipt
+compares the payload length against both forms
+(pkg/packet/receipt.go:165) and returns false for anything else, so it
+refuses the proof; what it does not do is refuse the packet, and the
+harness prints the fields its decoder still produced. The verdict is
+right and the rejection is not reported as one.
 
 
 Finding 16: the low-order shared secret is returned rather than refused
@@ -761,17 +817,18 @@ bit, which is in the byte that is missing. sgiath/reticulum answers 19,
 the header 1 length, for a packet of one byte. It is the same defect at
 the other end of the same rule, and its harness makes the distinction
 its implementation does not: it guards on two bytes and then reports
-nineteen. The other five answer 2.
+nineteen. The other five of the six answer 2. The seventh answers 3,
+by a constant of its own rather than by a misread, which is finding 25.
 
 
-Finding 19: four of six read nothing a request or a response carries
+Finding 19: four of seven read nothing a request or a response carries
 
 Affects Reticulum-rs, microReticulum, rns.js and sgiath/reticulum.
 Vectors test/linkdata/request, request-no-data and response.
 
 Contexts 0x09 and 0x0a are where msgpack becomes part of the wire
-format. Two implementations read them and four do not, and the four are
-not alike in how far they get:
+format. Three implementations read them and four do not, and the four
+are not alike in how far they get:
 
     Reticulum-rs      names both contexts, reticulum-core/src/packet.rs:115
     microReticulum    names both, Type.h:426, and has a msgpack decoder
@@ -788,7 +845,10 @@ to.
 go-reticulum reads both through its vendored umsgpack
 (rns/link.go:1543, :1562). rsReticulum has Link::parse_request and
 Link::parse_response_plaintext as standalone functions, which is the
-easiest request path of the six to point a harness at.
+easiest request path of the seven to point a harness at. Reticulum-Go
+reads both in handleRequest and handleResponse, through a msgpack of
+its own that ships as a separate module, and bounds the decoded array
+by its element count before touching it.
 
 
 Finding 20: rsReticulum delivers a msgpack nil as the byte 0xc0
@@ -816,32 +876,42 @@ The same function is on the response path, so a response with no body
 carries the same byte.
 
 
-Finding 21: a resource part is read as a token by nobody, and named by
-one implementation of six
+Finding 21: a resource part is read as a token by nobody, and one
+implementation of seven reads every context that names one
 
-Affects every implementation tested. Vectors test/linkdata/resource-*.
+Affects six of the seven implementations tested. Vectors
+test/linkdata/resource-*.
 
-Seven contexts carry a resource transfer and the six implementations
-read between one and three of them:
+Seven contexts carry a resource transfer and the implementations read
+between one and all of them:
 
-    context           go    rsRet  micro  rs-rs  rns.js  sgiath
-    -----------------------------------------------------------
-    0x02 adv          own   own    own    -      -       -
-    0x03 req          -     -      -      -      -       -
-    0x04 hmu          -     own    -      -      -       -
-    0x06/0x07 cancel  -     -      -      -      -       -
+    context           Q4Go  go    rsRet  micro  rs-rs  rns.js  sgiath
+    -----------------------------------------------------------------
+    0x02 adv          own   own   own    own    -      -       -
+    0x03 req          own   -     -      -      -      -       -
+    0x04 hmu          own   -     own    -      -      -       -
+    0x06/0x07 cancel  own   -     -      -      -      -       -
 
-"own" is the implementation's own decoder called by the harness; a dash
-is code that does not exist. Three of the six can read an
-advertisement, one can read a hashmap update, and none has a parser for
-a part request or for either cancel. Those three are read inline in a
-transfer loop and yield nothing an observer can call, which is a
-different thing from being absent, and it is why the harnesses print a
-dash rather than following the code: a transfer loop is not a decoder.
+"own" is the implementation's own decoder; a dash is code that does not
+exist. Q4Go is Reticulum-Go, which has all four. Where its decoder is
+exported the harness calls it, and where it sits inside a method that
+wants a live transfer the harness follows it and says so at the line.
+For the other six, three can read an advertisement, one can read a
+hashmap update, and none has a parser for a part request or for either
+cancel; theirs are read inline in a transfer loop and yield nothing an
+observer can call, which is a different thing from being absent, and it
+is why those harnesses print a dash rather than following the code. A
+transfer loop is not a decoder. Reticulum-Go's are functions that take
+a plaintext, decide from it, and bound every read by its length, which
+is why they are followed instead.
 
 The part request is the one worth having. Its first byte decides where
 the resource hash begins, and an implementation that assumes a fixed
 offset is right until the receiver runs out of hashes. See doc/resource.
+Reticulum-Go is the only one that reads that byte at all, and it is
+also the one that reads it the way the reference does, against 0xff
+rather than against zero; the corpus had that wrong and the entry above
+on the corpus fault says so.
 
 microReticulum reads an advertisement correctly and still fails the
 vector, because it decrypts nothing on a link at all; see finding 11.
@@ -850,33 +920,46 @@ does not name the contexts either and fails the part on the context
 byte alone.
 
 Nothing here is measured for the resource proof: it is a kind of its
-own and all six exit 77 for it. No implementation of the six has a
+own and all seven exit 77 for it. No implementation of the seven has a
 resource proof path to point a harness at.
 
 
-Finding 22: no implementation bounds a link plaintext by its length
+Finding 22: six of seven implementations bound no link plaintext by its
+length, and the seventh bounds every one at the wrong number
 
-Affects all six. Six vectors, one for each way a payload can be shorter
-than the context byte that named it promises:
+Affects all seven, in two different ways. Six vectors, one for each way
+a payload can be shorter than the context byte that named it promises:
 
-    test/linkdata/resource-request-empty              no bytes at all
-    test/linkdata/resource-request-short              flag, no hash
-    test/linkdata/resource-request-exhausted-short    flag set, no hash
-    test/linkdata/resource-hashmap-update-short       hash one byte short
-    test/linkdata/channel-short                       envelope one short
-    test/linkdata/request-short                       no msgpack body
+    vector                          corpus  Reticulum-Go  the other six
+    ------------------------------------------------------------------
+    resource-request-empty               1            33  no rule
+    resource-request-short              33            33  no rule
+    resource-request-exhausted-short    37            33  no rule
+    resource-hashmap-update-short       33            32  no rule
+    channel-short                        6             6  no rule
+    request-short                        1     no rule    no rule
 
 The first four were added on 2026-08-06 and the last two on 2026-08-10,
-where the context is not a resource. Every one of the six
+where the context is not a resource. Every one of the first six
 implementations fails all six vectors, and no passing count moved when
 either pair was added. Three of them, go-reticulum, rsReticulum and
 Reticulum-rs, decrypt the token correctly and print the plaintext, and
 then produce nothing about its length; the other three fail earlier in
 the packet and never reach it. What the vectors ask for is a rejection
-naming the rule, which no implementation has code for. go-reticulum
+naming the rule, which none of the six has code for. go-reticulum
 comes closest on request-short, where its msgpack reader runs out and
 reports "insufficient data" -- an error, but not the rule and not the
 threshold.
+
+Reticulum-Go has a length rule everywhere the reference has one except
+the msgpack request, and it gets two of the five right. What it does
+not do is name them: each is a guard that returns, so a receiver sees a
+packet ignored and no reason. The three it gets wrong are findings 25
+and 26. The two it gets right are the channel envelope, at
+ChannelHeaderSize, and the unmapped part request, at the flag and the
+hash. Its guards are also why its harness is not in the list of harness
+faults above: it is the only one of the seven whose reads into a link
+plaintext were bounded by the implementation rather than by the author.
 
 A part request, a hashmap update and a channel envelope are read by
 length and carry no framing that can run out, so the plaintext is the
@@ -887,29 +970,40 @@ until it died. That is what these vectors are for.
 
 Reaching it requires the link key, which both ends of a link hold and
 which this corpus publishes. It is not a remote defect in any of the
-six; it is an unchecked length in a decoder, and where the decoder runs
-on a device with no memory protection the difference matters less than
-it reads.
+seven; it is an unchecked length in a decoder, and where the decoder
+runs on a device with no memory protection the difference matters less
+than it reads. Reticulum-Go is the counter-example that shows the cost
+of the check is a comparison.
 
 
 Finding 23: a link data payload too short for a token names no rule
 
-Affects all six. Vector test/linkdata/short-payload, added 2026-08-07.
+Affects all seven. Vector test/linkdata/short-payload, added
+2026-08-07.
 
 Finding 22 is a plaintext too short for the context byte that named it.
 This is the layer above: a payload of 47 bytes cannot hold an iv and an
 hmac, so it is not a token at all, and expect names that rule rather
-than decomposing it. Every one of the six fails the vector, and none of
-the six accepts the packet.
+than decomposing it. Every one of the seven fails the vector, and none
+of the seven accepts the packet.
 
-What each implementation does is drop it, through the hmac and not
-through a length. Handed the payload, all six derive the link keys,
-verify an hmac over bytes that are not a token, get no match, and
-report no plaintext. python-rns does the same: Token.verify_hmac raises
+What six of them do is drop it through the hmac and not through a
+length. Handed the payload, they derive the link keys, verify an hmac
+over bytes that are not a token, get no match, and report no plaintext.
+python-rns does the same: Token.verify_hmac raises
 only at 32 bytes or fewer
 (RNS/Cryptography/Token.py#Cannot) and returns False above that,
 so a 47-byte payload is refused by a failing hmac there too. On
 behaviour the six and the reference agree.
+
+The seventh has the length rule and puts it 16 bytes too high.
+Reticulum-Go's decryptWithKeys refuses anything under 64 bytes, an iv,
+a whole block of ciphertext and an hmac, where the reference refuses
+under 48 and lets a token with no ciphertext through to the hmac. The
+gap is the sixteen bytes of one empty block, and no vector in the
+corpus lands in it: an empty plaintext still pads to a full block, so
+every token the reference produces is at least 64 bytes anyway. It is
+recorded because it is a threshold, not because a packet is lost to it.
 
 The disagreement is in what is reported, which is what the corpus
 measures, and it is the same sentence as finding 22: the packet is
@@ -963,7 +1057,148 @@ go-reticulum cannot see. It is the mode the reference numbers 0 and the
 Go port numbers 0 as well; the collision is with the port's own
 LinkModeDefault sentinel, which is -1 everywhere except here.
 
-microReticulum and rsReticulum print the byte and pass. Reticulum-rs
-and sgiath/reticulum read no signalling at all and print "-", which is
+Reticulum-Go, microReticulum and rsReticulum print the byte and pass.
+Reticulum-Go's reader is the same three bits and the same mask, at
+link.go:3446, with nothing behind it that substitutes a default, so the
+two Go ports differ on exactly one line. Reticulum-rs and
+sgiath/reticulum read no signalling at all and print "-", which is
 finding 14 and not this one. rns.js drops every link request, which is
 finding 10.
+
+
+Finding 25: a two-byte frame is refused before its header type is read
+
+Affects Reticulum-Go. Vector test/announce/no-header.
+
+One byte is the threshold that is not a length of anything: how long a
+header has to be follows from the header type bit, and that bit is in
+the byte that is missing. The reference reads the flags and the hops
+and fails on the next slice, so two bytes is the least a frame can be
+before the question can even be asked, and the corpus records that
+number.
+
+Reticulum-Go refuses at three:
+
+    pkg/packet/packet.go:219    if len(p.Raw) < MinPacketSize
+    pkg/packet/constants.go     MinPacketSize = 3
+
+Nothing is lost to it. A two-byte frame carries a header type and
+nothing the type selects, so both the reference and Reticulum-Go drop
+it; they name different numbers for why. This is finding 18 with the
+threshold one too high instead of seventeen too high, and it is the
+only vector of the eleven rejection vectors where Reticulum-Go names a
+number the reference does not.
+
+
+Finding 26: a hashmap update is bounded by the hash and not by the
+array behind it
+
+Affects Reticulum-Go. Vector
+test/linkdata/resource-hashmap-update-short.
+
+An update is 32 raw bytes and then a msgpack array of two, so the least
+it can be is 33: the hash and one byte of the array. Reticulum-Go stops
+one short of that:
+
+    pkg/link/link.go:1791    if len(plaintext) < sha256.Size
+
+A 32-byte update therefore reaches the msgpack decoder with nothing to
+decode, which fails, and the update is dropped there instead. The
+packet is lost either way and the two disagree on which rule lost it.
+
+The same method reads the two fields correctly once the array is
+present, which is the other half of finding 21: this is the only
+implementation of the seven that produces segment_index and hashmap for
+an update at all.
+
+
+Finding 27: a part request too short is measured against the threshold
+for the other kind of part request
+
+Affects Reticulum-Go. Vectors test/linkdata/resource-request-empty and
+test/linkdata/resource-request-exhausted-short.
+
+The flag byte decides the length: without it the request is 33 bytes,
+with it 37, because four bytes of last map hash sit between the flag
+and the resource hash. Reticulum-Go checks the length before it reads
+the flag:
+
+    pkg/link/link.go:1492    if len(plaintext) < 1+32          return
+    pkg/link/link.go:1499    if plaintext[0] == mapped flag
+    pkg/link/link.go:1501        if len(plaintext) < pad+32     return
+
+So a five-byte request that says the hashmap is exhausted is refused at
+33 rather than at 37, and an empty payload is refused at 33 where the
+reference has not got as far as a threshold: it has no flag to read and
+one byte is all it wants. Both are the right verdict at the wrong
+number, which is what the corpus records rejections by.
+
+The order is also the safe one. Reading the flag first and the length
+second is how a decoder reads four bytes that are not there, and this
+one cannot.
+
+
+What the implementations say about themselves
+
+Four of the seven publish a claim about compatibility with python-rns.
+Read beside the measurement, the claims are accurate about what they
+cover and none of them covers what the corpus asks.
+
+    Reticulum-Go      COMPATIBILITY.md, a table of components against
+                      python-rns 1.4.1, and tests/crossref: 48 Go tests
+                      against vectors a Python script generates at test
+                      time from a checkout of the reference. It is the
+                      nearest thing to this corpus that exists in
+                      another repository.
+
+    rsReticulum       README, Compatibility Notes: a target version
+                      (1.3.8) and a list of utilities not implemented.
+                      Tool coverage, not wire coverage.
+
+    Reticulum-rs      tests/python.rs, five integration tests that run
+                      a python-rns node beside the Rust one over UDP:
+                      announce, link both ways, identify both ways.
+
+    microReticulum    test_interop, four scenarios driven by shell
+                      scripts against a Python receiver over UDP, plus
+                      one captured advertisement in test/.
+
+    go-reticulum      nine files named *_parity_test.go. They are Go
+                      unit tests asserting Go behaviour that was
+                      written from reading Python. No Python runs and
+                      no reference bytes appear.
+
+    sgiath/reticulum  test/reticulum/reference/, six files that shell
+                      out to a Python script per assertion and compare.
+                      Closer to a corpus than the name suggests.
+
+    rns.js            none.
+
+Three of these need a running Python and one needs a running Reticulum.
+That is the difference the corpus is for: a vector is a file, and a
+file can be checked at a commit, on a machine with no Python, in three
+and a half seconds, by an implementation that did not exist when the
+vector was written.
+
+The two that come closest are worth reading against their results.
+
+Reticulum-Go's crossref generates its vectors from python-rns at the
+tag RNS_REF_TAG, which defaults to 1.4.0, and asserts against them in
+48 tests. The vectors are not committed, so a run measures whatever
+that tag holds today. It scores highest here of the seven by a margin,
+and it is the only one whose author can already answer the question
+this corpus asks. What it does not have is the rejections: every one of
+its 48 tests is an input that decodes, and every one of its seven
+failures here is an input that does not. Five of the seven are a
+threshold named at the wrong number and two are a rule it applies and
+does not report. That is the half of a wire format a generator writes
+last, because nothing in an implementation asks for it.
+
+sgiath/reticulum has six reference files and a Python runner, and fails
+fifty-one vectors here. Its runner covers HKDF, tokens, packet pack and
+unpack, IFAC and proofs, all through generated fixtures, and its
+identity is loaded from a seed every time. Nothing in it loads an
+identity from a stored private key, which is finding 7, and that is the
+one call in the library that is broken. A suite passing while the
+library cannot do the thing it does on every start after the first is
+the case for vectors somebody else wrote.
