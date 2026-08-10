@@ -211,8 +211,11 @@ is its purpose: it proves the vectors are usable without Python.
     dump -e <kind> expect                   (decode class: must fail)
 
 Before the first vector it refuses a test/ that disagrees with
-test/INDEX, and an optional field with only one of its two cases on
-file. Both read the corpus.
+test/INDEX.
+
+Whether an optional field has both of its cases on file is a statement
+about the corpus and not about a decoder, so tools/gen refuses that,
+where the missing vector can be written.
 
 There is no separate validator binary. A checker that shares a decoder
 with the dumper would be one program written twice.

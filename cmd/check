@@ -68,29 +68,6 @@ if [ -n "$differs" ]; then
 	exit 2
 fi
 
-# The encoders in cmd/dump decide a field is present by looking for "-"
-# and the decoders decide it by reading the packet. The round trip only
-# holds those two rules together where both cases are on file.
-#
-# Per field, not per kind: transport_id is written by one line of
-# put_header that nine encoders share.
-uncrossed=$(awk '
-	NF == 2 { seen[$1 SUBSEP (($2 == "-") ? "absent" : "present")] = 1 }
-	END {
-		for (k in seen) {
-			split(k, f, SUBSEP)
-			if (f[2] == "absent" && !((f[1] SUBSEP "present") in seen))
-				printf "    %s is absent in every vector that carries it\n", f[1]
-		}
-	}
-' "$root"/test/*/*/expect | LC_ALL=C sort)
-
-if [ -n "$uncrossed" ]; then
-	echo "optional fields with only one case on file:"
-	printf '%s\n' "$uncrossed"
-	exit 2
-fi
-
 fail_with() {
 	# Named from the repository root; the path built here runs through cmd/..
 	echo "FAIL ${1#"$root"/}"
