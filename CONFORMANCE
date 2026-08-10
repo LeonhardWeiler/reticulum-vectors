@@ -1,23 +1,15 @@
 Conformance of independent implementations
 
-Run on 2026-08-07 against the 102 vectors test/ held at that date,
-through the harnesses in conformance/, at the implementation commits
-named below. Every row is reproducible only at its commit.
+Run on 2026-08-10 against the corpus test/ holds at that date, through
+the harnesses in conformance/, at the implementation commits named
+below. Every row is reproducible only at its commit.
 
-    corpus 453359467
+    corpus 2146661904
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
 corpus; two vectors changed shape without changing the count between
-two of the runs below.
-
-It has moved three times, and only the first changed what it means: a
-glob is ordered by the locale of whoever runs it, so the same corpus
-fingerprinted as 678091306 under C and as 4275070876 under
-en_US.UTF-8. It is taken over test/INDEX now. Then group/zero-padding:
-4048137228, rows unchanged, one more skipped. Then the eight rejection
-vectors below, the first corpus change since this file existed that
-moved every row.
+two of the runs below. Record it beside any row taken from here.
 
 Each harness calls that implementation's own code and prints the corpus
 field format. Where an implementation lacks a check, the harness does
@@ -25,20 +17,20 @@ not supply one, so the vector fails and the divergence appears in the
 result rather than in a footnote.
 
 Every row is the decode direction only. cmd/check also rebuilds raw
-from expect for the 86 vectors of the encode class, and no
-harness implements that direction, so nothing below says anything about
-what these implementations write.
+from expect for every vector of the encode class, and no harness
+implements that direction, so nothing below says anything about what
+these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    go-reticulum        06621cc   2026-04-28  70 / 83  23 / 34
-    rsReticulum         07ca721   2026-08-02  67 / 83  21 / 34
-    microReticulum      40fa628   2026-07-20  54 / 83  13 / 34
-    Reticulum-rs        be7a7fc   2026-07-31  53 / 83  10 / 34
-    rns.js              d4602ca   2025-02-10  41 / 83   2 / 34
-    sgiath/reticulum    0c4904e   2026-07-09  34 / 83   2 / 34
+    go-reticulum        06621cc   2026-04-28  70 / 85  23 / 36
+    rsReticulum         07ca721   2026-08-02  67 / 85  21 / 36
+    microReticulum      40fa628   2026-07-20  54 / 85  13 / 36
+    Reticulum-rs        be7a7fc   2026-07-31  53 / 85  10 / 36
+    rns.js              d4602ca   2025-02-10  41 / 85   2 / 36
+    sgiath/reticulum    0c4904e   2026-07-09  34 / 85   2 / 36
 
-Out of 83, not 102: every harness exits 77 for five kinds, and those
+Out of 85, not 104: every harness exits 77 for five kinds, and those
 nineteen vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -79,9 +71,18 @@ were already right. Two new failures are new findings, 23 and 24. The
 rest fall under findings that were already here: announce/no-header
 under finding 18, linkproof/invalid-length under findings 10 and 7.
 
-Six failures in this run were a harness's own, all six on one vector.
-Four entries below predate it. They are recorded here because a harness
-is evidence and a change to one changes what the numbers mean:
+Not one passing count moved when it grew from 102 to 104, and both
+denominators did. The two added carry the same rule as the four of
+finding 22 into the two contexts that are not a resource, and all six
+fail both.
+
+    linkdata/channel-short         failed by all six, finding 22
+    linkdata/request-short         failed by all six, finding 22
+
+Five harness faults have been found and fixed, and no harness changed
+for the run above. They are recorded here because a harness is evidence
+and a change to one changes what the numbers mean. The counts beside
+each are the rows before and after that fix, not the rows above:
 
     go-reticulum      60 -> 62      microReticulum    47 -> 49
     rsReticulum       57 -> 58      rns.js            37 -> 39
@@ -815,30 +816,36 @@ own and all six exit 77 for it. No implementation of the six has a
 resource proof path to point a harness at.
 
 
-Finding 22: no implementation bounds a resource plaintext by its length
+Finding 22: no implementation bounds a link plaintext by its length
 
-Affects all six. Four vectors added on 2026-08-06, one for each way a
-resource payload can be shorter than the context byte that named it
-promises:
+Affects all six. Six vectors, one for each way a payload can be shorter
+than the context byte that named it promises:
 
     test/linkdata/resource-request-empty              no bytes at all
     test/linkdata/resource-request-short              flag, no hash
     test/linkdata/resource-request-exhausted-short    flag set, no hash
     test/linkdata/resource-hashmap-update-short       hash one byte short
+    test/linkdata/channel-short                       envelope one short
+    test/linkdata/request-short                       no msgpack body
 
-Every one of the six fails all four, and no passing count moved when
-they were added. Three of them, go-reticulum, rsReticulum and
-Reticulum-rs, decrypt the token correctly and print the plaintext,
-and then produce nothing about its length; the other three fail earlier
-in the packet and never reach it. What the vectors ask for is a
-rejection naming the rule, which no implementation has code for.
+The first four were added on 2026-08-06 and the last two on 2026-08-10,
+where the context is not a resource. Every one of the six
+implementations fails all six vectors, and no passing count moved when
+either pair was added. Three of them, go-reticulum, rsReticulum and
+Reticulum-rs, decrypt the token correctly and print the plaintext, and
+then produce nothing about its length; the other three fail earlier in
+the packet and never reach it. What the vectors ask for is a rejection
+naming the rule, which no implementation has code for. go-reticulum
+comes closest on request-short, where its msgpack reader runs out and
+reports "insufficient data" -- an error, but not the rule and not the
+threshold.
 
-A part request and a hashmap update are read by length and carry no
-framing that can run out, so the plaintext is the only bound a reader
-has. cmd/dump had the same defect until 2026-08-06: it read
-requested_hashes as len - 33 bytes, which underflows as an unsigned
-length on any request shorter than that, and printed memory until it
-died. That is what these four vectors are for.
+A part request, a hashmap update and a channel envelope are read by
+length and carry no framing that can run out, so the plaintext is the
+only bound a reader has. cmd/dump had the same defect until 2026-08-06:
+it read requested_hashes as len - 33 bytes, which underflows as an
+unsigned length on any request shorter than that, and printed memory
+until it died. That is what these vectors are for.
 
 Reaching it requires the link key, which both ends of a link hold and
 which this corpus publishes. It is not a remote defect in any of the
