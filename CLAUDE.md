@@ -2,15 +2,13 @@
 
 ## What this is
 
-Two repositories, built in order:
-
-    reticulum-vectors/    verified Reticulum protocol data as files
-    reticulum-haskell/    a Reticulum implementation in Haskell (later)
-
-The corpus comes first. The implementation consumes it.
+Verified Reticulum protocol data as files.
 
 The corpus records what Python RNS actually puts on the wire, in a form
-that can be checked without running Python.
+that can be checked without running Python. What consumes it is any
+implementation that wants to know whether it agrees with the reference;
+none of them is this repository's concern, and the word for all of them
+here is consumer.
 
 It is not a specification. It does not define correct behaviour. It
 records observed behaviour of one implementation at one version.
