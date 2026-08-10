@@ -519,7 +519,23 @@ static const char *dest_types[]   = { "single", "group", "plain", "link" };
 static const char *packet_types[] = { "data", "announce", "linkrequest", "proof" };
 static const char *xport_types[]  = { "broadcast", "transport", "relay", "tunnel" };
 
-enum reason { OK, SHORT_HEADER, HOP_LIMIT, SHORT_PAYLOAD };
+/* A rejection is the rule that was broken and its two numbers, named at
+ * the line that decided. A parser fills one and returns 0; its caller
+ * prints it and stops. See doc/fields, section Rejection. */
+struct fault {
+	const char *rule, *gotname, *needname;
+	size_t got, need;
+};
+
+static int fault(struct fault *f, const char *rule,
+                 const char *gotname, size_t got,
+                 const char *needname, size_t need)
+{
+	f->rule = rule;
+	f->gotname = gotname; f->got  = got;
+	f->needname = needname; f->need = need;
+	return 0;
+}
 
 struct header {
 	unsigned flags, hops;
@@ -538,15 +554,13 @@ struct announce {
 	size_t app_data_len;
 };
 
-static enum reason parse_header(const uint8_t *raw, size_t len,
-                                struct header *h, size_t *got, size_t *need)
+static int parse_header(const uint8_t *raw, size_t len,
+                        struct header *h, struct fault *f)
 {
 	size_t header_len;
 
-	if (len < 2) {
-		*got = len; *need = 2;
-		return SHORT_HEADER;
-	}
+	if (len < 2)
+		return fault(f, "short-header", "length", len, "minimum_length", 2);
 
 	h->flags = raw[0];
 	h->hops  = raw[1];
@@ -557,16 +571,13 @@ static enum reason parse_header(const uint8_t *raw, size_t len,
 	h->destination_type = (h->flags & 0x0c) >> 2;
 	h->packet_type      = (h->flags & 0x03);
 
-	if (h->hops >= MAX_HOPS) {
-		*got = h->hops; *need = MAX_HOPS;
-		return HOP_LIMIT;
-	}
+	if (h->hops >= MAX_HOPS)
+		return fault(f, "hop-limit", "hops", h->hops, "hop_limit", MAX_HOPS);
 
 	header_len = 3 + ADDRLEN * (h->header_type + 1);
-	if (len < header_len) {
-		*got = len; *need = header_len;
-		return SHORT_HEADER;
-	}
+	if (len < header_len)
+		return fault(f, "short-header", "length", len,
+		             "minimum_length", header_len);
 
 	if (h->header_type == 1) {
 		h->transport_id     = raw + 2;
@@ -580,11 +591,11 @@ static enum reason parse_header(const uint8_t *raw, size_t len,
 	h->payload     = raw + header_len;
 	h->payload_len = len - header_len;
 
-	return OK;
+	return 1;
 }
 
-static enum reason parse_announce(const struct header *h, struct announce *a,
-                                  size_t *got, size_t *need)
+static int parse_announce(const struct header *h, struct announce *a,
+                          struct fault *f)
 {
 	size_t minimum, at;
 
@@ -592,10 +603,9 @@ static enum reason parse_announce(const struct header *h, struct announce *a,
 	if (h->context_flag == 1)
 		minimum += RATCHETLEN;
 
-	if (h->payload_len < minimum) {
-		*got = h->payload_len; *need = minimum;
-		return SHORT_PAYLOAD;
-	}
+	if (h->payload_len < minimum)
+		return fault(f, "short-payload", "payload_length", h->payload_len,
+		             "minimum_length", minimum);
 
 	at = 0;
 	a->public_key  = h->payload + at; at += KEYSIZE;
@@ -610,7 +620,7 @@ static enum reason parse_announce(const struct header *h, struct announce *a,
 	a->app_data     = h->payload + at;
 	a->app_data_len = h->payload_len - at;
 
-	return OK;
+	return 1;
 }
 
 /* The assembled material is payload_len - SIGLEN + ADDRLEN bytes: the
@@ -639,27 +649,17 @@ static size_t assemble_signed(const struct header *h, const struct announce *a,
 	return n;
 }
 
-static void print_invalid(enum reason r, size_t got, size_t need)
+static void invalid(const char *rule, const char *gotname, size_t got,
+                    const char *needname, size_t need)
 {
-	switch (r) {
-	case SHORT_HEADER:
-		field("invalid", "short-header");
-		field("length", "%zu", got);
-		field("minimum_length", "%zu", need);
-		break;
-	case HOP_LIMIT:
-		field("invalid", "hop-limit");
-		field("hops", "%zu", got);
-		field("hop_limit", "%zu", need);
-		break;
-	case SHORT_PAYLOAD:
-		field("invalid", "short-payload");
-		field("payload_length", "%zu", got);
-		field("minimum_length", "%zu", need);
-		break;
-	case OK:
-		break;
-	}
+	field("invalid", "%s", rule);
+	field(gotname, "%zu", got);
+	field(needname, "%zu", need);
+}
+
+static void print_fault(const struct fault *f)
+{
+	invalid(f->rule, f->gotname, f->got, f->needname, f->need);
 }
 
 static const struct {
@@ -836,8 +836,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 {
 	struct header h;
 	struct token t;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 	const uint8_t *ephemeral;
 	uint8_t pub[KEYSIZE], identity_hash[ADDRLEN];
 	uint8_t agree[KEYHALF], shared[KEYHALF], derived[DERIVEDLEN];
@@ -854,13 +853,14 @@ static void dump_encrypted(struct blob *b, int nblobs)
 	field_blob("recipient_private", &b[0]);
 	field_blob("ratchet_private", &b[1]);
 
-	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
 	if (h.payload_len < KEYHALF + TOKEN_OVERHEAD) {
-		print_invalid(SHORT_PAYLOAD, h.payload_len, KEYHALF + TOKEN_OVERHEAD);
+		invalid("short-payload", "payload_length", h.payload_len,
+		        "minimum_length", KEYHALF + TOKEN_OVERHEAD);
 		return;
 	}
 
@@ -907,8 +907,7 @@ static void dump_group(struct blob *b, int nblobs)
 {
 	struct header h;
 	struct token t;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 
 	if (nblobs != 2)
 		fatal("group: expected 2 blobs, got %d", nblobs);
@@ -917,13 +916,14 @@ static void dump_group(struct blob *b, int nblobs)
 
 	field_blob("group_key", &b[0]);
 
-	if ((r = parse_header(b[1].data, b[1].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[1].data, b[1].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
 	if (h.payload_len < TOKEN_OVERHEAD) {
-		print_invalid(SHORT_PAYLOAD, h.payload_len, TOKEN_OVERHEAD);
+		invalid("short-payload", "payload_length", h.payload_len,
+		        "minimum_length", TOKEN_OVERHEAD);
 		return;
 	}
 
@@ -940,15 +940,14 @@ static void dump_announce(struct blob *b, int nblobs)
 {
 	struct header h;
 	struct announce a;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 
 	if (nblobs != 1)
 		fatal("announce: expected 1 blob, got %d", nblobs);
 
-	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK ||
-	    (r = parse_announce(&h, &a, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[0].data, b[0].len, &h, &f) ||
+	    !parse_announce(&h, &a, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -965,14 +964,13 @@ static void dump_announce(struct blob *b, int nblobs)
 static void dump_plain(struct blob *b, int nblobs)
 {
 	struct header h;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 
 	if (nblobs != 1)
 		fatal("plain: expected 1 blob, got %d", nblobs);
 
-	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -989,21 +987,22 @@ static void dump_plain(struct blob *b, int nblobs)
 static void dump_pathrequest(struct blob *b, int nblobs)
 {
 	struct header h;
-	enum reason r;
-	size_t got = 0, need = 0, taglen;
+	struct fault f;
+	size_t taglen;
 	const uint8_t *wanted, *requester, *tag;
 	uint8_t unique[ADDRLEN * 2];
 
 	if (nblobs != 1)
 		fatal("pathrequest: expected 1 blob, got %d", nblobs);
 
-	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
 	if (h.payload_len < ADDRLEN) {
-		print_invalid(SHORT_PAYLOAD, h.payload_len, ADDRLEN);
+		invalid("short-payload", "payload_length", h.payload_len,
+		        "minimum_length", ADDRLEN);
 		return;
 	}
 
@@ -1108,16 +1107,15 @@ static void print_signalling(const uint8_t *p)
 static void dump_linkrequest(struct blob *b, int nblobs)
 {
 	struct header h;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 	uint8_t link_id[ADDRLEN];
 	int signalled;
 
 	if (nblobs != 1)
 		fatal("linkrequest: expected 1 blob, got %d", nblobs);
 
-	if ((r = parse_header(b[0].data, b[0].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -1142,8 +1140,8 @@ static void dump_linkrequest(struct blob *b, int nblobs)
 static void dump_linkproof(struct blob *b, int nblobs)
 {
 	struct header h, rh;
-	enum reason r;
-	size_t got = 0, need = 0, sdlen = 0;
+	struct fault f;
+	size_t sdlen = 0;
 	const uint8_t *signature, *x25519, *signalling, *signer;
 	uint8_t link_id[ADDRLEN], signed_data[MAXBLOB];
 	int signalled;
@@ -1156,11 +1154,11 @@ static void dump_linkproof(struct blob *b, int nblobs)
 	field_blob("link_request", &b[0]);
 	field_blob("signer_public", &b[1]);
 
-	if ((r = parse_header(b[0].data, b[0].len, &rh, &got, &need)) != OK)
+	if (!parse_header(b[0].data, b[0].len, &rh, &f))
 		fatal("linkproof: the link request does not decode");
 
-	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -1433,8 +1431,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 {
 	struct header h, rh;
 	struct token t;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 	const uint8_t *initiator_public;
 	uint8_t link_id[ADDRLEN], shared[KEYHALF], derived[DERIVEDLEN];
 	uint8_t identity_hash[ADDRLEN], signed_data[ADDRLEN + KEYSIZE];
@@ -1448,11 +1445,11 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	field_blob("link_request", &b[0]);
 	field_blob("responder_private", &b[1]);
 
-	if (parse_header(b[0].data, b[0].len, &rh, &got, &need) != OK)
+	if (!parse_header(b[0].data, b[0].len, &rh, &f))
 		fatal("linkdata: the link request does not decode");
 
-	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -1487,7 +1484,8 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	field("encrypted", "yes");
 
 	if (h.payload_len < TOKEN_OVERHEAD) {
-		print_invalid(SHORT_PAYLOAD, h.payload_len, TOKEN_OVERHEAD);
+		invalid("short-payload", "payload_length", h.payload_len,
+		        "minimum_length", TOKEN_OVERHEAD);
 		return;
 	}
 
@@ -1581,8 +1579,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 static void dump_proof(struct blob *b, int nblobs)
 {
 	struct header h, ph;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 	const uint8_t *signature, *signer;
 	uint8_t packet_hash[32];
 	int explicit_form, on_link;
@@ -1596,11 +1593,11 @@ static void dump_proof(struct blob *b, int nblobs)
 	field_blob("proved_packet", &b[0]);
 	field_blob("signer_public", &b[1]);
 
-	if (parse_header(b[0].data, b[0].len, &ph, &got, &need) != OK)
+	if (!parse_header(b[0].data, b[0].len, &ph, &f))
 		fatal("proof: the proved packet does not decode");
 
-	if ((r = parse_header(b[2].data, b[2].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
@@ -1667,8 +1664,7 @@ static void dump_proof(struct blob *b, int nblobs)
 static void dump_resourceproof(struct blob *b, int nblobs)
 {
 	struct header h;
-	enum reason r;
-	size_t got = 0, need = 0;
+	struct fault f;
 
 	if (nblobs != 2)
 		fatal("resourceproof: expected 2 blobs, got %d", nblobs);
@@ -1678,8 +1674,8 @@ static void dump_resourceproof(struct blob *b, int nblobs)
 
 	field_blob("advertised_hash", &b[0]);
 
-	if ((r = parse_header(b[1].data, b[1].len, &h, &got, &need)) != OK) {
-		print_invalid(r, got, need);
+	if (!parse_header(b[1].data, b[1].len, &h, &f)) {
+		print_fault(&f);
 		return;
 	}
 
