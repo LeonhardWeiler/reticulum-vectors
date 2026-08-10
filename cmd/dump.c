@@ -1818,20 +1818,20 @@ static void dump_ifac(struct blob *b, int nblobs)
 	      memcmp(ifac, expected + SIGLEN - ifac_size, ifac_size) == 0 ? "yes" : "no");
 }
 
-/* Rebuilding raw from expect. The layout below is the one the decoders
- * above read, written out a second time and in the other direction: a
- * vector of the encode class is one whose expect holds every byte of
- * raw, and cmd/check tests that claim by diffing the result. A field
- * whose value is "-" contributes no bytes, which is how the format
- * spells every optional field.
+/* Rebuilding raw from expect. A vector of the encode class is one whose
+ * expect holds every byte of raw, and cmd/check tests that claim by
+ * diffing the result. A field whose value is "-" contributes no bytes,
+ * which is how the format spells every optional field, and it is why
+ * this direction needs no conditions where the decoders have several.
  *
- * Written out, and not driven from a table shared with the decoders. A
- * table would have to say that a ratchet is present when the context
- * flag is set, that signalling is present at one payload length and not
- * another, and that a keepalive on a link has no token at all; those
- * are the decoders, expressed less directly. What keeps the two
- * directions from drifting apart is the round trip: a field dropped
- * here, or moved, stops reproducing raw for every vector of the kind. */
+ * The table this runs from is the encoders' own and is not shared with
+ * the decoders. A shared one would have to say that a ratchet is
+ * present when the context flag is set, that signalling is present at
+ * one payload length and not another, and that a keepalive on a link
+ * has no token at all; those are the decoders, expressed less directly.
+ * What keeps the two directions from drifting apart is the round trip:
+ * a field dropped here, or moved, stops reproducing raw for every
+ * vector of the kind. */
 
 struct out {
 	char   hex[MAXBLOB*2 + 2];
@@ -1930,132 +1930,38 @@ static void emit_field(struct kv *f, int n, const char *name)
 	printf("%s\n", lookup(f, n, name));
 }
 
-static void encode_identity(struct kv *f, int n)
-{
-	emit_field(f, n, "public_key");
-}
-
-static void encode_keyset(struct kv *f, int n)
-{
-	emit_field(f, n, "private_key");
-}
-
-static void encode_destination(struct kv *f, int n)
-{
-	emit_field(f, n, "name");
-	emit_field(f, n, "identity_hash");
-}
-
-static void encode_announce(struct kv *f, int n)
+/* Twelve of the fourteen encoders were a list of field names, so the
+ * list is what is written down; see the layout column of kinds below. A
+ * name before "=" is a whole line of raw, printed as it stands. "="
+ * stands for the five header fields, and every name after it is
+ * concatenated into that one line. The order is the order of raw: the
+ * echoed input blobs first, the packet last.
+ *
+ * ifac and linkdata are not concatenations and keep their own functions
+ * below. */
+static void encode_layout(const char *layout, struct kv *f, int n)
 {
 	struct out o = { "", 0 };
+	char buf[256], *name;
+	int packing = 0;
 
-	put_header(&o, f, n);
-	put_field(&o, f, n, "public_key");
-	put_field(&o, f, n, "name_hash");
-	put_field(&o, f, n, "random_hash");
-	put_field(&o, f, n, "ratchet");
-	put_field(&o, f, n, "signature");
-	put_field(&o, f, n, "app_data");
-	emit(&o);
-}
+	if (strlen(layout) >= sizeof buf)
+		fatal("layout longer than %zu bytes", sizeof buf - 1);
+	strcpy(buf, layout);
 
-static void encode_encrypted(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
+	for (name = strtok(buf, " "); name != NULL; name = strtok(NULL, " ")) {
+		if (strcmp(name, "=") == 0) {
+			put_header(&o, f, n);
+			packing = 1;
+		} else if (packing) {
+			put_field(&o, f, n, name);
+		} else {
+			emit_field(f, n, name);
+		}
+	}
 
-	emit_field(f, n, "recipient_private");
-	emit_field(f, n, "ratchet_private");
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "ephemeral_public");
-	put_field(&o, f, n, "iv");
-	put_field(&o, f, n, "ciphertext");
-	put_field(&o, f, n, "hmac");
-	emit(&o);
-}
-
-static void encode_group(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	emit_field(f, n, "group_key");
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "iv");
-	put_field(&o, f, n, "ciphertext");
-	put_field(&o, f, n, "hmac");
-	emit(&o);
-}
-
-static void encode_plain(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "plaintext");
-	emit(&o);
-}
-
-static void encode_pathrequest(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "wanted_hash");
-	put_field(&o, f, n, "requester_id");
-	put_field(&o, f, n, "tag");
-	emit(&o);
-}
-
-static void encode_linkrequest(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "x25519_public");
-	put_field(&o, f, n, "ed25519_public");
-	put_field(&o, f, n, "signalling");
-	emit(&o);
-}
-
-static void encode_proof(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	emit_field(f, n, "proved_packet");
-	emit_field(f, n, "signer_public");
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "proof_hash");
-	put_field(&o, f, n, "signature");
-	emit(&o);
-}
-
-static void encode_resourceproof(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	emit_field(f, n, "advertised_hash");
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "resource_hash");
-	put_field(&o, f, n, "resource_proof");
-	emit(&o);
-}
-
-static void encode_linkproof(struct kv *f, int n)
-{
-	struct out o = { "", 0 };
-
-	emit_field(f, n, "link_request");
-	emit_field(f, n, "signer_public");
-
-	put_header(&o, f, n);
-	put_field(&o, f, n, "signature");
-	put_field(&o, f, n, "x25519_public");
-	put_field(&o, f, n, "signalling");
-	emit(&o);
+	if (packing)
+		emit(&o);
 }
 
 /* The one encoder that is not a concatenation. Going out, the flag is
@@ -2140,30 +2046,37 @@ static void encode_linkdata(struct kv *f, int n)
 	emit(&o);
 }
 
-/* Every kind, and for each the two directions. A kind with no
- * encoder is one no vector can claim the encode class for: its raw
- * holds something expect does not record. */
+/* Every kind, and for each the two directions. A kind with neither a
+ * layout nor an encoder is one no vector can claim the encode class
+ * for: its raw holds something expect does not record. */
 static const struct {
 	const char *name;
 	void (*decode)(struct blob *, int);
-	void (*encode)(struct kv *, int);
+	void (*encode)(struct kv *, int);	/* where a layout will not do */
+	const char *layout;
 } kinds[] = {
-	{ "identity",    dump_identity,    encode_identity    },
-	{ "keyset",      dump_keyset,      encode_keyset      },
-	{ "destination", dump_destination, encode_destination },
-	{ "signature",   dump_signature,   NULL               },
-	{ "sign",        dump_sign,        NULL               },
-	{ "announce",    dump_announce,    encode_announce    },
-	{ "plain",       dump_plain,       encode_plain       },
-	{ "pathrequest", dump_pathrequest, encode_pathrequest },
-	{ "encrypted",   dump_encrypted,   encode_encrypted   },
-	{ "group",       dump_group,       encode_group       },
-	{ "linkrequest", dump_linkrequest, encode_linkrequest },
-	{ "linkproof",   dump_linkproof,   encode_linkproof   },
-	{ "linkdata",    dump_linkdata,    encode_linkdata    },
-	{ "proof",       dump_proof,       encode_proof       },
-	{ "resourceproof", dump_resourceproof, encode_resourceproof },
-	{ "ifac",        dump_ifac,        encode_ifac        },
+	{ "identity",    dump_identity,    NULL, "public_key" },
+	{ "keyset",      dump_keyset,      NULL, "private_key" },
+	{ "destination", dump_destination, NULL, "name identity_hash" },
+	{ "signature",   dump_signature,   NULL, NULL },
+	{ "sign",        dump_sign,        NULL, NULL },
+	{ "announce",    dump_announce,    NULL,
+	  "= public_key name_hash random_hash ratchet signature app_data" },
+	{ "plain",       dump_plain,       NULL, "= plaintext" },
+	{ "pathrequest", dump_pathrequest, NULL, "= wanted_hash requester_id tag" },
+	{ "encrypted",   dump_encrypted,   NULL,
+	  "recipient_private ratchet_private = ephemeral_public iv ciphertext hmac" },
+	{ "group",       dump_group,       NULL, "group_key = iv ciphertext hmac" },
+	{ "linkrequest", dump_linkrequest, NULL,
+	  "= x25519_public ed25519_public signalling" },
+	{ "linkproof",   dump_linkproof,   NULL,
+	  "link_request signer_public = signature x25519_public signalling" },
+	{ "linkdata",    dump_linkdata,    encode_linkdata, NULL },
+	{ "proof",       dump_proof,       NULL,
+	  "proved_packet signer_public = proof_hash signature" },
+	{ "resourceproof", dump_resourceproof, NULL,
+	  "advertised_hash = resource_hash resource_proof" },
+	{ "ifac",        dump_ifac,        encode_ifac, NULL },
 };
 
 int main(int argc, char **argv)
@@ -2201,11 +2114,14 @@ int main(int argc, char **argv)
 		if (!encode) {
 			n = readraw(path, blobs, MAXBLOBS);
 			kinds[i].decode(blobs, n);
-		} else if (kinds[i].encode == NULL) {
+		} else if (kinds[i].encode == NULL && kinds[i].layout == NULL) {
 			fatal("kind %s is not of the encode class", kind);
 		} else {
 			n = readexpect(path, fields, MAXFIELDS);
-			kinds[i].encode(fields, n);
+			if (kinds[i].encode != NULL)
+				kinds[i].encode(fields, n);
+			else
+				encode_layout(kinds[i].layout, fields, n);
 		}
 		return 0;
 	}
