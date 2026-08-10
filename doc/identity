@@ -1,7 +1,7 @@
 Identity
 
 Byte layouts and derivations. For what an identity is for, see
-upstream docs/source/understanding.rst, section "Identities".
+upstream docs/source/understanding.rst#understanding-identities.
 
 Vectors: test/identity/
 

@@ -1,8 +1,8 @@
 Destination
 
 Byte layouts and derivations. For what destinations are for and when
-to use each type, see upstream docs/source/understanding.rst, section
-"Destinations".
+to use each type, see upstream
+docs/source/understanding.rst#understanding-destinations.
 
 Vectors: test/destination/
 

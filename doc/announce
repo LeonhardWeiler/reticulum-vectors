@@ -1,8 +1,8 @@
 Announce
 
 Payload layout and validation. For what announces are for and how they
-propagate, see upstream docs/source/understanding.rst, section "The
-Announce Mechanism in Detail".
+propagate, see upstream
+docs/source/understanding.rst#understanding-announce.
 
 Vectors: test/announce/
 

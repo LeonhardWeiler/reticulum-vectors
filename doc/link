@@ -1,8 +1,9 @@
 Link
 
 Byte layouts and derivations for link establishment. For what a link
-is and why it exists, see upstream docs/source/understanding.rst,
-section "Reticulum Link Establishment".
+is and why it exists, see upstream
+docs/source/understanding.rst#understanding-paths, section "Link
+Establishment in Detail".
 
 Vectors: test/linkrequest/, test/linkproof/, test/linkdata/
 

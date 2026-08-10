@@ -60,12 +60,7 @@ Six rules
 
    Nothing else may use that status. A harness that implements a kind
    and disagrees with the vector has found something, and that is the
-   result.
-
-   This is what makes a harness worth writing before it is finished.
-   Four kinds on the first day is a result; the alternative, requiring
-   every kind before anything can be measured, is why a new decoder
-   starts with nothing to show.
+   result. Four kinds on the first day is a result too.
 
 4. One kind is a start.
 

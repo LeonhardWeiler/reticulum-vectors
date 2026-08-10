@@ -2,7 +2,7 @@ Encryption
 
 Byte layouts and derivations for packets addressed to a single or a
 group destination. For what the layers are for, see upstream
-docs/source/understanding.rst, section "Reaching the Destination".
+docs/source/understanding.rst#understanding-paths.
 
 Vectors: test/encrypted/, test/group/
 

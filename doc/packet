@@ -1,8 +1,8 @@
 Packet
 
 Header layout and flag bits. For what packets are for and how they are
-routed, see upstream docs/source/understanding.rst, sections
-"Reticulum Transport" and "Binary Packet Format".
+routed, see upstream docs/source/understanding.rst#understanding-transport
+and #understanding-packetformat.
 
 Vectors: every kind whose raw is a whole packet, that is
 test/announce/, test/plain/, test/pathrequest/, test/encrypted/,
@@ -205,10 +205,9 @@ all.
 A plain destination holds no keys and has no identity, so its hash is
 SHA-256 of the name hash alone. See doc/destination.
 
-This is the destination type a path request is addressed to, which is
-why it matters to an implementation that never encrypts anything: a
-transport node must read one before it knows a path is being asked
-for. The payload of a path request is the section below.
+A path request is addressed to one, so a transport node reads a plain
+packet whether or not it ever encrypts anything. Its payload is the
+section below.
 
 test/plain/payload carries 26 bytes that mean nothing, which is the
 point: a plain destination hands the payload through whatever it holds.
@@ -296,15 +295,14 @@ to name is a rejection:
     minimum_length     16
 
 The handler has no rule of its own for that length; it reads nothing
-and returns. The corpus names the length that failed, because a decoder
-that accepts a 15-byte path request and one that rejects it must be
-distinguishable.
+and returns. The corpus names the length that failed.
 
 
 Interface access codes
 
-For what these are for, see upstream docs/source/understanding.rst,
-section "Interface Access Codes". What follows is where the bytes go.
+For what these are for, see upstream
+docs/source/understanding.rst#understanding-protocolspecifics, section
+"Interface Access Codes". What follows is where the bytes go.
 
 An interface configured with a named network or a passphrase carries
 every packet inside a frame:
@@ -405,9 +403,7 @@ length of a header, which follows from the header type; the first is
 the two bytes it takes to read the header type at all, and it is the
 only threshold in the format that is not a length of something.
 
-Naming the rule rather than the stage keeps two decoders from agreeing
-by accident when they fail for different reasons. See doc/fields for
-every name that can appear in a rejection.
+See doc/fields for every name that can appear in a rejection.
 
 
 Vector format: proof
