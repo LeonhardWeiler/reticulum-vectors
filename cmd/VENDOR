@@ -10,20 +10,14 @@ Vendored code.
         license   public domain
         modified  no
 
-        used for  five entry points, which are every one dump links
-                  against. The list is what nm reports, not what this
-                  file remembers:
+        used for  Ed25519 and X25519, and the SHA-512 they carry with
+                  them and never call directly. Signing as well as
+                  verifying, which a decoder would not need: test/sign
+                  and test/ifac record a signature this program has to
+                  produce in order to check it. Nothing else in the file
+                  is used. Which entry points that is, is what nm says:
 
                       nm cmd/dump.o | grep ' U crypto'
-
-                  crypto_sign_open        verify a signature
-                  crypto_sign             produce one; test/sign, ifac
-                  crypto_sign_keypair     public key from a given seed
-                  crypto_scalarmult       X25519 against a peer key
-                  crypto_scalarmult_base  X25519 public from a scalar
-
-                  SHA-512 comes with the first three and is not called
-                  directly. dump uses nothing else from the file.
 
 Built without the warning flags the corpus applies to its own code, and
 UBSan reports left shifts of negative values in it, at tweetnacl.c:281

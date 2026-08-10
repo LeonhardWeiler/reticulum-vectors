@@ -1,5 +1,5 @@
 # Regenerate every vector from the pinned reference and require that
-# not one byte changed, then read the three claims in cmd/VENDOR and
+# not one byte changed, then read the two claims in cmd/VENDOR and
 # test/INDEX against what they describe.
 #
 # Separate from check.yml because this needs the network, Python and
