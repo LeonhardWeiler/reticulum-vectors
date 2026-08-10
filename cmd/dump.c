@@ -1327,12 +1327,6 @@ static void mp_end(struct mp *m)
  * two msgpack bodies. One rule, one name, one threshold printed; the
  * length itself is already on the line above, as plaintext_length.
  *
- * It was three answers before. A part request named the rule, a channel
- * envelope printed nothing at all and left the reader to notice which
- * fields were missing, and a request ran into msgpack and stopped the
- * program with half a record on standard output. doc/harness rule 6
- * forbids exactly that, and dump is what a harness is written from.
- *
  * The advertisement needs no such check: msgpack carries its own
  * lengths and mp_take refuses to read past them. The two cancels need
  * none either: the payload is the resource hash and however many bytes
@@ -1839,12 +1833,9 @@ static void dump_ifac(struct blob *b, int nblobs)
  * table would have to say that a ratchet is present when the context
  * flag is set, that signalling is present at one payload length and not
  * another, and that a keepalive on a link has no token at all; those
- * are the decoders, expressed less directly. What the table would buy
- * is that the two directions cannot drift apart, and the round trip
- * already buys that: a field dropped here, or moved, stops reproducing
- * raw for every vector of the kind. That rests on every optional field
- * having both of its cases on file, which cmd/check counts rather than
- * this comment claiming it. */
+ * are the decoders, expressed less directly. What keeps the two
+ * directions from drifting apart is the round trip: a field dropped
+ * here, or moved, stops reproducing raw for every vector of the kind. */
 
 struct out {
 	char   hex[MAXBLOB*2 + 2];

@@ -448,10 +448,8 @@ def determinism(kind, expect):
 
 
 class Writer:
-    # Counted apart, because the number this program prints on a good
-    # day is the success signal of the whole repository. "229 files
-    # written" was that number, and it reads like a report of 229
-    # changes; the run that changes nothing is the run that passes.
+    # Counted apart: the run that changes nothing is the run that
+    # passes, and that has to be what the last line says.
     def __init__(self, root, force):
         self.root      = root
         self.force     = force
@@ -1221,9 +1219,7 @@ def gen_announce(RNS, w, tmpdir, verify):
 
     # One byte short of a header 1 header. Nothing about the packet can
     # be read, not even the context byte, so the rejection names a
-    # length and not a payload. Until doc/fields was checked against
-    # test/, this rule was described in doc/packet with an example and
-    # carried by no vector.
+    # length and not a payload.
     built("short-header", base[:18],
         "18 bytes, one short of a header 1 header")
 
@@ -1322,8 +1318,7 @@ def gen_plain(RNS, w):
     # The reference defines the name and this corpus does not, because
     # no vector carries such a packet, so the byte prints as two hex
     # digits. That fallback is the one place a value form depends on the
-    # value, doc/fields says so, and until this vector no vector
-    # exercised it: all the others carry a byte the format has a name
+    # value; every other vector carries a byte the format has a name
     # for. It is a plain packet because the fallback is in the header
     # and a plain packet is the shortest thing with one.
     base  = made["payload"]
@@ -1721,10 +1716,9 @@ def gen_linkrequest(RNS, w, session):
     # The same request after a transport node rewrote it. The link id is
     # taken over the packet with the four high flag bits cleared, the hop
     # count removed and the transport id removed, so it must be the id
-    # above. Until this vector, header 2 appeared once in the corpus, on
-    # an announce, and announces derive no link id and no packet hash:
-    # the branch that drops the transport id before hashing was in both
-    # decoders and exercised by neither.
+    # above. It is the only vector that exercises the branch dropping a
+    # transport id before hashing: an announce carries header 2 too, but
+    # derives no link id and no packet hash.
     transport_id = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[2][0])).hash
     relayed = transport_insert(raw, 1, transport_id)
     assert lookup_field(describe_linkrequest(relayed), "link_id") == link_id.hex()
@@ -2039,7 +2033,7 @@ def gen_linkdata(RNS, w, verify, session):
     built("altered-hmac", base[:-1] + bytes([base[-1] ^ 0x01]),
         "last byte of the token hmac altered; nothing is decrypted")
 
-    # The one rejection in the corpus that happens after the header was
+    # The one rejection in the corpus that happens after the header is
     # printed. A link data packet is not known to carry a token until
     # the context byte is read, so the header is printed first and the
     # length rule applies to what is left. That makes it the vector the

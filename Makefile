@@ -33,28 +33,17 @@ gen:
 
 # Every meta file claims a source and cmd/VENDOR says the vendored file
 # is unmodified. verify is the evidence for both. Needs Python and the
-# checkout; check alone does not.
+# checkout; check alone does not, which is why none of this is in
+# cmd/check.
 #
-# The hashes are read through grep because the first of the two lines
-# carries a label and sha256sum skips it, checking one file of two and
-# exiting zero.
+# Three claims are read against what they describe: dump -l against the
+# kinds in test/INDEX, the hashes in cmd/VENDOR against the files, and
+# the entry points it lists against nm.
 #
-# The list of entry points in cmd/VENDOR is read the same way, against
-# nm. It is the one claim in that file about this program rather than
-# about the vendored one, and it had gone stale twice: once when
-# test/sign added signing and once when the link vectors added the
-# X25519 exchange. The sed strips tweetnacl's own suffixes, so the file
-# can name crypto_sign where the object names
-# crypto_sign_ed25519_tweet.
-#
-# dump -l is read the same way, against test/INDEX. README and
-# doc/harness both send a harness author to it for the list of kinds,
-# and nothing compared it to the corpus: a kind added to test/ and not
-# to the list would leave that answer short by one, silently, in the one
-# place a reader is told to trust it.
-#
-# Not in cmd/check: that is the consumer contract, and a consumer needs
-# test/, doc/ and cmd/ and no README.
+# The hashes go through grep because the first of the two lines carries
+# a label and sha256sum would skip it, checking one file of two and
+# exiting zero. The sed strips tweetnacl's own suffixes, so cmd/VENDOR
+# can name crypto_sign where the object names crypto_sign_ed25519_tweet.
 verify: check
 	{ cmd/dump -l | LC_ALL=C sort -u; \
 	  cut -d/ -f1 test/INDEX | LC_ALL=C sort -u; } | LC_ALL=C sort | uniq -c \
