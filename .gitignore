@@ -4,6 +4,7 @@ cmd/dump
 conformance/*/target/
 conformance/*/node_modules/
 conformance/go-reticulum/goret
+conformance/Reticulum-Go/q4ret
 conformance/microReticulum/micro
 
 # The implementations under test are cloned, not vendored.

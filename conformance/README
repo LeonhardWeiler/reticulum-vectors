@@ -17,10 +17,20 @@ Clone each next to its harness, under the directory name given:
 
     rns.js           github.com/liamcottle/rns.js
     go-reticulum     github.com/svanichkin/go-reticulum
+    Reticulum-Go     github.com/Quad4-Software/Reticulum-Go
     Reticulum-rs     github.com/BeechatNetworkSystemsLtd/Reticulum-rs
     rsReticulum      github.com/ratspeak/rsReticulum
     microReticulum   github.com/attermann/microReticulum
     reticulum        github.com/sgiath/reticulum
+
+Reticulum-Go replaces five module paths with sibling checkouts that are
+not in its own repository, so four of them are cloned too, under
+conformance/src/Reticulum-Go-Projects/:
+
+    msgpack bzip2 pbt tagparser    github.com/Quad4-Software/<name>
+
+Two of the names above are Go and differ by a hyphen and a capital.
+They are separate projects and share no code.
 
 so that the result is
 
@@ -76,6 +86,11 @@ Building
 
     go-reticulum      go build in conformance/go-reticulum
 
+    Reticulum-Go      go build in conformance/Reticulum-Go, after the
+                      four sibling modules above are cloned. Its go.mod
+                      replaces them by path; nothing is fetched for
+                      them.
+
     Reticulum-rs      cargo build --release in conformance/Reticulum-rs
     rsReticulum       cargo build --release in conformance/rsReticulum
 
@@ -107,3 +122,9 @@ linkproof and linkdata carry the link request as their first blob,
 because the link id, and with it the salt of the key derivation, is in
 no packet on the link. A harness that ignores that blob cannot produce
 a correct field for either kind.
+
+Six of the seven exit 77 for the same five kinds. The seventh,
+Reticulum-Go, runs ifac as well, because its interface access codes sit
+in a package that needs no interface; ../CONFORMANCE says what that
+changes about its denominator. The other four kinds are still skipped
+by everyone.
