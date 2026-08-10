@@ -320,3 +320,25 @@ Ask, in order:
     Is the determinism class honest?
 
 If the first answer is yes, stop.
+
+Where a new kind lands, measured on the three commits that added one
+(f613b11, 403b6b8, ca34569), in lines outside test/:
+
+    tools/gen                        67 - 343
+    doc/, one document plus fields   59 - 275
+    conformance/, six harnesses           257
+    cmd/dump.c                       51 - 189
+    CONFORMANCE                      13 -  59
+
+Two things in that order are worth knowing before starting. The C
+decoder is the cheapest part and the generator the dearest, because gen
+builds the object with RNS and reads it back independently and dump only
+reads: the doubled cost is the second reading, which is the product.
+
+And a kind costs every harness in conformance/, seven of them today in
+six languages, or it costs the denominator: a harness exits 77 for a
+kind it does not know, so the new vectors are skipped for everyone and
+every row in CONFORMANCE counts against a larger number. Either is
+defensible and cbdb8d3 already chose the second once. Choose it
+deliberately. The row above is what six harnesses cost the last time
+the first was chosen.
