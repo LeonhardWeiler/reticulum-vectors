@@ -234,9 +234,8 @@ second halves of it as configured.
     signing_key    = group_key[0:32]
     encryption_key = group_key[32:64]
 
-That is the whole of what makes this type different, and it is a
-difference in the direction an implementation is least likely to guess:
-the same three fields, keyed by a value that went through no function.
+That is the whole of what makes this type different: the same three
+fields, keyed by a value that went through no function.
 
 An outbound group destination still needs an identity, and its hash is
 derived exactly as a single destination's is. The identity plays no
