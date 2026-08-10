@@ -250,12 +250,21 @@ Deleting the number deleted the tool.
 The first is the artifact. The second is a convenience and does not
 inherit the first one's authority. It is why regeneration is
 deterministic and why `make verify` can insist that not one byte
-changed, and it is paid for: `gen` stands in for the instance in eleven
-places, among them `Transport.owner`, `Packet.send`,
-`Reticulum.storagepath` and both randomness sources. Every one is an
-assumption about what the reference would have done, and one has been
-wrong — pinning `os.urandom` did not reach the openssl backend, and the
-ratchet vectors changed on every run.
+changed.
+
+What stands in for the instance is `stub_transport`, and it is the
+whole of it: `Transport.owner`, `register_destination`,
+`_remember_ratchet`, and the four `Reticulum` attributes a constructor
+would have set. Everything around it is a different job.
+`pinned` replaces the clock, both randomness sources and three key
+classes, and would be needed against a running instance too, because a
+running instance draws the same random bytes. `captured`, `inline_threads`
+and `handler_reads` observe what the reference did with the bytes, which
+a running instance makes harder rather than easier.
+
+Every one of those is an assumption about what the reference would have
+done, and one has been wrong — pinning `os.urandom` did not reach the
+openssl backend, and the ratchet vectors changed on every run.
 
 The commit is part of the pin and so is the working tree, so `gen`
 refuses a checkout `git status --porcelain` reports anything for. A
