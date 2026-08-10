@@ -431,13 +431,11 @@ def determinism(kind, expect):
     expect, and the vector rebuilds. Every other rejection stopped at
     bytes it then did not print.
 
-    This was written as "the packet printed its flags first", which is
-    the same answer for every rejection that happens before the header
-    is printed and the wrong one for the rejection that does not.
-    linkdata prints the header before it looks at the token, because the
-    context byte decides whether there is a token at all, so a link data
-    packet with a payload too short for one has flags in expect and its
-    payload nowhere.
+    Which rule, and not a proxy for it. "The packet printed its flags
+    first" is the same answer for every rejection before the header is
+    printed and the wrong one for linkdata, which prints the header
+    before it looks at the token because the context byte decides
+    whether there is a token at all.
     """
     if kind not in ENCODABLE:
         return "decode"
@@ -506,25 +504,17 @@ class Writer:
 def derived_from(w, kind, base, blobs, describe):
     """Vectors built here out of another vector's bytes.
 
-    Twenty-nine of them are one base vector with something cut or
-    altered, and each was written out the same four ways: the new bytes
-    into the blob list, the describe the kind already has, a purpose,
-    and a source naming the vector it came from. Only the bytes and the
-    purpose differ between two cases of a kind.
+    A base vector with something cut or altered. Only the bytes and the
+    purpose differ between two cases of a kind; the blob list, the
+    describe the kind already has, and the source are the same.
 
-    The source is composed here rather than passed in. It is the
-    provenance line, it is what tells a reader that no reference
-    produced these bytes, and it was one sentence typed twenty-nine
-    times by hand. per adds a citation for a case whose transformation
-    follows a named rule of the reference.
+    The source is composed here rather than passed in, because it is the
+    provenance line and it says the same thing every time: no reference
+    produced these bytes. per adds a citation for a case whose
+    transformation follows a named rule of the reference.
 
-    Returns the maker rather than taking a list of cases, because the
-    comment above a case is why the vector exists and belongs against
-    that case and not inside a table entry.
-
-    Not named derived: three describe_ functions already call the key
-    they derive that, and those are the one part of this program that
-    shares no code with cmd/dump, so nothing in them moves for a name.
+    Returns the maker rather than taking a list of cases, so that the
+    comment saying why a vector exists sits against that vector.
     """
     def one(name, raw, purpose, base=base, per=None):
         source = "constructed by tools/gen from %s/%s" % (kind, base)
