@@ -40,16 +40,11 @@ It gives up most of what the corpus can tell it. Decoding proves an
 implementation reads what python-rns writes; the round trip is the only
 thing here that says anything about what it writes.
 
-A decoder that covers some kinds and not others exits 77 for the rest.
-Those vectors are reported as skipped and named, and are not counted
-against it:
-
-    40 passed, 9 failed, corpus <fingerprint>, 1 skipped: ifac
-
 doc/harness is the whole of what a program has to do to be substituted
-for dump here, and cmd/dump -l lists the kinds it can be asked for. It
-also shows how to run this from an implementation's own CI, which is
-the two commands above and nothing to install.
+for dump here, including which kinds it may leave out and how that
+appears in the result, and cmd/dump -l lists the kinds it can be asked
+for. It also shows how to run this from an implementation's own CI,
+which is the two commands above and nothing to install.
 
 The corpus number is a checksum over test/INDEX and every raw and
 expect. It says what the result was measured against. A count alone
