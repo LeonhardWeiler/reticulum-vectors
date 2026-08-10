@@ -647,6 +647,22 @@ static void print_fault(const struct fault *f)
 	invalid(f->rule, f->gotname, f->got, f->needname, f->need);
 }
 
+/* The packet a vector records: a header that does not parse is the
+ * whole result, so this prints the rule it broke and returns 0.
+ *
+ * The three decoders that parse a second packet call parse_header
+ * directly and fatal instead. That one is an input rather than the
+ * object, and a vector carrying one that will not parse is broken. */
+static int open_packet(const struct blob *b, struct header *h)
+{
+	struct fault f;
+
+	if (parse_header(b->data, b->len, h, &f))
+		return 1;
+	print_fault(&f);
+	return 0;
+}
+
 static const struct {
 	unsigned    byte;
 	const char *name;
@@ -821,7 +837,6 @@ static void dump_encrypted(struct blob *b)
 {
 	struct header h;
 	struct token t;
-	struct fault f;
 	const uint8_t *ephemeral;
 	uint8_t pub[KEYSIZE], identity_hash[ADDRLEN];
 	uint8_t agree[KEYHALF], shared[KEYHALF], derived[DERIVEDLEN];
@@ -836,10 +851,8 @@ static void dump_encrypted(struct blob *b)
 	field_blob("recipient_private", &b[0]);
 	field_blob("ratchet_private", &b[1]);
 
-	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[2], &h))
 		return;
-	}
 
 	if (h.payload_len < KEYHALF + TOKEN_OVERHEAD) {
 		invalid("short-payload", "payload_length", h.payload_len,
@@ -890,17 +903,14 @@ static void dump_group(struct blob *b)
 {
 	struct header h;
 	struct token t;
-	struct fault f;
 
 	if (b[0].len != DERIVEDLEN)
 		fatal("group: group key is %zu bytes, expected %d", b[0].len, DERIVEDLEN);
 
 	field_blob("group_key", &b[0]);
 
-	if (!parse_header(b[1].data, b[1].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[1], &h))
 		return;
-	}
 
 	if (h.payload_len < TOKEN_OVERHEAD) {
 		invalid("short-payload", "payload_length", h.payload_len,
@@ -939,13 +949,10 @@ static void dump_announce(struct blob *b)
 static void dump_plain(struct blob *b)
 {
 	struct header h;
-	struct fault f;
 
 
-	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[0], &h))
 		return;
-	}
 
 	print_header(&h);
 	field("plaintext_length", "%zu", h.payload_len);
@@ -960,16 +967,13 @@ static void dump_plain(struct blob *b)
 static void dump_pathrequest(struct blob *b)
 {
 	struct header h;
-	struct fault f;
 	size_t taglen;
 	const uint8_t *wanted, *requester, *tag;
 	uint8_t unique[ADDRLEN * 2];
 
 
-	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[0], &h))
 		return;
-	}
 
 	if (h.payload_len < ADDRLEN) {
 		invalid("short-payload", "payload_length", h.payload_len,
@@ -1078,15 +1082,12 @@ static void print_signalling(const uint8_t *p)
 static void dump_linkrequest(struct blob *b)
 {
 	struct header h;
-	struct fault f;
 	uint8_t link_id[ADDRLEN];
 	int signalled;
 
 
-	if (!parse_header(b[0].data, b[0].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[0], &h))
 		return;
-	}
 
 	signalled = h.payload_len == ECPUBSIZE + SIGNALLEN;
 	if (!signalled && h.payload_len != ECPUBSIZE) {
@@ -1124,10 +1125,8 @@ static void dump_linkproof(struct blob *b)
 	if (!parse_header(b[0].data, b[0].len, &rh, &f))
 		fatal("linkproof: the link request does not decode");
 
-	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[2], &h))
 		return;
-	}
 
 	signalled = h.payload_len == SIGLEN + KEYHALF + SIGNALLEN;
 	if (!signalled && h.payload_len != SIGLEN + KEYHALF) {
@@ -1456,10 +1455,8 @@ static void dump_linkdata(struct blob *b)
 	if (!parse_header(b[0].data, b[0].len, &rh, &f))
 		fatal("linkdata: the link request does not decode");
 
-	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[2], &h))
 		return;
-	}
 
 	link_id_of(b[0].data, b[0].len, &rh, link_id);
 
@@ -1596,10 +1593,8 @@ static void dump_proof(struct blob *b)
 	if (!parse_header(b[0].data, b[0].len, &ph, &f))
 		fatal("proof: the proved packet does not decode");
 
-	if (!parse_header(b[2].data, b[2].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[2], &h))
 		return;
-	}
 
 	explicit_form = h.payload_len == 32 + SIGLEN;
 	if (!explicit_form && h.payload_len != SIGLEN) {
@@ -1663,7 +1658,6 @@ static void dump_proof(struct blob *b)
 static void dump_resourceproof(struct blob *b)
 {
 	struct header h;
-	struct fault f;
 
 	if (b[0].len != HASHLEN)
 		fatal("resourceproof: resource hash is %zu bytes, expected %d",
@@ -1671,10 +1665,8 @@ static void dump_resourceproof(struct blob *b)
 
 	field_blob("advertised_hash", &b[0]);
 
-	if (!parse_header(b[1].data, b[1].len, &h, &f)) {
-		print_fault(&f);
+	if (!open_packet(&b[1], &h))
 		return;
-	}
 
 	print_header(&h);
 
