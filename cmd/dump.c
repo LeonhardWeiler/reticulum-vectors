@@ -119,11 +119,9 @@ static void field_blob(const char *name, const struct blob *b)
 		field_hex(name, b->data, b->len);
 }
 
-/* Lower case only. Two raw files differing only in the case of their hex
- * are the same input to a decoder and different files to diff and to
- * git, and cmd/check compares the round trip with diff. Accepting upper
- * case would let such a vector decode and then fail the round trip with
- * a message about the layout. */
+/* Lower case only. Two raw files differing only in the case of their
+ * hex are the same input to a decoder and different files to the diff
+ * cmd/check compares the round trip with. */
 static int unhex(int c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
@@ -259,12 +257,9 @@ static const char *lookup(struct kv *fields, int n, const char *name)
 }
 
 /* tweetnacl leaves randombytes to the caller and declares it nowhere,
- * so the definition below carries its own prototype. dump has
- * no use for randomness; the one place tweetnacl reaches for it is
- * crypto_sign_keypair, which is how an Ed25519 public key is derived
- * from a given seed without editing the vendored source. Serving that
- * call a chosen seed keeps tweetnacl unmodified. Any other call is a
- * bug and stops the program. See VENDOR. */
+ * so the definition below carries its own prototype. It serves
+ * crypto_sign_keypair a chosen seed and aborts on any other call; see
+ * cmd/VENDOR, which says why that is what dump needs. */
 
 static unsigned char rb_seed[32];
 static int rb_armed;
@@ -956,11 +951,7 @@ static void dump_announce(struct blob *b, int nblobs)
 
 /* A packet to a plain destination. Destination.encrypt returns the
  * plaintext unchanged for this type, so the payload is the data, with
- * no ephemeral key, no token and no padding. RNS/Destination.py#PLAIN.
- *
- * There is nothing to decrypt and therefore nothing here that could be
- * got wrong quietly: a decoder that treats every packet as encrypted
- * finds 80 bytes of overhead that are not there. */
+ * no ephemeral key, no token and no padding. RNS/Destination.py#PLAIN. */
 static void dump_plain(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -1200,10 +1191,8 @@ static void dump_linkproof(struct blob *b, int nblobs)
 }
 
 /* Enough msgpack to read what the reference puts on a link. Every type
- * outside that set is refused rather than skipped: a decoder that reads
- * a shape the reference never writes has invented a format, and this
- * one is meant to be a second reading of the reference and nothing
- * else. RNS/vendor/umsgpack.py#_pack2. */
+ * outside that set is refused rather than skipped.
+ * RNS/vendor/umsgpack.py#_pack2. */
 struct mp {
 	const uint8_t *p;
 	size_t         left;
@@ -1325,11 +1314,10 @@ static void mp_end(struct mp *m)
  * two msgpack bodies. One rule, one name, one threshold printed; the
  * length itself is already on the line above, as plaintext_length.
  *
- * The advertisement needs no such check: msgpack carries its own
- * lengths and mp_take refuses to read past them. The two cancels need
- * none either: the payload is the resource hash and however many bytes
- * arrived are the ones printed, which is what the reference compares.
- * RNS/Resource.py#cancel. */
+ * The advertisement needs no such check, because msgpack carries its
+ * own lengths and mp_take refuses to read past them; nor do the two
+ * cancels, whose payload is the resource hash and however many bytes
+ * arrived. RNS/Resource.py#cancel. */
 static int short_plaintext(size_t len, size_t need)
 {
 	if (len >= need)
@@ -1620,10 +1608,9 @@ static void dump_proof(struct blob *b, int nblobs)
 	on_link = h.destination_type == 3;
 
 	/* Which half is the signing key follows from the flags, and the two
-	 * forms take keys of two lengths. Without this, a 64-byte key beside
-	 * a proof on a link verifies against the X25519 half and prints
-	 * signature_valid no, which is a wrong field value where the corpus
-	 * can have a message instead. */
+	 * forms take keys of two lengths. A key of the wrong length here
+	 * would verify against the X25519 half and print signature_valid
+	 * no, which is a wrong field value where a message will do. */
 	if (b[1].len != (on_link ? (size_t)KEYHALF : (size_t)KEYSIZE))
 		fatal("proof: %s takes a %d-byte key, got %zu",
 		      on_link ? "a proof on a link" : "a proof to a destination",
@@ -1776,11 +1763,9 @@ static void dump_ifac(struct blob *b, int nblobs)
 
 	ifac_size = b[2].data[0];
 	/* Both bounds. The lower one is the reference's own: a configuration
-	 * below IFAC_MIN_SIZE is not accepted, and doc/packet says so.
-	 * Without it here the access code is the input hkdf derives the mask
-	 * from, and hkdf aborts on an empty input rather than returning a
-	 * mask nobody could tell from a wrong one, so a one-byte raw file
-	 * ended the program with no message at all.
+	 * below IFAC_MIN_SIZE is not accepted, and doc/packet says so. It is
+	 * checked here because the access code is what hkdf derives the mask
+	 * from, and hkdf aborts on an empty input rather than reporting it.
 	 * RNS/Reticulum.py#IFAC_MIN_SIZE. */
 	if (ifac_size < 1)
 		fatal("ifac: access code of %zu bytes is below the minimum of 1",
@@ -1824,14 +1809,10 @@ static void dump_ifac(struct blob *b, int nblobs)
  * which is how the format spells every optional field, and it is why
  * this direction needs no conditions where the decoders have several.
  *
- * The table this runs from is the encoders' own and is not shared with
- * the decoders. A shared one would have to say that a ratchet is
- * present when the context flag is set, that signalling is present at
- * one payload length and not another, and that a keepalive on a link
- * has no token at all; those are the decoders, expressed less directly.
- * What keeps the two directions from drifting apart is the round trip:
- * a field dropped here, or moved, stops reproducing raw for every
- * vector of the kind. */
+ * The table this runs from is the encoders' own; CLAUDE.md says why it
+ * is not shared with the decoders. What keeps the two directions from
+ * drifting apart is the round trip: a field dropped here, or moved,
+ * stops reproducing raw for every vector of the kind. */
 
 struct out {
 	char   hex[MAXBLOB*2 + 2];

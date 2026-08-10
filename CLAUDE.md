@@ -204,6 +204,14 @@ way, rebuilding raw from expect, which is how the encode class is
 enforced. It is the second implementation of the wire format, and that
 is its purpose: it proves the vectors are usable without Python.
 
+The encode direction is a table of field names, one row per kind,
+because in that direction an absent field is `-` and contributes no
+bytes. It is the encoders' own table and not one shared with the
+decoders. A shared one would have to say that a ratchet is present when
+the context flag is set, that signalling is present at one payload
+length and not another, and that a keepalive on a link has no token at
+all. Those are the decoders, expressed less directly.
+
 `check` is a shell script. For each vector it validates meta, then runs
 
     dump <kind> <raw>      | diff - expect
