@@ -48,6 +48,14 @@ Six rules
 
        // Follows src/announce.js:26-49 with rns.js's own constants.
 
+   The line number is deliberate, and it is the one place in the
+   repository that carries one. Everything citing the reference names a
+   symbol instead, because a symbol survives the pin moving. A harness
+   cites an implementation this repository does not pin and cannot
+   grep: CONFORMANCE names the commit its row was measured at, and the
+   citation is anchored to that commit and to nothing else. Name the
+   function too where it has one.
+
    Where the implementation has no such code at all, print "-". A dash
    fails the vector, and that is the honest outcome.
 
