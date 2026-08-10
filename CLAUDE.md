@@ -26,8 +26,7 @@ The backend belongs in the pin. python-rns ships two curve
 implementations and picks one at import time by what is installed, and
 they disagree on a non-canonical Ed25519 S and on a low-order X25519
 point. Vectors turn on the difference; tools/gen refuses to run under
-the other backend. Which vectors is not counted here: doc/identity and
-doc/encryption name them.
+the other backend. doc/identity and doc/encryption name them.
 
 ---
 
@@ -37,7 +36,7 @@ Upstream already provides:
 
     docs/source/understanding.rst   protocol concepts, mechanics, rationale
     tests/hashes.py                 SHA-256 and SHA-512 correctness
-    tests/identity.py               5 key vectors, 1 signature, 1 token decrypt
+    tests/identity.py               key vectors, a signature, a token decrypt
     tests/link.py                   integration tests, Python against Python
     tests/channel.py                unit tests of Python internals
 
@@ -70,12 +69,9 @@ belong in the corpus.
 
 # Determinism
 
-Most Reticulum objects cannot be produced twice.
-
-    deterministic     identity keys, name hash, destination hash, signature
-    announce          random_hash = 5 random bytes || 5 bytes unix time
-    encrypted packet  ephemeral X25519 key, random IV
-    link handshake    ephemeral keys
+Most Reticulum objects cannot be produced twice: an announce carries a
+random hash, an encrypted packet an ephemeral key and a random IV, a
+link handshake ephemeral keys.
 
 That is not what the class turns on. The class says whether expect is
 total:
@@ -86,35 +82,22 @@ total:
 Randomness is no obstacle. expect records what the random bytes came
 out as, so raw follows from expect even when nothing can produce those
 bytes a second time. Where raw carries an input that is not the object
-itself, the recipient key of an encrypted packet or the link request a
-proof answers, expect echoes it as a field and stays total.
-
-The class is enforced, not asserted, and it is not declared by hand.
-tools/gen derives it, since the vector either has the fields or does
-not, and cmd/check rebuilds raw from expect for every encode-class
-vector and diffs the result. A declaration that no program reads is
-decoration, and one written by hand is a claim that can be wrong.
-
-cmd/check tests the other direction too, and has to. gen derives the
-class and a consumer does not run gen, so for the reader who has only
-test/, cmd/ and doc/, decode was the one field in meta whose error
-skips a check rather than causing one. A decode-class vector whose
-expect rebuilds raw is now a failure.
+itself — the recipient key of an encrypted packet, the link request a
+proof answers — expect echoes it as a field and stays total.
 
 Only two things put a vector in the decode class: expect records a
 field by digest rather than by content, or the object broke a rule and
-the bytes it broke it on are therefore not printed.
+the bytes it broke it on are therefore not printed. A broken rule is
+not by itself the second case; test/linkdata holds four vectors that
+are broken inside a plaintext the packet around them decoded whole, and
+they rebuild.
 
-A broken rule is not by itself the second case. short-plaintext is
-broken inside a plaintext the packet around it decoded whole, so expect
-holds every byte of raw and the vector rebuilds; test/linkdata holds
-four of those. gen derives the class from which rule was broken, and
-that is the rule itself rather than a proxy for it. It read "whether
-flags was printed" until test/linkdata/short-payload, which prints the
-header before it looks at the token, because the context byte decides
-whether there is a token at all. A proxy that agrees with the rule on
-every vector on file is a proxy that has not met the vector that
-separates them yet.
+The class is derived by tools/gen from which rule was broken, never
+declared by hand, and it is enforced in both directions. cmd/check
+rebuilds raw from expect for every encode-class vector and diffs the
+result, and fails a decode-class vector whose expect rebuilds raw. A
+consumer does not run gen, so without the second test decode would be
+the one field in meta whose error skips a check rather than causing one.
 
 The corpus proves the read direction with expect and the write
 direction with the round trip. An implementation that decodes every
@@ -125,67 +108,20 @@ cmd/check.
 
 # Repository Structure
 
-    reticulum-vectors/
+    README, CONFORMANCE     what this is; what other implementations score
+    doc/                    nine documents, byte layouts and derivations
+    test/                   the vectors, one directory each, sixteen kinds
+    cmd/                    dump.c and its cryptography; check, a shell script
+    conformance/            one harness per implementation measured
+    tools/gen               python, generates the vectors against the pinned RNS
+    action.yml              a GitHub action, so a consumer's CI is three lines
 
-        README
-        CONFORMANCE     what independent implementations do with the corpus
+One C program. One shell script. One tool that is not part of the
+contract, because a consumer does not run it.
 
-        doc/
-            fields          every name expect can carry, and where
-            identity        key composition, identity hash
-            destination     app name, aspects, name hash, destination hash
-            packet          header, flags, addresses, context byte
-            announce        payload layout, signed material, validation
-            encryption      key agreement, derivation, token, padding
-            link            request, proof, link id, derivation, contexts
-            resource        parts, advertisement, requests, cancels, proof
-            harness         how to check an implementation, in one page
-
-        test/
-            identity/       public key to identity hash
-            keyset/         private key to public key
-            destination/    name to destination hash
-            signature/      Ed25519 as Identity.sign applies it
-            sign/           private key and message to the signature
-            announce/       whole packets, unencrypted
-            plain/          payload handed through unencrypted
-            pathrequest/    the payload a transport node reads
-            encrypted/      whole packets, decrypted to plaintext
-            group/          a token under a key nobody negotiates
-            linkrequest/    link requests, and the link id they open
-            linkproof/      link request proofs, signature verified
-            linkdata/       packets on an established link, resources
-                            among them
-            proof/          delivery proofs, both accepted forms
-            resourceproof/  a proof over a resource, which signs nothing
-            ifac/           a packet inside an interface access frame
-
-        cmd/
-            dump.c          decode one object, print its fields
-            sha256.c        written out, not vendored
-            hmac.c          HMAC-SHA256 and HKDF, written out
-            aes256.c        AES-256-CBC decryption, written out
-            tweetnacl.[ch]  vendored unmodified, see cmd/VENDOR
-            VENDOR          origin and hashes; make verify checks them
-            check           shell script: dump | diff - expect
-
-        conformance/
-            README          what a result covers, and what it does not
-            <impl>/         one harness per implementation measured
-            example/        one harness that runs and measures nothing,
-                            which is where doc/harness sends a reader
-
-        tools/
-            gen             python, generates vectors against the pinned RNS
-
-Nine documents. One C program. One shell script. One tool that is not
-part of the contract, because a consumer does not run it.
-
-That accounts for what a consumer reads and not for what a clone holds:
-conformance/ holds six harnesses in six languages, and it is the larger
-half of the repository. README says so in its layout, because a reader
-told that dump needs a C compiler and nothing else is entitled to be
-surprised by a clone that wants Go, Rust, Node and Elixir.
+A consumer needs test/, doc/ and cmd/. conformance/ is the larger half
+of a clone, needing Go, Rust, Node, Elixir and a C++ compiler between
+its six harnesses, and README says so where it lists the layout.
 
 ---
 
@@ -198,6 +134,9 @@ exist upstream.
 
 A document that could be summarised as "explains what X is for" is
 redundant and is deleted.
+
+No program parses a document. What a document says is kept true by
+writing it so that it stays true.
 
 ---
 
@@ -214,27 +153,16 @@ to one by name:
         expect    field decomposition, byte-identical to what dump prints
 
 test/INDEX names every vector, one per line, and cmd/check refuses to
-run against a test/ that holds anything else. Why is written at the
-check that enforces it and in README where a consumer meets the format,
-and a third wording would be a third thing to keep in step.
+run against a test/ that holds anything else.
 
-meta format:
+meta has three fields, all required:
 
     source        python-rns 1.4.2 (b48b96e6)
     determinism   encode
     purpose       announce with ratchet, no app_data
 
-All three are required. cmd/check rejects a vector that omits one or
-names an unknown class.
-
-Three fields, not five. The kind is the directory the vector is filed
-under; recording it in meta as well bought one rule to keep the two
-agreeing and one way for them to disagree. A date of generation was
-checked for presence and never for content, and tools/gen had to carry
-it forward by hand so that make verify would not fail on any day after
-the corpus was written. The pin in source is the provenance.
-
-Adopted vectors record their origin instead:
+The kind is the directory the vector is filed under and is not repeated
+here. Adopted vectors record their origin in source instead:
 
     source        python-rns tests/identity.py#fixed_keys (b48b96e6)
 
@@ -252,8 +180,7 @@ accident while failing for different reasons:
     minimum_length     148
 
 Where the number is already in the output the rejection does not repeat
-it. A plaintext too short for its context byte prints the threshold
-alone, because plaintext_length is three lines above it.
+it.
 
 ---
 
@@ -262,7 +189,8 @@ alone, because plaintext_length is three lines above it.
 `dump` is the only compiled program. It decodes one object and prints
 its fields in the format used by `expect`. With `-e` it runs the other
 way, rebuilding raw from expect, which is how the encode class is
-enforced.
+enforced. It is the second implementation of the wire format, and that
+is its purpose: it proves the vectors are usable without Python.
 
 `check` is a shell script. For each vector it validates meta, then runs
 
@@ -272,24 +200,15 @@ enforced.
 
 Before the first vector it refuses a test/ that disagrees with
 test/INDEX, and an optional field with only one of its two cases on
-file. Both read the corpus. It reads no document: doc/fields was parsed
-for a while, in both directions and for the form of every value, and
-that is linting prose. What a document says is kept true by writing it
-so that it stays true, not by a parser.
-
-`make verify` reads one more claim nothing read: `dump -l` against the
-kinds in test/INDEX. README and doc/harness both send a harness author
-to that list.
+file. Both read the corpus.
 
 There is no separate validator binary. A checker that shares a decoder
 with the dumper would be one program written twice.
 
 Note that the exit status of a pipeline is the status of its last
 command. A diff whose verdict is read from something downstream of it
-reports nothing; read the output instead.
-
-`dump` is the second implementation of the wire format. That is its
-purpose: it proves the vectors are usable without Python.
+reports nothing; read the output instead. This applies in the workflow
+too, where a step runs under `bash -e` without `pipefail`.
 
 ---
 
@@ -299,99 +218,72 @@ purpose: it proves the vectors are usable without Python.
 directories including meta. It never edits an existing vector in place;
 regeneration produces a new directory or an explicit diff.
 
-doc/, the programs and the meta files name the reference by symbol, in
-the form `RNS/Packet.py#Packet.ANNOUNCE`. There is no line number in a
-citation, and that is the whole rule: the anchor is the name to grep
-for, and nothing in the citation can go stale while the pin holds. When
-the pin moves and a symbol is gone, the vectors are regenerated anyway.
+It is not shipped as part of the corpus contract. `make verify` runs
+it and needs Python and the checkout; `make check` does not, and needs
+a C compiler.
 
-There was a second tool for a month. `cite` resolved a line number in
-every citation against the checkout, and it was needed because the
-format carried a number that carried nothing. Deleting the number
-deleted the tool.
+doc/, the programs and the meta files name the reference by symbol:
 
-There was a third for one week. `counts` resolved the totals the
-prose states — vectors of the decode class, documents, harnesses —
-against the corpus that holds them, through a table of English
-phrasings. It found one real error on the day it was written and it was
-deleted seven days later, and the reason it was deleted is the rule:
+    RNS/Packet.py#Packet.ANNOUNCE
 
-    A tool here checks bytes. Prose that cannot be checked is prose to
-    delete, not prose to parse.
+There is no line number, and that is the whole rule: the anchor is the
+name to grep for, and nothing in a citation can go stale while the pin
+holds. When the pin moves and a symbol is gone, the vectors are
+regenerated anyway.
 
-It needed a table of phrasings, because no parser tells a total from a
-local count. It needed an exemption for `CONFORMANCE`, whose counts are
-dated measurements. It needed a second exemption for its own source,
-which it read `decode += 1` and `documents = [` out of as a claim about
-the corpus. A check that needs an exemption for itself is a check whose
-rule is wrong.
+Two tools were deleted for one rule, and it is the rule for any tool
+proposed here:
 
-What replaced it costs nothing to run: the totals it guarded are out of
-the prose. A number in a sentence either names what it counts in that
-sentence, where it cannot drift, or it does not belong in the sentence.
+    A tool checks bytes. Prose that has to be checked is prose that is
+    written wrong; change the format, do not write the parser.
 
-The remaining tool is not shipped as part of the corpus contract. It is
-the way vectors are produced, not the way they are consumed. `make
-verify` runs it, and needs Python and the checkout. `make check` does
-not, and needs a C compiler.
+`counts` resolved the totals the prose stated against the corpus,
+through a table of English phrasings, and needed an exemption for its
+own source. `cite` resolved a line number that carried nothing.
+Deleting the number deleted the tool.
 
 ### Nothing has to be started, and that is two rules
 
     A consumer of the corpus starts nothing.
     gen starts no Reticulum instance.
 
-The first is the artifact. The second is a convenience, and it does not
-inherit the first one's authority.
+The first is the artifact. The second is a convenience and does not
+inherit the first one's authority. It is why regeneration is
+deterministic and why `make verify` can insist that not one byte
+changed, and it is paid for: `gen` stands in for the instance in eleven
+places, among them `Transport.owner`, `Packet.send`,
+`Reticulum.storagepath` and both randomness sources. Every one is an
+assumption about what the reference would have done, and one has been
+wrong — pinning `os.urandom` did not reach the openssl backend, and the
+ratchet vectors changed on every run.
 
-The second is worth keeping: it is why regeneration is deterministic and
-why `make verify` can insist that not one byte changed. It is paid for.
-`gen` is larger than `dump`, and it stands in for the instance it does
-not start in eleven places, among them `Transport.owner`, `Packet.send`,
-`Reticulum.storagepath`, `Reticulum.transport_enabled` and both
-randomness sources. Every one of those
-is an assumption about what the reference would have done. One has
-already been wrong: pinning `os.urandom` did not reach the openssl
-backend, and the ratchet vectors changed on every run while doc/announce
-claimed they did not.
+The commit is part of the pin and so is the working tree, so `gen`
+refuses a checkout `git status --porcelain` reports anything for. A
+vector generated from an edited checkout would claim the pin as its
+source, which is the strongest provenance the format has.
 
-The commit is part of the pin and so is the working tree. `rev-parse
-HEAD` names the commit and says nothing about edits on top of it, and a
-vector generated from an edited checkout claims the pin as its source,
-which is the strongest provenance the format has. `gen` refuses a
-checkout `git status --porcelain` reports anything for.
-
-So the standing rule is not "never start it" but:
+The standing rule is therefore not "never start it" but:
 
     raw is what the reference produced.
 
-Where a value in raw was composed by gen out of the reference's own
-functions, rather than captured from the reference running them, doc/
-says so at that vector. There is no such value left. The one there was,
-the interface key of test/ifac, is now derived in expect from the two
-configured strings that raw carries, so `dump` derives it a second time
-and `check` diffs the two. A composed value nothing can check is worth
-one line of doc/; a derived value two implementations agree on is worth
-more, and is the better answer wherever it is available.
+No value in raw is composed by gen out of the reference's own
+functions. The one that was, the interface key of test/ifac, is derived
+in expect from the two configured strings raw carries, so `dump`
+derives it again and `check` diffs the two.
 
-There is one case between the two, and it is written down rather than
-argued away. test/group/zero-padding needs a token the reference cannot
-be asked for: `PKCS7.pad` writes 1 to 16, and the corpus needs a
-padding length of nought, which `PKCS7.unpad` accepts and no encoder
-produces. So `pad` is replaced by the identity for that one call and
-everything else runs, which makes raw the reference's own
-`Token.encrypt` output rather than a token assembled from primitives.
-The vector's meta names the replaced function, and doc/encryption says
-why the vector exists at all.
+One case sits between the two and is written down rather than argued
+away: test/group/zero-padding needs a padding length of nought, which
+`PKCS7.unpad` accepts and `PKCS7.pad` never writes, so `pad` is
+replaced by the identity for that one call. raw is still the
+reference's own `Token.encrypt` output. The rule is not "gen replaces
+nothing" — `pinned()` replaces the clock, three key classes and both
+randomness sources — but that each replacement is named where a reader
+of the corpus will meet it. That one is named in the vector's meta.
 
-The rule this obeys is not "gen replaces nothing". `pinned()` already
-replaces the clock, `os.urandom`, `get_random_hash`,
-`_generate_ratchet` and three key classes, and every byte of every
-ratchet vector comes out of those. The rule is that each replacement is
-named where a reader of the corpus will meet it.
-
-`expect` is a different matter and is meant to be gen's own reading of
-raw, asserted against RNS wherever RNS exposes something to assert
-against, and checked again by `dump`, which shares no code with it.
+`expect` is a different matter. It is what the reference says about
+its own bytes wherever RNS exposes the field, and gen's reading of raw
+where it does not, and `dump` reads raw again sharing no code with
+either.
 
 Nothing enforces this. No program can tell a composed value from a
 captured one, which is exactly why it is written down. `conformance/`
@@ -402,30 +294,18 @@ transcribed and absent; this is that rule turned on the generator.
 
 # Cryptography in C
 
-Vectors drive the dependency, not the other way around.
+Vectors drive the dependency, not the other way around. Only what a
+vector requires is written or vendored.
 
-    milestone 1          SHA-256, Ed25519 verify, SHA-512, X25519 base
-    milestone 2          adds HMAC-SHA256, HKDF, AES-256-CBC, X25519 exchange
-    milestone 3          adds nothing
-    test/sign            adds Ed25519 sign
+SHA-256, HMAC-SHA256, HKDF and AES-256-CBC are written out; tweetnacl
+is vendored unmodified for Ed25519, SHA-512 and X25519.
 
-Announces are not encrypted (RNS/Packet.py#Packet.ANNOUNCE), so
-milestone 1 needed no symmetric cryptography at all.
-
-Ed25519 signing arrived with test/sign and cost nothing to vendor:
-tweetnacl ships crypto_sign beside the crypto_sign_open the corpus was
-already linking, and dump was already deriving a public key from a seed
-through crypto_sign_keypair.
-
-Only what a vector requires is written or vendored. AES is decryption
-only and 256-bit only, because every token in the corpus is one the
-reference produced from a 64-byte derived key.
-
-The 128-bit mode was expected to arrive with links. It did not. Only
+AES is decryption only and 256-bit only, because every token in the
+corpus is one the reference produced from a 64-byte derived key. Only
 MODE_AES256_CBC is in ENABLED_MODES at this pin
-(RNS/Link.py#ENABLED_MODES), and signalling_bytes raises on any
-other, so no link the reference establishes uses it. AES-128 waits for
-a vector that needs it, and none does.
+(RNS/Link.py#ENABLED_MODES) and signalling_bytes raises on any other,
+so no link the reference establishes uses AES-128. It waits for a
+vector that needs it, and none does.
 
 ---
 
@@ -454,6 +334,9 @@ Avoid:
     The packet framework provides a flexible mechanism...
 
 Plain text. Fixed-width tables. No JSON, no YAML, no test framework.
+
+A comment says what the code does and why it does it that way now. What
+it did before is in git log.
 
 ---
 

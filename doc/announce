@@ -108,11 +108,10 @@ bytes. make verify enforces it: gen exits non-zero if any committed
 byte would change.
 
 Both sources are pinned on RNS itself. Pinning os.urandom is not
-enough and was wrong here for a while: under the openssl backend
-_generate_ratchet reaches X25519PrivateKey.generate in PyCA
+enough: under the openssl backend _generate_ratchet reaches
+X25519PrivateKey.generate in PyCA
 (RNS/Cryptography/Proxies.py#generate), which draws from OpenSSL's own
-generator and never touches os.urandom, so the two ratchet vectors
-changed on every run while this section claimed they did not.
+generator and never touches os.urandom.
 
 That is a property of tools/gen, not of the protocol. It is also not
 what the encode class turns on. Consumers cannot sign a fresh announce
