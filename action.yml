@@ -1,0 +1,42 @@
+# Check an implementation against the corpus from its own CI.
+#
+#     - uses: actions/checkout@v4
+#     - run: go build -o harness ./cmd/vectorharness
+#     - uses: LeonhardWeiler/reticulum-vectors@v1
+#       with:
+#         dump: ./harness
+#
+# The harness is the program doc/harness describes: same arguments as
+# cmd/dump, same field format on standard output. It is run from the
+# caller's workspace, so a relative path is relative to the repository
+# under test.
+#
+# Pin the ref. A result is a count against one corpus, and the corpus
+# fingerprint in the output says which.
+name: reticulum-vectors
+description: Check a Reticulum implementation against the vector corpus.
+
+inputs:
+  dump:
+    description: Path to the harness to run, from the workspace root.
+    required: true
+  encode:
+    description: yes to also check the round trip, which rebuilds raw from expect.
+    required: false
+    default: 'no'
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: make -C "$GITHUB_ACTION_PATH"
+
+    # pipefail because the exit status of a pipeline is the status of
+    # its last command, and a step runs under bash -e without it.
+    - shell: bash
+      env:
+        DUMP: ${{ inputs.dump }}
+        ENCODE: ${{ inputs.encode }}
+      run: |
+        set -o pipefail
+        "$GITHUB_ACTION_PATH/cmd/check" | tee -a "$GITHUB_STEP_SUMMARY"

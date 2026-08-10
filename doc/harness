@@ -143,6 +143,36 @@ constructor wants a running instance. Budget for that rather than for
 the protocol.
 
 
+In your CI
+
+The corpus needs a C compiler, a POSIX shell, awk and diff, and takes
+three and a half seconds. That is small enough to run on every commit.
+
+On GitHub, three lines:
+
+    - uses: actions/checkout@v4
+    - run: go build -o harness ./cmd/vectorharness
+    - uses: LeonhardWeiler/reticulum-vectors@v1
+      with:
+        dump: ./harness
+
+Add "encode: yes" to include the round trip. Pin the ref: a result is a
+count against one corpus, and the corpus fingerprint in the output says
+which one.
+
+Anywhere else, the same thing without the wrapper:
+
+    git clone https://github.com/LeonhardWeiler/reticulum-vectors
+    make -C reticulum-vectors
+    DUMP=$PWD/harness reticulum-vectors/cmd/check
+
+check exits non-zero if any vector fails, so no further plumbing is
+needed. It exits 2 when it could not measure anything at all, which is
+a different thing from a failure and is worth telling apart in a build
+log: a harness that exits 77 for every kind reports "nothing was
+checked".
+
+
 Reporting a result
 
 CONFORMANCE holds one row per implementation, at a named commit, with
