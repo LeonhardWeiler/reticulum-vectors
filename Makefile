@@ -53,30 +53,9 @@ gen:
 # to the list would leave that answer short by one, silently, in the one
 # place a reader is told to trust it.
 #
-# README prints one vector whole, and those thirty-one lines are the
-# largest stretch of prose in the repository that restates bytes. The
-# block is folded to fit the page, so the layout is stripped from both
-# sides and what is left has to be the same bytes in the same order.
-#
-# Nothing here knows how the block wraps, which is the point: it was an
-# unfolder once, twenty-five lines that had to be told which
-# continuation joins with a space and which with nothing, and the
-# README had to be indented to suit it. Ignoring whitespace is the same
-# check without the rule.
-#
-# The block is every indented line from "    meta" to the paragraph
-# after it, less the three section names, which are not in any file.
-#
 # Not in cmd/check: that is the consumer contract, and a consumer needs
 # test/, doc/ and cmd/ and no README.
 verify: check
-	{ sed -n '/^    meta$$/,/^[^ ]/p' README | grep '^ ' | grep -v '^    [a-z]*$$'; \
-	  echo =; \
-	  cat test/pathrequest/tagged/meta test/pathrequest/tagged/raw \
-	      test/pathrequest/tagged/expect; } \
-	| tr -d ' \n' \
-	| awk -F= '$$1 != $$2 { print "README and test/pathrequest/tagged/ hold different bytes"; \
-	                        bad = 1 } END { exit bad }'
 	{ cmd/dump -l | LC_ALL=C sort -u; \
 	  cut -d/ -f1 test/INDEX | LC_ALL=C sort -u; } | LC_ALL=C sort | uniq -c \
 	  | awk '$$1 != 2 { print "cmd/dump -l and test/INDEX disagree on " $$2; bad = 1 } \

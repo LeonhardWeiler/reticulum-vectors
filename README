@@ -143,8 +143,8 @@ repository.
     make verify
 
 additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change, and diffs the
-vector printed below against the files it came from.
+implementation and fails if a single byte would change, and checks the
+vendored file against the hashes in cmd/VENDOR.
 
 doc/ and the programs name the reference by symbol:
 
@@ -158,65 +158,37 @@ The regeneration is the evidence behind the source line in every meta
 file. It needs Python and the checkout; cmd/check alone needs neither.
 
 
-One vector, whole
+One vector
 
-test/pathrequest/tagged, in full. It is a packet, it uses no
-cryptography, and it is as long as a vector gets before the hex runs
-off the page.
+Every vector is three files, and the smallest kind shows the shape.
+test/identity/upstream-0 is a public key and what is derived from it:
 
-    meta
+    $ cmd/dump identity test/identity/upstream-0/raw
+    public_key         4219d9ce29da42bc823b66b24a051c65...c616501b
+    x25519_public      4219d9ce29da42bc823b66b24a051c65...62924930
+    ed25519_public     1cd07b674027511e73469c4edec93634...c616501b
+    identity_hash      650b5d76b6bec0390d1f8cfca5bd33f9
 
-        source             python-rns 1.4.2 (b48b96e6, openssl backend)
-        determinism        encode
-        purpose            the form an instance that is not a
-                           transport node sends
+That output is test/identity/upstream-0/expect, byte for byte, and that
+is the whole contract. A decoder passes a vector when
 
-    raw
+    my-decoder <kind> test/<kind>/<name>/raw
 
-        08006b9f66014d9853faab220fba47d0276100fb48da0e82e6e01ba0c0145
-        13f74540dea024a8fdea0d68f0988ca6b6165cc5a
+prints the expect file. Where the determinism class is encode, cmd/check
+also runs
 
-    expect
+    my-decoder -e <kind> test/<kind>/<name>/expect
 
-        flags              08
-        header_type        1
-        context_flag       unset
-        transport_type     broadcast
-        destination_type   plain
-        packet_type        data
-        hops               0
-        transport_id       -
-        destination_hash   6b9f66014d9853faab220fba47d02761
-        context            none
-        payload_length     32
-        wanted_hash        fb48da0e82e6e01ba0c014513f74540d
-        requester_id       -
-        tag                ea024a8fdea0d68f0988ca6b6165cc5a
-        unique_tag         fb48da0e82e6e01ba0c014513f74540dea024a8f
-                           dea0d68f0988ca6b6165cc5a
-        accepted           yes
+and requires raw back.
 
-raw is one line and holds the whole packet. The three values that wrap
-above are one line each in the file; nothing in this format wraps. make
-verify strips the layout from this block and diffs what is left against
-the three files, so the bytes here cannot drift from the vector.
+The hex above is shortened to fit this page. Nothing in the format wraps
+or elides, so read a vector rather than a description of one:
 
-The first eleven fields are the header, which every packet kind
-carries. Then the payload: wanted_hash is the destination being asked
-after, requester_id is absent because a leaf instance sends no
-transport id, and tag is the rest. unique_tag and accepted are derived
-rather than read; see doc/packet.
+    cat test/pathrequest/tagged/*
 
-A decoder passes this vector when
-
-    my-decoder pathrequest test/pathrequest/tagged/raw
-
-prints those sixteen lines, in that order, byte for byte. The
-determinism class is encode, so cmd/check also runs
-
-    my-decoder -e pathrequest test/pathrequest/tagged/expect
-
-and requires the single line of raw back.
+That one is a whole packet and uses no cryptography. Its expect file
+holds the eleven header fields every packet kind carries, then five of
+its own. doc/fields is the index of all of them.
 
 
 Vector format
