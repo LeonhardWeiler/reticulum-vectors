@@ -1,0 +1,16 @@
+# The corpus contract: a C compiler, a POSIX shell, and nothing else.
+#
+# set -o pipefail because the exit status of a pipeline is the status of
+# its last command, and GitHub runs this with bash -e and no pipefail.
+# Without it the verdict comes from tee.
+name: check
+
+on: [push, pull_request]
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+      - run: set -o pipefail; cmd/check | tee -a "$GITHUB_STEP_SUMMARY"
