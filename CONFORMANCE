@@ -54,47 +54,6 @@ The link column is every vector of the three link kinds plus the two
 delivery proofs made on a link, which are filed under proof. Eleven of
 them are the resource contexts.
 
-The four paragraphs that follow are the history of the corpus against
-the six implementations measured before Reticulum-Go. Where they say
-"all six" they mean those six at that time, and the seventh answers
-some of them differently; finding 22 has the current table.
-
-Not one passing count moved when the corpus grew from 90 vectors to 94.
-The four added are the four ways a resource plaintext can be too short
-for the context byte that named it, and every implementation measured
-then failed all four. Three of them (go-reticulum, rsReticulum,
-Reticulum-rs) decrypt the token correctly and print the plaintext, and
-then have nothing to say about its length; the other three do not reach
-that far. See the finding below.
-
-Every count moved when it grew from 94 to 102. The eight added are
-rejections, one per rule the corpus had no vector for, and five of them
-are counted here; the other three are of kinds every harness skips.
-
-    announce/no-header             passed by five, failed by one
-    encrypted/short-payload        passed by all six
-    linkdata/short-payload         failed by all six, finding 23
-    linkproof/invalid-length       passed by four
-    linkrequest/unnamed-mode       failed by four, finding 24
-
-    group/short-payload            skipped
-    plain/unnamed-context          skipped
-    resourceproof/invalid-length   skipped
-
-Every row gains, because a corpus that asked six times whether an
-implementation refuses now asks eleven, and most of the new answers
-were already right. Two new failures are new findings, 23 and 24. The
-rest fall under findings that were already here: announce/no-header
-under finding 18, linkproof/invalid-length under findings 10 and 7.
-
-Not one passing count moved when it grew from 102 to 104, and both
-denominators did. The two added carry the same rule as the four of
-finding 22 into the two contexts that are not a resource, and all six
-fail both.
-
-    linkdata/channel-short         failed by all six, finding 22
-    linkdata/request-short         failed by all six, finding 22
-
 The corpus count did not move for this run and the fingerprint did. One
 vector was regenerated, test/linkdata/resource-request-exhausted-short,
 because the corpus and not the implementation had the rule wrong; the
@@ -310,6 +269,50 @@ carry than any of the six. All five of its link failures are
 thresholds on a payload too short to be what its context byte said it
 was: findings 22, 23, 26 and 27. Not one of them is a packet it reads
 wrongly.
+
+
+How the corpus grew
+
+These four paragraphs are the history of the corpus against the six
+implementations measured before Reticulum-Go. Where they say "all
+six" they mean those six at that time, and the seventh answers some
+of them differently; finding 22 has the current table.
+
+Not one passing count moved when the corpus grew from 90 vectors to 94.
+The four added are the four ways a resource plaintext can be too short
+for the context byte that named it, and every implementation measured
+then failed all four. Three of them (go-reticulum, rsReticulum,
+Reticulum-rs) decrypt the token correctly and print the plaintext, and
+then have nothing to say about its length; the other three do not reach
+that far. See the finding below.
+
+Every count moved when it grew from 94 to 102. The eight added are
+rejections, one per rule the corpus had no vector for, and five of them
+are counted here; the other three are of kinds every harness skips.
+
+    announce/no-header             passed by five, failed by one
+    encrypted/short-payload        passed by all six
+    linkdata/short-payload         failed by all six, finding 23
+    linkproof/invalid-length       passed by four
+    linkrequest/unnamed-mode       failed by four, finding 24
+
+    group/short-payload            skipped
+    plain/unnamed-context          skipped
+    resourceproof/invalid-length   skipped
+
+Every row gains, because a corpus that asked six times whether an
+implementation refuses now asks eleven, and most of the new answers
+were already right. Two new failures are new findings, 23 and 24. The
+rest fall under findings that were already here: announce/no-header
+under finding 18, linkproof/invalid-length under findings 10 and 7.
+
+Not one passing count moved when it grew from 102 to 104, and both
+denominators did. The two added carry the same rule as the four of
+finding 22 into the two contexts that are not a resource, and all six
+fail both.
+
+    linkdata/channel-short         failed by all six, finding 22
+    linkdata/request-short         failed by all six, finding 22
 
 
 Finding 1: the hop limit is not applied at parse time
