@@ -114,7 +114,8 @@ cmd/check.
     cmd/                    dump.c and its cryptography; check, a shell script
     conformance/            one harness per implementation measured
     tools/gen               python, generates the vectors against the pinned RNS
-    action.yml              a GitHub action, so a consumer's CI is three lines
+    .github/                two workflows, which check this repository and
+                            promise nothing to anyone else
 
 One C program. One shell script. One tool that is not part of the
 contract, because a consumer does not run it.
@@ -122,6 +123,14 @@ contract, because a consumer does not run it.
 A consumer needs test/, doc/ and cmd/. conformance/ is the larger half
 of a clone, needing Go, Rust, Node, Elixir and a C++ compiler between
 its six harnesses, and README says so where it lists the layout.
+
+Nothing here is published as an interface. There was a composite action
+for one day, so that a consumer's workflow could be three lines. Three
+lines is not what it cost: it is a versioned surface with two inputs, a
+tag that has to be moved, and one CI vendor baked in, all wrapping two
+commands that were already the whole job. doc/harness prints the steps
+instead, and a consumer who copies them owns them and depends on
+nothing here but the vectors.
 
 ---
 

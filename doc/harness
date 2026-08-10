@@ -145,32 +145,50 @@ the protocol.
 
 In your CI
 
-The corpus needs a C compiler, a POSIX shell, awk and diff, and takes
-three and a half seconds. That is small enough to run on every commit.
+Two commands, and neither needs anything installed beyond a C compiler
+and a POSIX shell:
 
-On GitHub, three lines:
-
-    - uses: actions/checkout@v4
-    - run: go build -o harness ./cmd/vectorharness
-    - uses: LeonhardWeiler/reticulum-vectors@v1
-      with:
-        dump: ./harness
-
-Add "encode: yes" to include the round trip. Pin the ref: a result is a
-count against one corpus, and the corpus fingerprint in the output says
-which one.
-
-Anywhere else, the same thing without the wrapper:
-
-    git clone https://github.com/LeonhardWeiler/reticulum-vectors
     make -C reticulum-vectors
     DUMP=$PWD/harness reticulum-vectors/cmd/check
 
-check exits non-zero if any vector fails, so no further plumbing is
-needed. It exits 2 when it could not measure anything at all, which is
-a different thing from a failure and is worth telling apart in a build
-log: a harness that exits 77 for every kind reports "nothing was
-checked".
+The whole run takes about three and a half seconds, which is small
+enough for every commit. check exits non-zero if any vector fails, so
+there is nothing further to wire up. It exits 2 when it could not
+measure anything at all: that is not a failure of the implementation
+and is worth telling apart in a build log, because a harness that exits
+77 for every kind reports "nothing was checked".
+
+There is no action, plugin or wrapper to depend on here, and that is
+deliberate. Copy the steps into your own workflow and they are yours:
+
+    - uses: actions/checkout@v4
+
+    - name: Fetch the corpus
+      run: |
+        git clone https://github.com/LeonhardWeiler/reticulum-vectors ../vectors
+        git -C ../vectors checkout <commit>
+
+    - name: Build the harness
+      run: go build -o harness ./cmd/vectorharness
+
+    - name: Check against the corpus
+      run: |
+        set -o pipefail
+        make -C ../vectors
+        DUMP=$PWD/harness ../vectors/cmd/check | tee -a "$GITHUB_STEP_SUMMARY"
+
+Two things in there are not obvious.
+
+Pin the commit. A result is a count against one corpus, and the corpus
+fingerprint on the result line says which one; a floating clone makes
+the count mean something different from one week to the next.
+
+set -o pipefail, if you pipe the output anywhere. The exit status of a
+pipeline is the status of its last command, and a workflow step runs
+under bash -e without pipefail, so the verdict would come from tee.
+
+Add ENCODE=no to skip the round trip while the encode direction is not
+implemented.
 
 
 Reporting a result

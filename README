@@ -131,8 +131,8 @@ against it:
 
 doc/harness is the whole of what a program has to do to be substituted
 for dump here, and cmd/dump -l lists the kinds it can be asked for. It
-also shows how to run this from an implementation's own CI, which on
-GitHub is three lines and needs nothing installed.
+also shows how to run this from an implementation's own CI, which is
+the two commands above and nothing to install.
 
 The corpus number is a checksum over test/INDEX and every raw and
 expect. It says what the result was measured against. A count alone
