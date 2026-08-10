@@ -4,11 +4,12 @@
 # corpus is published as an interface, so there is no version of this
 # to track and nothing here can change under you.
 #
-# As copied it runs the example harness, reports 5 passed and 99
-# skipped, and goes green. That is a real result over test/identity and
-# it is the starting point, not the goal: replace the two marked steps
-# with your build and your harness, and the number grows as the harness
-# does. See ../../doc/harness.
+# One thing has to be set before it runs, and it is marked PIN. After
+# that it goes green with 5 passed and 99 skipped, which is
+# test/identity through the example harness: a real result, and the
+# starting point rather than the goal. Then replace the two steps marked
+# REPLACE with your build and your harness, and the number grows as the
+# harness does. See ../../doc/harness.
 name: vectors
 
 on: [push, pull_request]
@@ -19,14 +20,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pinned, and moved deliberately. A result is a count against one
-      # corpus, and the fingerprint on the result line says which; a
-      # floating clone measures something else next week without saying
-      # so. Move this when you want newer vectors.
+      # PIN: a commit of the corpus. There is no default on purpose. A
+      # result is a count against one corpus, the fingerprint on the
+      # result line says which one, and a floating clone measures
+      # something else next week without saying so. Move it when you
+      # want newer vectors, and treat that as a change to your result.
       - name: Fetch the corpus
+        env:
+          CORPUS: ''
         run: |
+          test -n "$CORPUS" || {
+            echo "Set CORPUS to a corpus commit; see conformance/example/vectors.yml"
+            exit 1
+          }
           git clone https://github.com/LeonhardWeiler/reticulum-vectors ../vectors
-          git -C ../vectors checkout cd48de1fd77c3341dbd19e8049cccfb6dca7865b
+          git -C ../vectors checkout "$CORPUS"
 
       # REPLACE: build your own harness here.
       #     run: go build -o harness ./cmd/vectorharness

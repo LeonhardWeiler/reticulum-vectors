@@ -163,22 +163,24 @@ deliberate. What there is instead is a file to copy:
 
     conformance/example/vectors.yml
 
-Copied into your repository as .github/workflows/vectors.yml it runs
-unmodified and reports 5 passed, 99 skipped, which is test/identity
-through the example harness. Two steps in it are marked REPLACE: your
-build, and your harness. Nothing else in it has to change and nothing
-in it points back here except the clone.
+Copied into your repository as .github/workflows/vectors.yml, one line
+in it is marked PIN and has to be set: the corpus commit to measure
+against. It has no default, and the step says so and stops rather than
+guessing. With it set the workflow reports 5 passed, 99 skipped, which
+is test/identity through the example harness. Two further steps are
+marked REPLACE, your build and your harness; nothing else has to
+change, and nothing in it points back here except the clone.
 
-Two things it does that are worth knowing rather than copying.
+The pin has no default because a result is a count against one corpus.
+The fingerprint on the result line says which one, and a floating clone
+measures something else next week without saying so, which is the one
+way a green build here can be worth nothing.
 
-It pins the corpus to a commit. A result is a count against one corpus,
-and the fingerprint on the result line says which one; a floating clone
-measures something else next week without saying so.
-
-It sets pipefail before piping the result to the job summary. The exit
-status of a pipeline is the status of its last command, and a workflow
-step runs under bash -e without pipefail, so the verdict would
-otherwise come from tee.
+The other thing worth knowing rather than copying: it sets pipefail
+before piping the result to the job summary. The exit status of a
+pipeline is the status of its last command, and a workflow step runs
+under bash -e without pipefail, so the verdict would otherwise come
+from tee.
 
 
 Reporting a result
