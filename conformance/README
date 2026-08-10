@@ -44,10 +44,8 @@ and the row is only reproducible at that commit.
 
 What a harness may and may not do
 
-The rules are in ../doc/harness: print what the implementation
-computed, mark what was followed rather than called, print "-" for what
-it has no code for, and exit 77 for a kind not implemented. What
-follows is what those rules mean for the directory.
+The six rules are in ../doc/harness. What follows is what they mean for
+the directory, and not a second copy of them.
 
 ../CONFORMANCE says per implementation which fields were called and
 which were transcribed. Read the numbers with that in mind: a
