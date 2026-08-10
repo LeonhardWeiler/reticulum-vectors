@@ -58,6 +58,9 @@ One directory here is not a measurement
 
     example/dump.py   the smallest harness that produces a result:
                       test/identity, thirteen lines, no implementation
+    example/vectors.yml
+                      the workflow that runs it, to copy into another
+                      repository as .github/workflows/vectors.yml
                       behind it. It is here because this is where
                       harnesses live and doc/harness sends a first
                       reader to it, and it is not a row in

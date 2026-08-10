@@ -128,9 +128,12 @@ Nothing here is published as an interface. There was a composite action
 for one day, so that a consumer's workflow could be three lines. Three
 lines is not what it cost: it is a versioned surface with two inputs, a
 tag that has to be moved, and one CI vendor baked in, all wrapping two
-commands that were already the whole job. doc/harness prints the steps
-instead, and a consumer who copies them owns them and depends on
-nothing here but the vectors.
+commands that were already the whole job.
+
+What replaced it is `conformance/example/vectors.yml`, a file to copy
+rather than a thing to depend on, beside the example harness it runs.
+It is copied, not linked, so nothing here can change under a consumer,
+and doc/harness points at it rather than printing it a second time.
 
 ---
 
