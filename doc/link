@@ -352,6 +352,18 @@ a minimum of 1. test/linkdata/request-short carries it, packed and
 encrypted by the reference over a payload the layers above it never
 build.
 
+Beyond that byte there is no length rule, and a body that runs out or
+announces a shape it does not hold is not a rejection. The elements it
+would have yielded are "-", the record is complete, and the reader
+stops reading rather than stopping. A one-byte plaintext 0x93 announces
+three elements and holds none: all three fields are "-".
+
+Bytes after the value are ignored, because the reference ignores them.
+umsgpack.unpackb returns the value and discards the rest, and every
+call site hands it the whole plaintext.
+
+    RNS/Link.py#unpacked_request, RNS/Resource.py#unpack
+
 
 Channel
 

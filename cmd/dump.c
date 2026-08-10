@@ -1191,17 +1191,34 @@ static void dump_linkproof(struct blob *b, int nblobs)
 }
 
 /* Enough msgpack to read what the reference puts on a link. Every type
- * outside that set is refused rather than skipped.
- * RNS/vendor/umsgpack.py#_pack2. */
+ * outside that set is refused, and a refusal sets bad rather than
+ * ending the program: a reader that stops in the middle prints half a
+ * record, which doc/harness rule 6 forbids and which dump is the
+ * template for. Once bad is set nothing further is read and every
+ * remaining field prints "-".
+ *
+ * There is no check for bytes after the value, because the reference
+ * has none. umsgpack.unpackb returns the value and discards the rest,
+ * and every call site hands it the whole plaintext.
+ *
+ *	RNS/vendor/umsgpack.py#_pack2, RNS/Link.py#unpacked_request,
+ *	RNS/Resource.py#unpack
+ */
 struct mp {
 	const uint8_t *p;
 	size_t         left;
+	int            bad;
 };
 
+/* 0xc1 is the one byte msgpack assigns to nothing, so a failed read
+ * fails every type test below and needs no second check in the eight
+ * readers that follow. */
 static unsigned mp_head(struct mp *m)
 {
-	if (m->left == 0)
-		fatal("msgpack: input ends inside a value");
+	if (m->bad || m->left == 0) {
+		m->bad = 1;
+		return 0xc1;
+	}
 	m->left--;
 	return *m->p++;
 }
@@ -1210,8 +1227,10 @@ static const uint8_t *mp_take(struct mp *m, size_t n)
 {
 	const uint8_t *at = m->p;
 
-	if (m->left < n)
-		fatal("msgpack: wanted %zu bytes, %zu left", n, m->left);
+	if (m->bad || m->left < n) {
+		m->bad = 1;
+		return NULL;
+	}
 	m->p    += n;
 	m->left -= n;
 	return at;
@@ -1222,6 +1241,8 @@ static uint64_t mp_be(const uint8_t *p, size_t n)
 	uint64_t v = 0;
 	size_t   i;
 
+	if (p == NULL)
+		return 0;
 	for (i = 0; i < n; i++)
 		v = v << 8 | p[i];
 	return v;
@@ -1232,7 +1253,7 @@ static size_t mp_array(struct mp *m)
 	unsigned h = mp_head(m);
 
 	if ((h & 0xf0) != 0x90)
-		fatal("msgpack: %02x is not an array", h);
+		m->bad = 1;
 	return h & 0x0f;
 }
 
@@ -1241,18 +1262,19 @@ static size_t mp_map(struct mp *m)
 	unsigned h = mp_head(m);
 
 	if ((h & 0xf0) != 0x80)
-		fatal("msgpack: %02x is not a map", h);
+		m->bad = 1;
 	return h & 0x0f;
 }
 
 /* Every key in an advertisement is one character. */
 static char mp_key(struct mp *m)
 {
-	unsigned h = mp_head(m);
+	const uint8_t *p;
 
-	if (h != 0xa1)
-		fatal("msgpack: %02x is not a one-character string", h);
-	return (char)*mp_take(m, 1);
+	if (mp_head(m) != 0xa1)
+		m->bad = 1;
+	p = mp_take(m, 1);
+	return p != NULL ? (char)*p : '\0';
 }
 
 static uint64_t mp_uint(struct mp *m)
@@ -1263,7 +1285,7 @@ static uint64_t mp_uint(struct mp *m)
 	if (h == 0xcc) return mp_be(mp_take(m, 1), 1);
 	if (h == 0xcd) return mp_be(mp_take(m, 2), 2);
 	if (h == 0xce) return mp_be(mp_take(m, 4), 4);
-	fatal("msgpack: %02x is not an unsigned integer", h);
+	m->bad = 1;
 	return 0;
 }
 
@@ -1274,10 +1296,11 @@ static const uint8_t *mp_bin(struct mp *m, size_t *len)
 {
 	unsigned h = mp_head(m);
 
-	if (h == 0xc0) { *len = 0; return NULL; }
+	*len = 0;
+	if (h == 0xc0) return NULL;
 	if (h == 0xc4) { *len = (size_t)mp_be(mp_take(m, 1), 1); return mp_take(m, *len); }
 	if (h == 0xc5) { *len = (size_t)mp_be(mp_take(m, 2), 2); return mp_take(m, *len); }
-	fatal("msgpack: %02x is not a byte string", h);
+	m->bad = 1;
 	return NULL;
 }
 
@@ -1286,17 +1309,40 @@ static const uint8_t *mp_bin(struct mp *m, size_t *len)
  * bytes. */
 static const uint8_t *mp_double(struct mp *m)
 {
-	unsigned h = mp_head(m);
-
-	if (h != 0xcb)
-		fatal("msgpack: %02x is not a float64", h);
+	if (mp_head(m) != 0xcb)
+		m->bad = 1;
 	return mp_take(m, 8);
 }
 
-static void mp_end(struct mp *m)
+static void mp_field_uint(struct mp *m, const char *name, const char *fmt)
 {
-	if (m->left != 0)
-		fatal("msgpack: %zu bytes after the value", m->left);
+	uint64_t v = mp_uint(m);
+
+	if (m->bad)
+		field(name, "-");
+	else
+		field(name, fmt, (unsigned long long)v);
+}
+
+static void mp_field_bin(struct mp *m, const char *name)
+{
+	size_t         n;
+	const uint8_t *p = mp_bin(m, &n);
+
+	if (m->bad)
+		field(name, "-");
+	else
+		field_hex(name, p, n);
+}
+
+static void mp_field_double(struct mp *m, const char *name)
+{
+	const uint8_t *p = mp_double(m);
+
+	if (m->bad)
+		field(name, "-");
+	else
+		field_hex(name, p, 8);
 }
 
 #define RESOURCE     0x01
@@ -1337,31 +1383,29 @@ static int short_plaintext(size_t len, size_t need)
 static void print_resource(unsigned context, const uint8_t *p, size_t len)
 {
 	static const char order[] = "tdnhroilqfm";
-	struct mp m = { p, len };
-	const uint8_t *bin;
-	size_t n, i;
+	struct mp m = { p, len, 0 };
+	size_t i;
 
 	if (context == RESOURCE_ADV) {
 		if (mp_map(&m) != sizeof order - 1)
-			fatal("advertisement: not eleven pairs");
+			m.bad = 1;
 		for (i = 0; order[i] != '\0'; i++) {
 			if (mp_key(&m) != order[i])
-				fatal("advertisement: key %zu is not %c", i, order[i]);
+				m.bad = 1;
 			switch (order[i]) {
-			case 't': field("transfer_size",  "%llu", (unsigned long long)mp_uint(&m)); break;
-			case 'd': field("data_size",      "%llu", (unsigned long long)mp_uint(&m)); break;
-			case 'n': field("resource_parts", "%llu", (unsigned long long)mp_uint(&m)); break;
-			case 'i': field("segment_index",  "%llu", (unsigned long long)mp_uint(&m)); break;
-			case 'l': field("total_segments", "%llu", (unsigned long long)mp_uint(&m)); break;
-			case 'f': field("resource_flags", "%02llx", (unsigned long long)mp_uint(&m)); break;
-			case 'h': bin = mp_bin(&m, &n); field_hex("resource_hash",   bin, n); break;
-			case 'r': bin = mp_bin(&m, &n); field_hex("resource_random", bin, n); break;
-			case 'o': bin = mp_bin(&m, &n); field_hex("original_hash",   bin, n); break;
-			case 'q': bin = mp_bin(&m, &n); field_hex("request_id",      bin, n); break;
-			case 'm': bin = mp_bin(&m, &n); field_hex("hashmap",         bin, n); break;
+			case 't': mp_field_uint(&m, "transfer_size",  "%llu");   break;
+			case 'd': mp_field_uint(&m, "data_size",      "%llu");   break;
+			case 'n': mp_field_uint(&m, "resource_parts", "%llu");   break;
+			case 'i': mp_field_uint(&m, "segment_index",  "%llu");   break;
+			case 'l': mp_field_uint(&m, "total_segments", "%llu");   break;
+			case 'f': mp_field_uint(&m, "resource_flags", "%02llx"); break;
+			case 'h': mp_field_bin(&m, "resource_hash");   break;
+			case 'r': mp_field_bin(&m, "resource_random"); break;
+			case 'o': mp_field_bin(&m, "original_hash");   break;
+			case 'q': mp_field_bin(&m, "request_id");      break;
+			case 'm': mp_field_bin(&m, "hashmap");         break;
 			}
 		}
-		mp_end(&m);
 		return;
 	}
 
@@ -1389,9 +1433,7 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 	}
 
 	if (context == RESOURCE_HMU) {
-		struct mp u;
-		const uint8_t *hashmap;
-		size_t hashmap_len;
+		struct mp u = { NULL, 0, 0 };
 
 		/* The hash is fixed width and the msgpack array follows it, so
 		 * one byte past the hash is the least that can be read. */
@@ -1402,12 +1444,10 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 		u.left = len - HASHLEN;
 
 		if (mp_array(&u) != 2)
-			fatal("hashmap update: not two elements");
+			u.bad = 1;
 		field_hex("resource_hash", p, HASHLEN);
-		field("segment_index", "%llu", (unsigned long long)mp_uint(&u));
-		hashmap = mp_bin(&u, &hashmap_len);
-		field_hex("hashmap", hashmap, hashmap_len);
-		mp_end(&u);
+		mp_field_uint(&u, "segment_index", "%llu");
+		mp_field_bin(&u, "hashmap");
 		return;
 	}
 
@@ -1511,33 +1551,27 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	 * around them. RNS/Link.py#unpacked_request,
 	 * RNS/Link.py#packed_response. */
 	if (h.context == 0x09 || h.context == 0x0a) {
-		struct mp m = { t.plain, t.ptlen };
-		const uint8_t *p;
-		size_t n;
+		struct mp m = { t.plain, t.ptlen, 0 };
 
-		/* The array header is one byte and everything else is inside
-		 * it, where mp_take is the bound. A plaintext with nothing in
-		 * it at all is the one case msgpack cannot report on. */
+		/* An empty plaintext carries not even the array header, and
+		 * that is a length rule the corpus names. Everything shorter
+		 * than the array it announces is msgpack's own business and
+		 * prints as dashes. */
 		if (short_plaintext(t.ptlen, 1))
 			return;
 
 		if (h.context == 0x09) {
 			if (mp_array(&m) != 3)
-				fatal("request: not three elements");
-			field_hex("request_time", mp_double(&m), 8);
-			p = mp_bin(&m, &n);
-			field_hex("request_path_hash", p, n);
-			p = mp_bin(&m, &n);
-			field_hex("request_data", p, n);
+				m.bad = 1;
+			mp_field_double(&m, "request_time");
+			mp_field_bin(&m, "request_path_hash");
+			mp_field_bin(&m, "request_data");
 		} else {
 			if (mp_array(&m) != 2)
-				fatal("response: not two elements");
-			p = mp_bin(&m, &n);
-			field_hex("request_id", p, n);
-			p = mp_bin(&m, &n);
-			field_hex("response_data", p, n);
+				m.bad = 1;
+			mp_field_bin(&m, "request_id");
+			mp_field_bin(&m, "response_data");
 		}
-		mp_end(&m);
 	}
 
 	if (t.opened)

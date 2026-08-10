@@ -215,10 +215,10 @@ An identify proof on a link adds four fields. See doc/link.
 A request adds three fields and a response two, all of them elements of
 a msgpack array. See doc/link.
 
-    request_time       hex      8 bytes, an IEEE 754 double, big endian
-    request_path_hash  hex      16 bytes, the truncated hash of the path
+    request_time       hex, -   8 bytes, an IEEE 754 double, big endian
+    request_path_hash  hex, -   16 bytes, the truncated hash of the path
     request_data       hex, -   the request body
-    request_id         hex      16 bytes, naming the request packet
+    request_id         hex, -   16 bytes, naming the request packet
     response_data      hex, -   the response body
 
 request_time is recorded as its eight bytes rather than as a number.
@@ -230,6 +230,9 @@ request_data and response_data are "-" for both an absent value and an
 empty one: msgpack writes nil and a zero-length byte string
 differently, and this format spells both absences the same way. No
 vector carries the second.
+
+All five are "-" when the msgpack body could not be read that far, the
+third meaning of the dash. No vector carries that either; see doc/link.
 
 
 Resource
