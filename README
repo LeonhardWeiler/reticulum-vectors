@@ -20,91 +20,6 @@ records the observed behaviour of one implementation at one version:
 Every vector records that pin. When the pin moves, vectors are
 regenerated and the differences are examined.
 
-The backend is part of the pin because python-rns ships two curve
-implementations, picks one at import time by what is installed, and
-they do not agree everywhere. Vectors turn on the difference, and
-tools/gen refuses to run under the other one. Which vectors is not
-counted here: see doc/identity, section "Canonical signatures", and
-doc/encryption, section "Contributory behaviour", which name them.
-
-raw is what the reference produced, or configuration a human would have
-typed. No line of it is a value tools/gen composed out of the
-reference's own functions: the one that was, the interface key of
-test/ifac, is now derived in expect from the two strings it comes from,
-so cmd/dump derives it too and the two are diffed. See doc/packet.
-
-expect is a different matter. It is tools/gen's own reading of raw, and
-cmd/dump reads raw again without sharing a line of code with it. Two
-readings that agree is the point; one reading copied twice would not
-be.
-
-Those two share no code and they do share a reader. Where the reading
-itself is wrong, both are wrong together and the round trip agrees with
-itself. CONFORMANCE is the answer to that and the only one there is:
-seven implementations, six languages, seven authors who read the
-reference without reading this. That is what makes it more than a
-scoreboard, and one of them has already found a rule the corpus had
-wrong.
-
-
-Every private key here is public
-
-Five kinds carry a private key in every one of their vectors:
-test/keyset/ and test/sign/ carry an identity key, test/encrypted/ the
-recipient's, test/linkdata/ the responder's link key, and test/ifac/
-the interface key, which is derived rather than given and no less
-public for it. The ones named upstream are lifted from the upstream
-test suite; the rest are generated from a fixed seed or derived from a
-published network name and passphrase. They are published, in this
-repository, on purpose, because a decryption vector cannot be checked
-without one.
-
-Never load one into anything that talks to a network. An identity built
-from a key in this corpus can be impersonated by anyone who has read
-this corpus, and every destination derived from it is already known.
-
-
-Known limitation
-
-Vectors generated from python-rns cannot detect bugs in python-rns.
-They define "compatible" as "identical to the reference
-implementation". That is the right definition for interoperability and
-the wrong one for correctness.
-
-
-Layout
-
-    CONFORMANCE results of running the corpus against other
-                implementations
-    conformance/ the harnesses those results were produced with
-    doc/        byte layouts and derivation rules; start at doc/fields,
-                and at doc/harness to check your own implementation
-    test/       the vectors
-    cmd/        dump, a decoder written in C; check, a shell script
-    tools/      gen, the Python generator
-
-What a consumer needs is test/, doc/ and cmd/. The other two are the
-larger half of the repository and neither is part of the corpus:
-tools/ needs Python and the pinned checkout, and conformance/ holds
-seven harnesses in six languages, needing Go, Rust, Node, Elixir and a
-C++ compiler between them. They are here because a result is only evidence
-if the thing that produced it is on file. Nothing under either is
-needed to check an implementation against these vectors.
-
-doc/fields is the index of every name an expect file can carry, what it
-holds and which kinds carry it. It is the shortest path from this
-README to a working harness. The vectors are the authority on which
-names exist; the document is where what they mean is written.
-
-dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
-and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies
-Ed25519 signing and verification, SHA-512 and X25519 and is vendored
-unmodified, see cmd/VENDOR.
-
-gen needs Python and a checkout of the pinned reference implementation.
-It looks for one in ../upstream and takes --checkout PATH otherwise.
-Consumers of the corpus need neither.
-
 
 Checking an implementation
 
@@ -142,23 +57,6 @@ does not: two vectors have changed shape without changing the count,
 and any number recorded elsewhere against the old shape would still
 have looked current. Record it beside any result kept outside this
 repository.
-
-    make verify
-
-additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change, and checks the
-vendored file against the hashes in cmd/VENDOR.
-
-doc/ and the programs name the reference by symbol:
-
-    RNS/Packet.py#get_hashable_part
-
-The anchor is the name to grep for. There is no line number, so there
-is nothing in a citation that goes stale while the pin holds; when the
-pin moves and a symbol is gone, the vectors are regenerated anyway.
-
-The regeneration is the evidence behind the source line in every meta
-file. It needs Python and the checkout; cmd/check alone needs neither.
 
 
 One vector
@@ -272,6 +170,111 @@ numbers behind it, rather than a single word:
     invalid            short-payload
     payload_length     147
     minimum_length     148
+
+
+Layout
+
+    CONFORMANCE results of running the corpus against other
+                implementations
+    conformance/ the harnesses those results were produced with
+    doc/        byte layouts and derivation rules; start at doc/fields,
+                and at doc/harness to check your own implementation
+    test/       the vectors
+    cmd/        dump, a decoder written in C; check, a shell script
+    tools/      gen, the Python generator
+
+What a consumer needs is test/, doc/ and cmd/. The other two are the
+larger half of the repository and neither is part of the corpus:
+tools/ needs Python and the pinned checkout, and conformance/ holds
+seven harnesses in six languages, needing Go, Rust, Node, Elixir and a
+C++ compiler between them. They are here because a result is only evidence
+if the thing that produced it is on file. Nothing under either is
+needed to check an implementation against these vectors.
+
+doc/fields is the index of every name an expect file can carry, what it
+holds and which kinds carry it. It is the shortest path from this
+README to a working harness. The vectors are the authority on which
+names exist; the document is where what they mean is written.
+
+dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
+and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies
+Ed25519 signing and verification, SHA-512 and X25519 and is vendored
+unmodified, see cmd/VENDOR.
+
+
+Where raw and expect come from
+
+raw is what the reference produced, or configuration a human would have
+typed. No line of it is a value tools/gen composed out of the
+reference's own functions: the one that was, the interface key of
+test/ifac, is now derived in expect from the two strings it comes from,
+so cmd/dump derives it too and the two are diffed. See doc/packet.
+
+expect is a different matter. It is tools/gen's own reading of raw, and
+cmd/dump reads raw again without sharing a line of code with it. Two
+readings that agree is the point; one reading copied twice would not
+be.
+
+Those two share no code and they do share a reader. Where the reading
+itself is wrong, both are wrong together and the round trip agrees with
+itself. CONFORMANCE is the answer to that and the only one there is:
+seven implementations, six languages, seven authors who read the
+reference without reading this. That is what makes it more than a
+scoreboard, and one of them has already found a rule the corpus had
+wrong.
+
+The backend is part of the pin because python-rns ships two curve
+implementations, picks one at import time by what is installed, and
+they do not agree everywhere. Vectors turn on the difference, and
+tools/gen refuses to run under the other one. Which vectors is not
+counted here: see doc/identity, section "Canonical signatures", and
+doc/encryption, section "Contributory behaviour", which name them.
+
+gen needs Python and a checkout of the pinned reference implementation.
+It looks for one in ../upstream and takes --checkout PATH otherwise.
+Consumers of the corpus need neither.
+
+    make verify
+
+runs check and additionally regenerates every vector from the pinned
+reference implementation and fails if a single byte would change, and
+checks the vendored file against the hashes in cmd/VENDOR.
+
+doc/ and the programs name the reference by symbol:
+
+    RNS/Packet.py#get_hashable_part
+
+The anchor is the name to grep for. There is no line number, so there
+is nothing in a citation that goes stale while the pin holds; when the
+pin moves and a symbol is gone, the vectors are regenerated anyway.
+
+The regeneration is the evidence behind the source line in every meta
+file. It needs Python and the checkout; cmd/check alone needs neither.
+
+
+Every private key here is public
+
+Five kinds carry a private key in every one of their vectors:
+test/keyset/ and test/sign/ carry an identity key, test/encrypted/ the
+recipient's, test/linkdata/ the responder's link key, and test/ifac/
+the interface key, which is derived rather than given and no less
+public for it. The ones named upstream are lifted from the upstream
+test suite; the rest are generated from a fixed seed or derived from a
+published network name and passphrase. They are published, in this
+repository, on purpose, because a decryption vector cannot be checked
+without one.
+
+Never load one into anything that talks to a network. An identity built
+from a key in this corpus can be impersonated by anyone who has read
+this corpus, and every destination derived from it is already known.
+
+
+Known limitation
+
+Vectors generated from python-rns cannot detect bugs in python-rns.
+They define "compatible" as "identical to the reference
+implementation". That is the right definition for interoperability and
+the wrong one for correctness.
 
 
 Relationship to the upstream test suite
