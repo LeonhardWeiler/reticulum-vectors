@@ -4,10 +4,11 @@ Every name that can appear in an expect file, what it holds, and which
 kinds carry it. The other documents describe the objects; this one is
 the index a harness author reads first.
 
-cmd/check enforces it in both directions. A name that appears in an
-expect file and not here fails, and so does a name here that no vector
-carries. A field nothing reads is a field that drifts, and a document
-nothing reads is the same thing.
+The corpus is the authority, not this file. The names in use are
+
+    awk '{print $1}' test/*/*/expect | sort -u
+
+and what they hold is written here because that command cannot say it.
 
 
 Value forms
@@ -19,10 +20,7 @@ Four, and no others.
         keyword    one word from a set fixed per field, listed below
         -          absent, empty, or not determined
 
-The second column below is the forms one field admits, and cmd/check
-reads it: a value no declared form covers fails. It was prose for a
-while, and six of these lines had drifted by the time anything read
-them.
+The second column below is the forms one field admits.
 
 The three meanings of "-" are told apart by the field, not by the
 value. An optional part of a packet that is not present is "-". An

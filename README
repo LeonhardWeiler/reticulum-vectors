@@ -91,9 +91,8 @@ needed to check an implementation against these vectors.
 
 doc/fields is the index of every name an expect file can carry, what it
 holds and which kinds carry it. It is the shortest path from this
-README to a working harness, and cmd/check keeps it honest: a name in a
-vector and not in the document fails, and so does a name in the
-document that no vector carries.
+README to a working harness. The vectors are the authority on which
+names exist; the document is where what they mean is written.
 
 dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
 and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies

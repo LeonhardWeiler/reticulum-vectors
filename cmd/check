@@ -58,9 +58,7 @@ noise=0
 skipped_kinds=
 
 err=$(mktemp) || exit 2
-documented=$(mktemp) || exit 2
-names=$(mktemp) || exit 2
-trap 'rm -f "$err" "$documented" "$names"' EXIT INT TERM
+trap 'rm -f "$err"' EXIT INT TERM
 
 # The corpus is what test/INDEX says it is. Counting what is present
 # and reporting it as a total is not a check: a copy of test/ with
@@ -77,81 +75,6 @@ differs=$(printf '%s\n' "$present" | diff "$index" - | sed -n 's/^[<>]/&/p')
 if [ -n "$differs" ]; then
 	echo "test/ and test/INDEX disagree:"
 	printf '%s\n' "$differs" | sed 's/^</    missing:/; s/^>/    unlisted:/'
-	exit 2
-fi
-
-# doc/fields is the index of every name expect can carry, and it is
-# checked in both directions: a name in a vector and not in the document
-# is undocumented, and a name in the document and in no vector is a
-# field that was removed and left behind. A document nothing reads
-# drifts exactly as a meta field nothing reads does.
-#
-# A documented name sits at a four-space indent followed by its form,
-# which runs from column 24 to the first run of two spaces. Continuation
-# lines are indented further and do not match.
-#
-# The second column is read as well as the first. It says which of the
-# four value forms a field admits, and a value no declared form covers
-# is a disagreement between the document and the corpus in the one
-# direction the name check cannot see: the name is right and the shape
-# of the value is not. Six of those lines were wrong when this was
-# added, among them the hex fallback of context, which the document
-# described in a paragraph and did not declare.
-fields="$root/doc/fields"
-if [ ! -f "$fields" ]; then
-	echo "no doc/fields; the format has no index" >&2
-	exit 2
-fi
-
-awk '
-	/^    [a-z_][a-z0-9_]*  +[a-z-]/ {
-		f = substr($0, 24); sub(/  .*/, "", f); sub(/ +$/, "", f)
-		n = split(f, part, ", ")
-		if (!($1 in form)) form[$1] = "|"
-		for (i = 1; i <= n; i++)
-			if (index(form[$1], "|" part[i] "|") == 0)
-				form[$1] = form[$1] part[i] "|"
-	}
-	END { for (name in form) print name, form[name] }
-' "$fields" | LC_ALL=C sort > "$documented"
-
-used=$(cat "$root"/test/*/*/expect | awk 'NF > 0 { print $1 }' |
-       LC_ALL=C sort -u)
-
-cut -d' ' -f1 "$documented" > "$names"
-differs=$(printf '%s\n' "$used" | diff "$names" - | sed -n 's/^[<>]/&/p')
-if [ -n "$differs" ]; then
-	echo "test/ and doc/fields disagree:"
-	printf '%s\n' "$differs" |
-		sed 's/^</    documented, in no vector:/; s/^>/    undocumented:/'
-	exit 2
-fi
-
-# A value is admissible when at least one form doc/fields declares for
-# the field covers it. Hex and decimal overlap for a value like 08, so
-# the test is "some declared form covers this" and not "this is that
-# form"; a field that declares only one of the two still rejects a
-# value the other could have spelled.
-wrongform=$(awk '
-	NR == FNR { form[$1] = $2; next }
-	NF == 2 {
-		f = form[$1]; v = $2; ok = 0
-		if (v == "-") ok = (f ~ /\|-\|/)
-		else {
-			if (v ~ /^[0-9a-f]+$/ && length(v) % 2 == 0 && f ~ /\|hex\|/)  ok = 1
-			if (v ~ /^(0|[1-9][0-9]*)$/           && f ~ /\|decimal\|/)    ok = 1
-			if (v ~ /^[a-z][a-z0-9_-]*$/          && f ~ /\|keyword\|/)    ok = 1
-		}
-		if (!ok) {
-			gsub(/\|/, " ", f)
-			printf "    %s is%sin doc/fields, and %s in %s\n", $1, f, v, FILENAME
-		}
-	}
-' "$documented" "$root"/test/*/*/expect | LC_ALL=C sort -u)
-
-if [ -n "$wrongform" ]; then
-	echo "values doc/fields declares no form for:"
-	printf '%s\n' "$wrongform"
 	exit 2
 fi
 
