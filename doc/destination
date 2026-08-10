@@ -17,7 +17,7 @@ joined with a single dot.
 No component may contain a dot. This is enforced, not merely
 conventional.
 
-    RNS/Destination.py:102#app_name, RNS/Destination.py:106#aspect
+    RNS/Destination.py#app_name, RNS/Destination.py#aspect
 
 A component may be empty. Nothing forbids it, and "a..b" is a name RNS
 hashes without complaint. test/destination/empty-aspect records it,
@@ -39,7 +39,7 @@ precomposed and decomposed form. They look identical and produce
 different hashes. An implementation that normalises will not
 interoperate.
 
-    RNS/Destination.py:120#expand_name
+    RNS/Destination.py#expand_name
 
 
 Destination hash
@@ -53,7 +53,7 @@ Destination hash
 The identity is mixed in at this step, as its 16-byte hash. It is not
 part of the name that produced name_hash.
 
-    RNS/Destination.py:130#addr_hash_material
+    RNS/Destination.py#addr_hash_material
 
 
 Discrepancy with the upstream prose
@@ -72,7 +72,7 @@ Destination.expand_name does append identity.hexhash when given an
 identity, but that path produces the human-readable full name only. It
 is not used in the hash derivation.
 
-    RNS/Destination.py:109#identity and RNS/Destination.py:120#expand_name
+    RNS/Destination.py#identity and RNS/Destination.py#expand_name
 
 
 Vector format

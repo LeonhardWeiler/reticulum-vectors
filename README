@@ -79,7 +79,7 @@ Layout
                 and at doc/harness to check your own implementation
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
-    tools/      gen, the Python generator; cite, the citation check
+    tools/      gen, the Python generator
 
 What a consumer needs is test/, doc/ and cmd/. The other two are the
 larger half of the repository and neither is part of the corpus:
@@ -143,23 +143,19 @@ repository.
     make verify
 
 additionally regenerates every vector from the pinned reference
-implementation and fails if a single byte would change, checks every
-RNS citation in doc/, in the programs and in the meta files, and diffs
-the vector printed below against the files it came from.
+implementation and fails if a single byte would change, and diffs the
+vector printed below against the files it came from.
 
-A citation carries the line and a piece of what is on it:
+doc/ and the programs name the reference by symbol:
 
-    RNS/Packet.py:348#get_hashable_part
+    RNS/Packet.py#get_hashable_part
 
-The anchor is checked for identity, not for plausibility. It must
-appear on the line named, and when it does not, tools/cite prints the
-lines it does appear on. Both halves are needed: a line number alone
-slides silently when the pin moves, and an anchor alone would name a
-function rather than the rule inside it.
+The anchor is the name to grep for. There is no line number, so there
+is nothing in a citation that goes stale while the pin holds; when the
+pin moves and a symbol is gone, the vectors are regenerated anyway.
 
-That, and the regeneration, is the evidence behind the source line in
-every meta file. It needs Python and the checkout; cmd/check alone
-needs neither.
+The regeneration is the evidence behind the source line in every meta
+file. It needs Python and the checkout; cmd/check alone needs neither.
 
 
 One vector, whole

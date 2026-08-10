@@ -254,7 +254,7 @@ Affects every implementation tested. Vector test/announce/hop-limit.
 
 python-rns rejects a packet whose hop count is at or above
 PATHFINDER_M, that is 128, inside Packet.unpack, before any other
-field is examined (RNS/Packet.py:247#PATHFINDER_M). None of the
+field is examined (RNS/Packet.py#PATHFINDER_M). None of the
 implementations do
 this. All decode the packet fully and report it as a valid announce.
 
@@ -352,7 +352,7 @@ Finding 5: rns.js derives half the key material
 Affects rns.js. All five test/encrypted/ vectors.
 
     src/identity.js:237     Cryptography.hkdf(32, sharedKey, this.hash)
-    RNS/Identity.py:823#DERIVED_KEY_LENGTH
+    RNS/Identity.py#DERIVED_KEY_LENGTH
                                            length=Identity.DERIVED_KEY_LENGTH,
                                            that is 64
 
@@ -373,7 +373,7 @@ decrypt a packet from python-rns 1.4.2, and python-rns cannot decrypt
 one from rns.js. The HMAC fails before decryption is even attempted.
 
 python-rns keeps DERIVED_KEY_LENGTH_LEGACY = 32 at
-RNS/Identity.py:91#DERIVED_KEY_LENGTH_LEGACY,
+RNS/Identity.py#DERIVED_KEY_LENGTH_LEGACY,
 so 32 was once right. This is version skew rather than a misreading,
 and it is what a corpus pinned to a version is for.
 
@@ -386,7 +386,7 @@ root cause as finding 4.
 Finding 4 recorded microReticulum deriving a different public key from
 a non-canonical X25519 scalar, and called it an edge case because every
 key the reference generates is already clamped. Ratchet keys are not.
-RNS/Identity.py:404#_generate_ratchet generates one as 32 raw random
+RNS/Identity.py#_generate_ratchet generates one as 32 raw random
 bytes, and a random
 scalar is already in clamped form only once in 32 tries.
 
@@ -463,7 +463,7 @@ and, through it, every linkproof and linkdata vector.
 
 The link id is a truncated hash of the request packet with the
 signalling bytes chopped off the end
-(RNS/Link.py:336#link_id_from_lr_packet). Both
+(RNS/Link.py#link_id_from_lr_packet). Both
 implementations hash the packet as it arrived.
 
     rns.js            src/packet.js:253, getHashablePart, marked
@@ -495,7 +495,7 @@ Affects rns.js. Vector test/linkrequest/signalling.
 
 One accepted payload length, 64. The reference accepts 64 and 67 and
 emits only 67, because Link.__init__ signals unconditionally
-(RNS/Link.py:304#initiator). No link between rns.js and python-rns 1.4.2 is
+(RNS/Link.py#initiator). No link between rns.js and python-rns 1.4.2 is
 established in either direction, and the rejection happens before
 finding 9 can matter.
 
@@ -513,7 +513,7 @@ as findings 4 and 6.
     microReticulum  f7ac8a90ade7c050b257ce5767232d0ac08df4de1c912f8b...
 
 A link private key is 32 random bytes as generated
-(RNS/Link.py:284#X25519PrivateKey),
+(RNS/Link.py#X25519PrivateKey),
 and a random scalar is in clamped form only once in 32 tries. python-rns
 clamps when the scalar is used; microReticulum does not. The two ends
 compute different secrets, the HMAC fails, and nothing decrypts.
@@ -534,7 +534,7 @@ Affects rsReticulum. Vector test/linkproof/signalling-removed.
     handshake.rs:245   validate signs over the substituted bytes
 
 The reference assembles the signed material with no signalling bytes
-when the proof has none (RNS/Link.py:394#signalling_bytes), so a proof with its
+when the proof has none (RNS/Link.py#signalling_bytes), so a proof with its
 signalling cut off fails to verify. rsReticulum puts the defaults back
 before verifying, and a proof that signalled exactly those defaults
 still verifies with the bytes removed.
@@ -552,7 +552,7 @@ Affects Reticulum-rs. Vector test/linkrequest/invalid-length.
     link.rs:184   if packet.data.len() < PUBLIC_KEY_LENGTH * 2
 
 The reference accepts exactly 64 and 67 and drops everything else
-(RNS/Link.py:187#LINK_MTU_SIZE). Reticulum-rs accepts every length at or
+(RNS/Link.py#LINK_MTU_SIZE). Reticulum-rs accepts every length at or
 above 64.
 Because the excess is chopped before hashing, a 65, 66 and 67-byte
 request carrying the same keys all open the same link id.
@@ -568,7 +568,7 @@ test/linkrequest/ and test/linkproof/.
 
 The three signalling bytes of a link request carry the mode in the top
 three bits and the MTU in the low twenty-one
-(RNS/Link.py:148#signalling_bytes). Three
+(RNS/Link.py#signalling_bytes). Three
 of the six implementations have no function anywhere that reads them:
 
     rsReticulum       SignallingData::unpack, both directions
@@ -649,7 +649,7 @@ Finding 15: a 63-byte proof payload is read as an implicit proof
 Affects every implementation tested. Vector test/proof/invalid-length.
 
 python-rns reads 64 bytes as an implicit proof and 96 as an explicit
-one and drops every other length (RNS/Packet.py:481#EXPL_LENGTH). None
+one and drops every other length (RNS/Packet.py#EXPL_LENGTH). None
 of the six checks the length. All take the 63 bytes as a signature,
 verify it, and report a decoded proof that does not verify, where the
 reference reports nothing at all.
@@ -862,7 +862,7 @@ through a length. Handed the payload, all six derive the link keys,
 verify an hmac over bytes that are not a token, get no match, and
 report no plaintext. python-rns does the same: Token.verify_hmac raises
 only at 32 bytes or fewer
-(RNS/Cryptography/Token.py:78#Cannot) and returns False above that,
+(RNS/Cryptography/Token.py#Cannot) and returns False above that,
 so a 47-byte payload is refused by a failing hmac there too. On
 behaviour the six and the reference agree.
 
@@ -900,9 +900,9 @@ Affects go-reticulum. Vector test/linkrequest/unnamed-mode.
 
 The mode is the top three bits of the link request's signalling word.
 python-rns reads them and returns what it read
-(RNS/Link.py:174#MODE_BYTEMASK). Only MODE_AES256_CBC, which is 1, is
-enabled (RNS/Link.py:133#ENABLED_MODES), and signalling_bytes refuses to
-emit any other (RNS/Link.py:149#ENABLED_MODES), so a request signalling
+(RNS/Link.py#MODE_BYTEMASK). Only MODE_AES256_CBC, which is 1, is
+enabled (RNS/Link.py#ENABLED_MODES), and signalling_bytes refuses to
+emit any other (RNS/Link.py#ENABLED_MODES), so a request signalling
 MODE_AES128_CBC, which is 0, is one the reference reads as 0 and will
 not produce.
 

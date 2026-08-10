@@ -60,7 +60,7 @@ What upstream does not provide, and this corpus does:
     raw packet bytes                none exist upstream
     announce byte layout            none exist upstream
     destination hash derivation     one incidental case,
-                                    tests/link.py:113#dest.hash
+                                    tests/link.py#dest.hash
     machine-readable vectors        upstream vectors are Python literals
 
 If a proposed artifact does not fall in the second list, it does not
@@ -177,10 +177,9 @@ cmd/check.
 
         tools/
             gen             python, generates vectors against the pinned RNS
-            cite            python, checks every line citation
 
-Nine documents. One C program. One shell script. Two tools that are
-not part of the contract, because a consumer runs neither.
+Nine documents. One C program. One shell script. One tool that is not
+part of the contract, because a consumer does not run it.
 
 That accounts for what a consumer reads and not for what a clone holds:
 conformance/ holds six harnesses in six languages, and it is the larger
@@ -237,7 +236,7 @@ the corpus was written. The pin in source is the provenance.
 
 Adopted vectors record their origin instead:
 
-    source        python-rns tests/identity.py:13#fixed_keys (b48b96e6)
+    source        python-rns tests/identity.py#fixed_keys (b48b96e6)
 
 Every value in expect is hex, a decimal number, or a keyword from a
 fixed set. Byte strings are always hex, names included: printed as
@@ -306,23 +305,18 @@ purpose: it proves the vectors are usable without Python.
 directories including meta. It never edits an existing vector in place;
 regeneration produces a new directory or an explicit diff.
 
-`cite` is Python. doc/ and the programs name the reference by line, in
-the form `RNS/Packet.py:190#Packet.ANNOUNCE`, and nothing else reads
-those numbers, so they drift. `cite` resolves every one against the checkout
-and fails on any that no longer names a line holding what it is cited
-for. Twelve had already slid before it existed.
+doc/, the programs and the meta files name the reference by symbol, in
+the form `RNS/Packet.py#Packet.ANNOUNCE`. There is no line number in a
+citation, and that is the whole rule: the anchor is the name to grep
+for, and nothing in the citation can go stale while the pin holds. When
+the pin moves and a symbol is gone, the vectors are regenerated anyway.
 
-Both trees in the checkout are cited and both are checked: `RNS/` is
-the implementation and `tests/` is the suite the adopted values come
-from. Leaving `tests/` out left the citations in meta files unchecked,
-which is the strongest provenance the format has, and one of them had
-slid six lines onto a print statement.
+There was a second tool for a month. `cite` resolved a line number in
+every citation against the checkout, and it was needed because the
+format carried a number that carried nothing. Deleting the number
+deleted the tool.
 
-Where it looks is `git ls-files` and not a list of its own. A list of
-where to check fails in the direction that says nothing: the file
-nobody added to it is not reported, it is simply never read.
-
-There was a third tool for one week. `counts` resolved the totals the
+There was a third for one week. `counts` resolved the totals the
 prose states — vectors of the decode class, documents, harnesses —
 against the corpus that holds them, through a table of English
 phrasings. It found one real error on the day it was written and it was
@@ -342,10 +336,10 @@ What replaced it costs nothing to run: the totals it guarded are out of
 the prose. A number in a sentence either names what it counts in that
 sentence, where it cannot drift, or it does not belong in the sentence.
 
-Neither remaining tool is shipped as part of the corpus contract. They
-are the way vectors are produced and kept honest, not the way they are
-consumed. `make verify` runs both, and needs Python and the checkout.
-`make check` runs neither and needs a C compiler.
+The remaining tool is not shipped as part of the corpus contract. It is
+the way vectors are produced, not the way they are consumed. `make
+verify` runs it, and needs Python and the checkout. `make check` does
+not, and needs a C compiler.
 
 ### Nothing has to be started, and that is two rules
 
@@ -421,7 +415,7 @@ Vectors drive the dependency, not the other way around.
     milestone 3          adds nothing
     test/sign            adds Ed25519 sign
 
-Announces are not encrypted (RNS/Packet.py:190#Packet.ANNOUNCE), so
+Announces are not encrypted (RNS/Packet.py#Packet.ANNOUNCE), so
 milestone 1 needed no symmetric cryptography at all.
 
 Ed25519 signing arrived with test/sign and cost nothing to vendor:
@@ -435,7 +429,7 @@ reference produced from a 64-byte derived key.
 
 The 128-bit mode was expected to arrive with links. It did not. Only
 MODE_AES256_CBC is in ENABLED_MODES at this pin
-(RNS/Link.py:133#ENABLED_MODES), and signalling_bytes raises on any
+(RNS/Link.py#ENABLED_MODES), and signalling_bytes raises on any
 other, so no link the reference establishes uses it. AES-128 waits for
 a vector that needs it, and none does.
 

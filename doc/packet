@@ -12,11 +12,11 @@ test/ifac/.
 
 Constants
 
-    MTU                 500 bytes    RNS/Reticulum.py:93#MTU
-    HEADER_MAXSIZE       35 bytes    RNS/Reticulum.py:148#HEADER_MAXSIZE
-    IFAC_MIN_SIZE         1 byte     RNS/Reticulum.py:149#IFAC_MIN_SIZE
-    MDU                 464 bytes    RNS/Reticulum.py:152#MDU
-    PATHFINDER_M        128 hops     RNS/Transport.py:63#PATHFINDER_M
+    MTU                 500 bytes    RNS/Reticulum.py#MTU
+    HEADER_MAXSIZE       35 bytes    RNS/Reticulum.py#HEADER_MAXSIZE
+    IFAC_MIN_SIZE         1 byte     RNS/Reticulum.py#IFAC_MIN_SIZE
+    MDU                 464 bytes    RNS/Reticulum.py#MDU
+    PATHFINDER_M        128 hops     RNS/Transport.py#PATHFINDER_M
 
 
 Header
@@ -42,7 +42,7 @@ Header 2, used while a packet is in transport:
 
 The transport id is inserted before the destination hash, not after.
 
-    RNS/Packet.py:177#pack, RNS/Packet.py:242#unpack
+    RNS/Packet.py#pack, RNS/Packet.py#unpack
 
 The context byte names what the payload holds, and which names exist
 depends on the packet type; doc/fields lists every one this format has
@@ -51,7 +51,7 @@ values the reference defines and no vector uses print as two hex digits
 rather than as a keyword. test/plain/unnamed-context carries
 CACHE_REQUEST for that reason.
 
-    RNS/Packet.py:80#CACHE_REQUEST
+    RNS/Packet.py#CACHE_REQUEST
 
 
 Flags
@@ -81,7 +81,7 @@ The context flag has no fixed meaning. Its interpretation depends on
 the packet type; for announces it signals the presence of a ratchet.
 
 Bit 7 is not read by Packet.unpack, which is why every other field
-above is described from RNS/Packet.py:250#header_type and this one is
+above is described from RNS/Packet.py#header_type and this one is
 not. It is set and cleared a layer below, and a frame that carries it
 is not a packet until it has been unmasked. See the section below.
 
@@ -89,7 +89,7 @@ The destination type is read from the destination the packet is
 addressed to, with one exception: a link request proof writes it as
 link from a constant. See doc/link.
 
-    RNS/Packet.py:169#get_packed_flags, RNS/Packet.py:248#hops
+    RNS/Packet.py#get_packed_flags, RNS/Packet.py#hops
 
 
 Hops
@@ -111,7 +111,7 @@ all. Only the pair separates them.
 The hop count is not part of any signed material, so the second vector
 verifies exactly as test/announce/minimal does.
 
-    RNS/Packet.py:247#PATHFINDER_M
+    RNS/Packet.py#PATHFINDER_M
 
 
 Entering transport
@@ -144,7 +144,7 @@ still verifies, over a packet whose bytes have changed. That is what
 excluding the low four flag bits, the hop count and the transport id
 buys, and it is the whole reason for the rule.
 
-    RNS/Transport.py:1369#HEADER_2
+    RNS/Transport.py#HEADER_2
 
 
 Proofs
@@ -156,13 +156,13 @@ field holds no destination hash: it is the first 16 bytes of the proved
 packet's hash, which is how the sender recognises the answer to its own
 packet and why a proof needs no destination of its own.
 
-    RNS/Packet.py:378#get_hash
+    RNS/Packet.py#get_hash
 
 The packet hash is taken over the whole packet with the low four flag
 bits and the hop count excluded, so that it survives a hop. It is the
 same material a link id is taken over, untrimmed and not truncated.
 
-    RNS/Packet.py:344#get_hash, RNS/Packet.py:348#get_hashable_part
+    RNS/Packet.py#get_hash, RNS/Packet.py#get_hashable_part
 
 Two payload lengths decode:
 
@@ -172,7 +172,7 @@ Two payload lengths decode:
 The reference emits the implicit form: use_implicit_proof defaults to
 true and a configuration may turn it off. It accepts either form.
 
-    RNS/Reticulum.py:259#__use_implicit_proof, RNS/Packet.py:481#EXPL_LENGTH
+    RNS/Reticulum.py#__use_implicit_proof, RNS/Packet.py#EXPL_LENGTH
 
 The explicit form carries a hash the receiver already computed, so the
 extra 32 bytes prove nothing on their own. A decoder that trusts them
@@ -187,7 +187,7 @@ same proof, so their signatures are identical.
 A proof for a packet on a link is the same packet type addressed
 differently and signed by a different key. See doc/link.
 
-    RNS/Identity.py:942#prove
+    RNS/Identity.py#prove
 
 
 Plain destinations
@@ -197,7 +197,7 @@ returns the plaintext unchanged for this type, so there is no ephemeral
 key, no token and no padding, and the minimum payload is nothing at
 all.
 
-    RNS/Destination.py:603#PLAIN
+    RNS/Destination.py#PLAIN
 
     offset  size  field
     19      -     the data, unencrypted
@@ -252,8 +252,8 @@ Which of the three are present is decided by the payload length alone:
     17 to 32     destination, then the tag
     above 32     destination, transport id, then the tag
 
-    RNS/Transport.py:2871#transport_enabled,
-    RNS/Transport.py:2965#TRUNCATED_HASHLENGTH
+    RNS/Transport.py#transport_enabled,
+    RNS/Transport.py#TRUNCATED_HASHLENGTH
 
 The sender writes the transport id when the instance is itself a
 transport node and omits it otherwise, but the reader cannot tell the
@@ -317,7 +317,7 @@ every packet inside a frame:
 
 N is configuration, not a field. It is not on the wire and both ends
 must already agree on it. The default is 16 for the TCP interfaces
-(RNS/Interfaces/TCPInterface.py:77#DEFAULT_IFAC_SIZE) and a
+(RNS/Interfaces/TCPInterface.py#DEFAULT_IFAC_SIZE) and a
 configuration may set any size at or above IFAC_MIN_SIZE.
 
 The access code is the last N bytes of an Ed25519 signature over the
@@ -341,7 +341,7 @@ the three are three vectors:
 The middle one is where the order can be got wrong, and the other two
 are what keeps a swap from looking like a different configuration.
 
-IFAC_SALT is a constant, RNS/Reticulum.py:150#IFAC_SALT.
+IFAC_SALT is a constant, RNS/Reticulum.py#IFAC_SALT.
 
 The mask is hkdf over the frame length, keyed by the access code and
 salted with the interface key:
@@ -353,8 +353,8 @@ to be readable before the mask it keys can be generated. Both header
 bytes are masked, and the sender puts bit 7 back afterwards, so the
 flag survives a mask that would have cleared it.
 
-    RNS/Transport.py:1073#ifac_identity, RNS/Transport.py:1094#masked_raw,
-    RNS/Transport.py:1456#unmasked_raw
+    RNS/Transport.py#ifac_identity, RNS/Transport.py#masked_raw,
+    RNS/Transport.py#unmasked_raw
 
 A decoder that treats bit 7 as reserved reads a masked frame as a
 packet: random flags, a random hop count, and a destination hash that
@@ -455,7 +455,7 @@ derives it inline in the constructor of a running instance and exposes
 no function to call, so tools/gen composes it from the same three RNS
 functions in the same order.
 
-    RNS/Reticulum.py:958#ifac_netname to :971
+    RNS/Reticulum.py#ifac_netname to :971
 
 The key is a field rather than a line of raw for that reason. cmd/dump
 derives it again from the two strings, sharing no code with tools/gen,

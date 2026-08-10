@@ -31,10 +31,9 @@ check: cmd/dump
 gen:
 	tools/gen
 
-# Every meta file claims a source, doc/ cites the reference by line, and
-# cmd/VENDOR says the vendored file is unmodified. verify is the
-# evidence for all three. Needs Python and the checkout; check alone
-# does not.
+# Every meta file claims a source and cmd/VENDOR says the vendored file
+# is unmodified. verify is the evidence for both. Needs Python and the
+# checkout; check alone does not.
 #
 # The hashes are read through grep because the first of the two lines
 # carries a label and sha256sum skips it, checking one file of two and
@@ -90,7 +89,6 @@ verify: check
 	  | awk '$$1 != 2 { print "cmd/VENDOR and cmd/dump.o disagree on " $$2; bad = 1 } \
 	         END { exit bad }'
 	tools/gen
-	tools/cite
 
 clean:
 	rm -f cmd/dump $(OBJ)
@@ -99,7 +97,7 @@ help:
 	@echo 'make            build cmd/dump'
 	@echo 'make check      run every vector against cmd/dump'
 	@echo 'make gen        regenerate the vectors; needs Python and the checkout'
-	@echo 'make verify     check, then regenerate and check every citation'
+	@echo 'make verify     check, then regenerate every vector and diff it'
 	@echo 'make clean      remove cmd/dump and the objects'
 	@echo
 	@echo 'DUMP=./mine cmd/check       check another implementation'

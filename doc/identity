@@ -8,11 +8,11 @@ Vectors: test/identity/
 
 Constants
 
-    KEYSIZE               512 bits  RNS/Identity.py:59#KEYSIZE
-    SIGLENGTH             512 bits  RNS/Identity.py:81#SIGLENGTH
-    TRUNCATED_HASHLENGTH  128 bits  RNS/Reticulum.py:145#TRUNCATED_HASHLENGTH
-    NAME_HASH_LENGTH       80 bits  RNS/Identity.py:83#NAME_HASH_LENGTH
-    RATCHETSIZE           256 bits  RNS/Identity.py:64#RATCHETSIZE
+    KEYSIZE               512 bits  RNS/Identity.py#KEYSIZE
+    SIGLENGTH             512 bits  RNS/Identity.py#SIGLENGTH
+    TRUNCATED_HASHLENGTH  128 bits  RNS/Reticulum.py#TRUNCATED_HASHLENGTH
+    NAME_HASH_LENGTH       80 bits  RNS/Identity.py#NAME_HASH_LENGTH
+    RATCHETSIZE           256 bits  RNS/Identity.py#RATCHETSIZE
 
 
 Private key
@@ -28,11 +28,11 @@ supplied and returns them unchanged; clamping happens inside the
 curve implementation when the scalar is used.
 
     load_private_key   stores prv_bytes verbatim
-                       RNS/Identity.py:744#prv_bytes
+                       RNS/Identity.py#prv_bytes
     get_private_key    returns them verbatim
-                       RNS/Identity.py:722#get_private_key
+                       RNS/Identity.py#get_private_key
     curve25519 clamps  at exchange and base mult
-                       RNS/Cryptography/X25519.py:78#_fix_secret
+                       RNS/Cryptography/X25519.py#_fix_secret
 
 Two consequences, both recorded as vectors in test/keyset/unclamped and
 test/keyset/clamped:
@@ -51,9 +51,9 @@ secret scalar.
 The two halves are unrelated. Neither is derived from the other, and
 there is no master seed.
 
-    RNS/Identity.py:744#prv_bytes
-    RNS/Cryptography/Ed25519.py:34#Ed25519PrivateKey
-    RNS/Cryptography/X25519.py:78#_fix_secret
+    RNS/Identity.py#prv_bytes
+    RNS/Cryptography/Ed25519.py#Ed25519PrivateKey
+    RNS/Cryptography/X25519.py#_fix_secret
 
 
 Public key
@@ -64,7 +64,7 @@ Public key
     0       32    X25519 public key
     32      32    Ed25519 public key
 
-    RNS/Identity.py:773#pub_bytes
+    RNS/Identity.py#pub_bytes
 
 
 Identity hash
@@ -74,7 +74,7 @@ Identity hash
 16 bytes. Derived from the public key only. The private key does not
 enter the derivation.
 
-    RNS/Identity.py:783#update_hashes
+    RNS/Identity.py#update_hashes
 
 
 Signature
@@ -88,7 +88,7 @@ hashing. The message is passed to Ed25519 as it stands. This is what
 test/signature/ pins; Ed25519 itself has published vectors and is not
 restated here.
 
-    RNS/Identity.py:907#sign
+    RNS/Identity.py#sign
 
 
 Canonical signatures, and the backend in the pin
@@ -104,7 +104,7 @@ time. They disagree here.
     openssl backend     rejects S + L      the pin
     internal fallback   accepts S + L      RNS/Cryptography/pure25519
 
-    RNS/Cryptography/Provider.py:35#PROVIDER_PYCA
+    RNS/Cryptography/Provider.py#PROVIDER_PYCA
 
 So the verdict on this input is decided by what is installed, not by
 the version. That is why every meta file names the backend as well as
@@ -207,7 +207,7 @@ reference makes and passes every other vector here. What it emits is an
 announce and a link proof that no reference accepts.
 
 The value is the one upstream asserts at
-tests/identity.py:37#sig_from_key_0, which is an assertion about
+tests/identity.py#sig_from_key_0, which is an assertion about
 signing. test/signature adopted the same value for the other direction.
 
 These two kinds are the only decode-class vectors in the corpus that
@@ -216,7 +216,7 @@ from expect on every run for every vector that decoded.
 
 The message is given by its bytes rather than as text, because the
 adopted upstream vector turns on exactly that distinction. The
-upstream test at tests/identity.py:35#fid.sign signs
+upstream test at tests/identity.py#fid.sign signs
 
     signed_message.encode("utf-8")
 

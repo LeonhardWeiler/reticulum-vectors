@@ -42,15 +42,15 @@
 #define RATCHETLEN   32
 #define IVLEN        16
 #define MACLEN       32
-/* RNS/Cryptography/Token.py:50#TOKEN_OVERHEAD */
+/* RNS/Cryptography/Token.py#TOKEN_OVERHEAD */
 #define TOKEN_OVERHEAD (IVLEN + MACLEN)
 #define DERIVEDLEN   64
 #define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
-#define ECPUBSIZE    64		/* RNS/Link.py:70#ECPUBSIZE */
-#define SIGNALLEN    3		/* RNS/Link.py:80#LINK_MTU_SIZE */
-#define MTU_BYTEMASK 0x1fffff	/* RNS/Link.py:144#MTU_BYTEMASK */
-#define MODE_DEFAULT 0x01	/* RNS/Link.py:134#MODE_DEFAULT */
-#define ENVELOPELEN  6		/* RNS/Channel.py:133#MSGTYPE */
+#define ECPUBSIZE    64		/* RNS/Link.py#ECPUBSIZE */
+#define SIGNALLEN    3		/* RNS/Link.py#LINK_MTU_SIZE */
+#define MTU_BYTEMASK 0x1fffff	/* RNS/Link.py#MTU_BYTEMASK */
+#define MODE_DEFAULT 0x01	/* RNS/Link.py#MODE_DEFAULT */
+#define ENVELOPELEN  6		/* RNS/Channel.py#MSGTYPE */
 
 /* Two bounds in two headers can drift apart, and the one that would
  * give way is inside hmac_sha256, which cannot report anything. This
@@ -754,7 +754,7 @@ static void print_announce(const struct header *h, const struct announce *a)
 /* A token is iv || ciphertext || hmac. Opening one is the same sequence
  * for a packet addressed to a destination and for one on a link; only
  * the key differs, and where that key comes from is the whole of what
- * the two kinds do not share. RNS/Cryptography/Token.py:100#decrypt. */
+ * the two kinds do not share. RNS/Cryptography/Token.py#decrypt. */
 struct token {
 	const uint8_t *iv, *ciphertext, *mac;
 	size_t   ctlen, ptlen;
@@ -868,7 +868,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 
 	/* The salt is the recipient's identity hash, derived from its own
 	 * public key, even when the shared secret came from a ratchet.
-	 * RNS/Identity.py:841#get_salt. */
+	 * RNS/Identity.py#get_salt. */
 	crypto_scalarmult_base(pub, b[0].data);
 	ed25519_public(b[0].data + KEYHALF, pub + KEYHALF);
 	truncated_hash(pub, KEYSIZE, identity_hash, ADDRLEN);
@@ -902,7 +902,7 @@ static void dump_encrypted(struct blob *b, int nblobs)
 /* Destination type 1. The payload is a bare token under the shared
  * symmetric key: no ephemeral key in front of it and no derivation
  * behind it, so the two halves of the key are the key as configured.
- * RNS/Destination.py:612#GROUP. */
+ * RNS/Destination.py#GROUP. */
 static void dump_group(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -957,7 +957,7 @@ static void dump_announce(struct blob *b, int nblobs)
 
 /* A packet to a plain destination. Destination.encrypt returns the
  * plaintext unchanged for this type, so the payload is the data, with
- * no ephemeral key, no token and no padding. RNS/Destination.py:603#PLAIN.
+ * no ephemeral key, no token and no padding. RNS/Destination.py#PLAIN.
  *
  * There is nothing to decrypt and therefore nothing here that could be
  * got wrong quietly: a decoder that treats every packet as encrypted
@@ -985,7 +985,7 @@ static void dump_plain(struct blob *b, int nblobs)
  * asking after it, and optionally a tag. Nothing on the wire says which
  * of the three are present: the reader decides by length alone, so a
  * 17-byte tag is read as a transport id and a tag of one.
- * RNS/Transport.py:2965#TRUNCATED_HASHLENGTH. */
+ * RNS/Transport.py#TRUNCATED_HASHLENGTH. */
 static void dump_pathrequest(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -1041,7 +1041,7 @@ static void dump_pathrequest(struct blob *b, int nblobs)
 
 /* The bytes a packet is hashed over. The low four flag bits and the hop
  * count are excluded, so that the hash survives a hop.
- * RNS/Packet.py:348#get_hashable_part. */
+ * RNS/Packet.py#get_hashable_part. */
 static size_t hashable_part(const uint8_t *raw, size_t len,
                             const struct header *h, uint8_t *out)
 {
@@ -1054,7 +1054,7 @@ static size_t hashable_part(const uint8_t *raw, size_t len,
 
 /* The link id is that hash truncated, with any signalling bytes chopped
  * off the end first, so that signalling the MTU does not change the
- * identity of the link. RNS/Link.py:336#link_id_from_lr_packet. */
+ * identity of the link. RNS/Link.py#link_id_from_lr_packet. */
 static void link_id_of(const uint8_t *raw, size_t len,
                        const struct header *h, uint8_t *out)
 {
@@ -1068,7 +1068,7 @@ static void link_id_of(const uint8_t *raw, size_t len,
 }
 
 /* The hash a proof is taken over: the same bytes, untrimmed and not
- * truncated. RNS/Packet.py:344#get_hash. */
+ * truncated. RNS/Packet.py#get_hash. */
 static void packet_hash_of(const uint8_t *raw, size_t len,
                            const struct header *h, uint8_t out[32])
 {
@@ -1081,7 +1081,7 @@ static void packet_hash_of(const uint8_t *raw, size_t len,
  * request and the proof that answers it carry the same three bytes in
  * different positions and read them the same way. NULL is the shorter
  * form, where the mode falls back to the default and the mtu has no
- * fallback at all. RNS/Link.py:148#signalling_bytes. */
+ * fallback at all. RNS/Link.py#signalling_bytes. */
 static void print_signalling(const uint8_t *p)
 {
 	unsigned value = 0, mode = MODE_DEFAULT;
@@ -1205,7 +1205,7 @@ static void dump_linkproof(struct blob *b, int nblobs)
  * outside that set is refused rather than skipped: a decoder that reads
  * a shape the reference never writes has invented a format, and this
  * one is meant to be a second reading of the reference and nothing
- * else. RNS/vendor/umsgpack.py:457#_pack2. */
+ * else. RNS/vendor/umsgpack.py#_pack2. */
 struct mp {
 	const uint8_t *p;
 	size_t         left;
@@ -1318,8 +1318,8 @@ static void mp_end(struct mp *m)
 #define RESOURCE_HMU 0x04
 #define RESOURCE_ICL 0x06
 #define RESOURCE_RCL 0x07
-#define MAPHASHLEN   4		/* RNS/Resource.py:102#MAPHASH_LEN */
-#define HASHLEN      32		/* RNS/Identity.py:80#HASHLENGTH */
+#define MAPHASHLEN   4		/* RNS/Resource.py#MAPHASH_LEN */
+#define HASHLEN      32		/* RNS/Identity.py#HASHLENGTH */
 
 /* A plaintext too short for the context it arrived in. Every context
  * whose reader is bounded by a length rather than by framing names this
@@ -1337,7 +1337,7 @@ static void mp_end(struct mp *m)
  * lengths and mp_take refuses to read past them. The two cancels need
  * none either: the payload is the resource hash and however many bytes
  * arrived are the ones printed, which is what the reference compares.
- * RNS/Resource.py:1102#cancel. */
+ * RNS/Resource.py#cancel. */
 static int short_plaintext(size_t len, size_t need)
 {
 	if (len >= need)
@@ -1353,7 +1353,7 @@ static int short_plaintext(size_t len, size_t need)
  * order the reference writes them; a part request is three pieces
  * concatenated with no framing, read by length; a cancel is the
  * resource hash and nothing else.
- * RNS/Resource.py:1329#dictionary, RNS/Resource.py:971#request_data. */
+ * RNS/Resource.py#dictionary, RNS/Resource.py#request_data. */
 static void print_resource(unsigned context, const uint8_t *p, size_t len)
 {
 	static const char order[] = "tdnhroilqfm";
@@ -1473,7 +1473,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	 * resource encrypted its whole data through the link once and cut
 	 * the token into parts, so only the first part carries an iv and
 	 * only the last carries an hmac, and no part opens on its own.
-	 * RNS/Resource.py:423#link.encrypt, RNS/Packet.py:202#RESOURCE. */
+	 * RNS/Resource.py#link.encrypt, RNS/Packet.py#RESOURCE. */
 	if (h.context == RESOURCE) {
 		field("encrypted", "no");
 		field("plaintext_length", "%zu", h.payload_len);
@@ -1482,7 +1482,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 	}
 
 	/* Keepalives carry no data and are the one link packet the
-	 * reference does not encrypt. RNS/Packet.py:206#KEEPALIVE. */
+	 * reference does not encrypt. RNS/Packet.py#KEEPALIVE. */
 	if (h.context == 0xfa) {
 		field("encrypted", "no");
 		field("plaintext_length", "%zu", h.payload_len);
@@ -1499,8 +1499,8 @@ static void dump_linkdata(struct blob *b, int nblobs)
 
 	/* Both ends already hold the shared secret, so no packet on the
 	 * link carries an ephemeral key. The salt is the link id, which is
-	 * in no packet either. RNS/Link.py:351#shared_key,
-	 * RNS/Link.py:607#get_salt. */
+	 * in no packet either. RNS/Link.py#shared_key,
+	 * RNS/Link.py#get_salt. */
 	initiator_public = rh.payload;
 	agreed = x25519_shared(shared, b[1].data, initiator_public);
 	if (agreed)
@@ -1516,7 +1516,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 
 	/* A channel envelope is six bytes of big-endian header and then the
 	 * message. The length it declares is not read back: Envelope.unpack
-	 * takes everything after the six bytes. RNS/Channel.py:118#unpack. */
+	 * takes everything after the six bytes. RNS/Channel.py#unpack. */
 	if (h.context == 0x0e) {
 		if (short_plaintext(t.ptlen, ENVELOPELEN))
 			return;
@@ -1528,8 +1528,8 @@ static void dump_linkdata(struct blob *b, int nblobs)
 
 	/* A request is a three-element array and a response a two-element
 	 * one, both msgpack, both with no length or type byte of their own
-	 * around them. RNS/Link.py:488#unpacked_request,
-	 * RNS/Link.py:849#packed_response. */
+	 * around them. RNS/Link.py#unpacked_request,
+	 * RNS/Link.py#packed_response. */
 	if (h.context == 0x09 || h.context == 0x0a) {
 		struct mp m = { t.plain, t.ptlen };
 		const uint8_t *p;
@@ -1565,7 +1565,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 
 	/* An identify proof names the initiator, which nothing else on a
 	 * link does. Its signature covers the link id, so it cannot be
-	 * replayed onto another link. RNS/Link.py:464#signed_data. */
+	 * replayed onto another link. RNS/Link.py#signed_data. */
 	if (h.context == 0xfb && t.ptlen == KEYSIZE + SIGLEN) {
 		truncated_hash(t.plain, KEYSIZE, identity_hash, ADDRLEN);
 		memcpy(signed_data, link_id, ADDRLEN);
@@ -1583,7 +1583,7 @@ static void dump_linkdata(struct blob *b, int nblobs)
 /* A proof is what a receiver sends back for a data packet it accepted.
  * It is addressed to the first 16 bytes of the proved packet's hash
  * rather than to a destination, which is how the sender recognises the
- * answer to its own packet. RNS/Packet.py:378#get_hash. */
+ * answer to its own packet. RNS/Packet.py#get_hash. */
 static void dump_proof(struct blob *b, int nblobs)
 {
 	struct header h, ph;
@@ -1669,7 +1669,7 @@ static void dump_proof(struct blob *b, int nblobs)
  * the same packet type and the same 64 bytes as an implicit delivery
  * proof, and neither half means here what it means there: the first 32
  * name the resource and the second are a hash of its data, not a
- * signature over anything. RNS/Resource.py:760#proof_data. */
+ * signature over anything. RNS/Resource.py#proof_data. */
 static void dump_resourceproof(struct blob *b, int nblobs)
 {
 	struct header h;
@@ -1704,7 +1704,7 @@ static void dump_resourceproof(struct blob *b, int nblobs)
 	      memcmp(h.payload, b[0].data, HASHLEN) == 0 ? "yes" : "no");
 }
 
-/* RNS/Reticulum.py:150#IFAC_SALT. */
+/* RNS/Reticulum.py#IFAC_SALT. */
 static const uint8_t ifac_salt[32] = {
 	0xad,0xf5,0x4d,0x88,0x2c,0x9a,0x9b,0x80,
 	0x77,0x1e,0xb4,0x99,0x5d,0x70,0x2d,0x4a,
@@ -1716,7 +1716,7 @@ static const uint8_t ifac_salt[32] = {
  * omitted when that half is not configured. Both ends of an interface
  * derive the key from strings a human typed, so nothing on the wire
  * says which of the four shapes was used.
- * RNS/Reticulum.py:958#ifac_netname. */
+ * RNS/Reticulum.py#ifac_netname. */
 static size_t ifac_origin(const struct blob *netname, const struct blob *netkey,
                           uint8_t *out)
 {
@@ -1745,7 +1745,7 @@ static void ifac_key(const uint8_t *origin, size_t originlen, uint8_t key[KEYSIZ
 /* The mask covers the whole frame except the access code itself, which
  * has to be readable before the mask it keys can be generated. Both
  * header bytes are masked; the IFAC flag is put back afterwards.
- * RNS/Transport.py:1094#masked_raw, RNS/Transport.py:1456#unmasked_raw. */
+ * RNS/Transport.py#masked_raw, RNS/Transport.py#unmasked_raw. */
 static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
                       const uint8_t key[KEYSIZE],
                       const uint8_t *in, size_t len, uint8_t *out)
@@ -1766,7 +1766,7 @@ static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
 	}
 }
 
-/* Packet.unpack never reads bit 7 (RNS/Packet.py:250#header_type).
+/* Packet.unpack never reads bit 7 (RNS/Packet.py#header_type).
  * Transport does, and a frame on an interface with a named network or a
  * passphrase is not a packet until it has been unmasked. See
  * doc/packet. */
@@ -1791,7 +1791,7 @@ static void dump_ifac(struct blob *b, int nblobs)
 	 * from, and hkdf aborts on an empty input rather than returning a
 	 * mask nobody could tell from a wrong one, so a one-byte raw file
 	 * ended the program with no message at all.
-	 * RNS/Reticulum.py:149#IFAC_MIN_SIZE. */
+	 * RNS/Reticulum.py#IFAC_MIN_SIZE. */
 	if (ifac_size < 1)
 		fatal("ifac: access code of %zu bytes is below the minimum of 1",
 		      ifac_size);
@@ -2073,7 +2073,7 @@ static void encode_linkproof(struct kv *f, int n)
 
 /* The one encoder that is not a concatenation. Going out, the flag is
  * set, the access code is inserted after the two header bytes, and the
- * same mask is applied. RNS/Transport.py:1081#new_header. */
+ * same mask is applied. RNS/Transport.py#new_header. */
 static void get_blob(struct kv *f, int n, const char *name, struct blob *b)
 {
 	const char *v = lookup(f, n, name);

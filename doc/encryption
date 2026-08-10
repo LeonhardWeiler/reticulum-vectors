@@ -11,9 +11,9 @@ See doc/packet for the header. Only the payload is described here.
 
 Constants
 
-    TOKEN_OVERHEAD      48 bytes   RNS/Cryptography/Token.py:50#TOKEN_OVERHEAD
-    DERIVED_KEY_LENGTH  64 bytes   RNS/Identity.py:90#DERIVED_KEY_LENGTH
-    PKCS7 blocksize     16 bytes   RNS/Cryptography/PKCS7.py:32#BLOCKSIZE
+    TOKEN_OVERHEAD      48 bytes   RNS/Cryptography/Token.py#TOKEN_OVERHEAD
+    DERIVED_KEY_LENGTH  64 bytes   RNS/Identity.py#DERIVED_KEY_LENGTH
+    PKCS7 blocksize     16 bytes   RNS/Cryptography/PKCS7.py#BLOCKSIZE
 
 
 Payload
@@ -29,7 +29,7 @@ minimum payload is therefore 32 + 48 = 80 bytes, and the ciphertext is
 never empty: PKCS7 adds a full block to a plaintext that is already
 block aligned, and adds a whole block to an empty one.
 
-    RNS/Identity.py:803#encrypt
+    RNS/Identity.py#encrypt
 
 A shorter payload is rejected as short-payload with 80 beside it;
 test/encrypted/short-payload is one byte under. A group packet carries
@@ -43,7 +43,7 @@ so the reference drops such a packet without naming a length. The
 corpus names the rule because a rejection that names nothing cannot be
 told from a different rejection.
 
-    RNS/Identity.py:858#KEYSIZE, RNS/Cryptography/Token.py:78#Cannot
+    RNS/Identity.py#KEYSIZE, RNS/Cryptography/Token.py#Cannot
 
 
 Key agreement
@@ -56,7 +56,7 @@ public half. The shared secret is
 where recipient_public is the X25519 half of the destination identity,
 or a ratchet public key when one is known for that destination.
 
-    RNS/Identity.py:820#shared_key, RNS/Destination.py:607#selected_ratchet
+    RNS/Identity.py#shared_key, RNS/Destination.py#selected_ratchet
 
 
 Contributory behaviour, and the backend in the pin
@@ -72,7 +72,7 @@ with it.
     openssl backend     raises, produces no secret   the pin
     internal fallback   returns the 32 zero bytes    RNS/Cryptography/X25519.py
 
-    RNS/Cryptography/Provider.py:35#PROVIDER_PYCA
+    RNS/Cryptography/Provider.py#PROVIDER_PYCA
 
 Neither checks for it deliberately. RFC 7748 section 6.1 leaves the
 choice to the protocol, and Reticulum makes none, so the behaviour is
@@ -112,8 +112,8 @@ recipient, derived from its own public key as in doc/identity. It stays
 the identity hash even when the shared secret came from a ratchet: the
 ratchet changes the agreement, not the salt.
 
-    RNS/Identity.py:822#derived_key, RNS/Identity.py:797#get_salt,
-    RNS/Cryptography/HKDF.py:35#hkdf
+    RNS/Identity.py#derived_key, RNS/Identity.py#get_salt,
+    RNS/Cryptography/HKDF.py#hkdf
 
 
 Token
@@ -130,7 +130,7 @@ never produces one and neither does Token.generate_key, so the only way
 to reach that mode is to configure a group destination with a 32-byte
 key. No vector here covers it.
 
-    RNS/Cryptography/Token.py:64#_signing_key
+    RNS/Cryptography/Token.py#_signing_key
 
 Verification comes before decryption. The HMAC covers the
 initialisation vector and the ciphertext, not the ephemeral key:
@@ -139,15 +139,15 @@ initialisation vector and the ciphertext, not the ephemeral key:
 
 A token whose HMAC does not match is rejected without decrypting.
 
-    RNS/Cryptography/Token.py:77#verify_hmac,
-    RNS/Cryptography/Token.py:100#decrypt
+    RNS/Cryptography/Token.py#verify_hmac,
+    RNS/Cryptography/Token.py#decrypt
 
 Reticulum calls this construction a token because it is Fernet with the
 version byte and the eight-byte timestamp removed. An implementation
 reaching for a Fernet library will produce nine bytes too many at the
 front.
 
-    RNS/Cryptography/Token.py:40#Token
+    RNS/Cryptography/Token.py#Token
 
 
 Padding
@@ -155,7 +155,7 @@ Padding
 PKCS7 with a block size of 16. The final byte gives the padding length;
 a value above the block size is invalid.
 
-    RNS/Cryptography/PKCS7.py:45#bs
+    RNS/Cryptography/PKCS7.py#bs
 
 That is the only bound applied. A length of zero removes nothing and
 yields the whole final block, and the padding bytes themselves are
@@ -171,7 +171,7 @@ opened by the reference unchanged. It is filed under group because
 there the key is configuration rather than a negotiated secret, so
 producing such a token needs nothing but membership.
 
-    RNS/Cryptography/PKCS7.py:35#pad
+    RNS/Cryptography/PKCS7.py#pad
 
 
 Vector format
@@ -224,7 +224,7 @@ Destination type 1. The payload is a bare token and nothing else:
     16      -     ciphertext, a multiple of 16 bytes
     -32     32    HMAC-SHA256
 
-    RNS/Destination.py:612#GROUP
+    RNS/Destination.py#GROUP
 
 There is no ephemeral key, because there is no key agreement, and no
 HKDF, because there is nothing to derive from. The key is configuration
@@ -242,7 +242,7 @@ An outbound group destination still needs an identity, and its hash is
 derived exactly as a single destination's is. The identity plays no
 part in the encryption.
 
-    RNS/Destination.py:620#GROUP
+    RNS/Destination.py#GROUP
 
 Vectors: test/group/minimal and test/group/altered-hmac.
 
