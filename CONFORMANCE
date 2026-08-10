@@ -111,18 +111,14 @@ each are the rows before and after that fix, not the rows above:
                                    iv, ciphertext and hmac themselves,
                                    because not one of the six exports
                                    the three, and all six took the
-                                   length for granted. Two panicked on a
-                                   slice, two raised and printed one
-                                   error line in place of every field,
-                                   and two computed an hmac that
-                                   overlapped its own ciphertext out of
-                                   a payload too short to hold both.
-                                   Every one now prints "-" for what it
-                                   cannot cut and stops there. The
-                                   vector still fails in all six, and it
-                                   now fails on what the implementation
-                                   does not report rather than on what
-                                   the harness did. No count moved.
+                                   length for granted. Every one now
+                                   prints "-" for what it cannot cut and
+                                   stops there. The vector still fails in
+                                   all six, and it now fails on what the
+                                   implementation does not report rather
+                                   than on what the harness did. Finding
+                                   23 names the six failures one by one.
+                                   No count moved.
 
 The first three were named in the run before last and left standing.
 That was the wrong call twice over: a footnote saying the evidence is
@@ -281,10 +277,7 @@ of them differently; finding 22 has the current table.
 Not one passing count moved when the corpus grew from 90 vectors to 94.
 The four added are the four ways a resource plaintext can be too short
 for the context byte that named it, and every implementation measured
-then failed all four. Three of them (go-reticulum, rsReticulum,
-Reticulum-rs) decrypt the token correctly and print the plaintext, and
-then have nothing to say about its length; the other three do not reach
-that far. See the finding below.
+then failed all four. Finding 22 says how far each of them gets.
 
 Every count moved when it grew from 94 to 102. The eight added are
 rejections, one per rule the corpus had no vector for, and five of them
@@ -774,11 +767,12 @@ refuses the point and then cannot state the identity hash, which is
 finding 7 and not this one.
 
 The count in the previous run was four rather than three, and it was
-wrong: two of the three refusals were reported by their harnesses as
-exceptions, and an exception is indistinguishable from a wrong answer
-in a diff. A harness that turns a correct refusal into a failure
-manufactures a finding, which is the same defect as one that fills in
-a field the implementation never computed, in the other direction.
+wrong: two of the three refusals reached the diff as exceptions, which
+is the harness fault above, and an exception is indistinguishable from
+a wrong answer in a diff. A harness that turns a correct refusal into
+a failure manufactures a finding, which is the same defect as one that
+fills in a field the implementation never computed, in the other
+direction.
 
 Every reader of an announce can compute the derivation that follows,
 because the salt is the recipient's identity hash and that is public.
@@ -1030,10 +1024,9 @@ and all six cuts assumed a payload long enough to hold them:
     rns.js            slice() clamps rather than throwing; the same
                       overlap
 
-Six harnesses, six languages, six authors, one assumption. Every one is
-fixed above, and no count moved: the fixes changed six crashes and
-misreadings into six honest dashes, which fail the vector for the
-reason the finding names.
+Every one is fixed above, and no count moved: the fixes changed six
+crashes and misreadings into six honest dashes, which fail the vector
+for the reason the finding names.
 
 
 Finding 24: a link request mode of zero is read as the default
