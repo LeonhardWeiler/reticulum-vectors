@@ -8,21 +8,18 @@ OBJ = cmd/dump.o cmd/sha256.o cmd/hmac.o cmd/aes256.o cmd/tweetnacl.o
 cmd/dump: $(OBJ)
 	$(CC) -o $@ $(OBJ)
 
-cmd/dump.o: cmd/dump.c cmd/sha256.h cmd/hmac.h cmd/aes256.h cmd/tweetnacl.h
-	$(CC) $(CFLAGS) -c -o $@ cmd/dump.c
+.SUFFIXES: .c .o
+.c.o:
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-cmd/hmac.o: cmd/hmac.c cmd/hmac.h cmd/sha256.h
-	$(CC) $(CFLAGS) -c -o $@ cmd/hmac.c
-
-cmd/aes256.o: cmd/aes256.c cmd/aes256.h
-	$(CC) $(CFLAGS) -c -o $@ cmd/aes256.c
-
-cmd/sha256.o: cmd/sha256.c cmd/sha256.h
-	$(CC) $(CFLAGS) -c -o $@ cmd/sha256.c
+# Every object against every header. Over-approximated on purpose: a
+# per-file list is four lines that can leave one out, and rebuilding
+# five objects for a header nothing reads costs a second.
+$(OBJ): cmd/sha256.h cmd/hmac.h cmd/aes256.h cmd/tweetnacl.h
 
 # Vendored, kept verbatim. Built without the warning flags applied to
-# the corpus's own code. See cmd/VENDOR.
-cmd/tweetnacl.o: cmd/tweetnacl.c cmd/tweetnacl.h
+# the corpus's own code, which is what this rule is for. See cmd/VENDOR.
+cmd/tweetnacl.o: cmd/tweetnacl.c
 	$(CC) $(VENDORCFLAGS) -c -o $@ cmd/tweetnacl.c
 
 check: cmd/dump
@@ -32,13 +29,9 @@ gen:
 	tools/gen
 
 # Every meta file claims a source and cmd/VENDOR says the vendored file
-# is unmodified. verify is the evidence for both. Needs Python and the
-# checkout; check alone does not, which is why none of this is in
-# cmd/check.
-#
-# Two claims are read against what they describe: dump -l against the
-# kinds in test/INDEX, and the hashes in cmd/VENDOR against the files.
-# Both sides of both are machine output.
+# is unmodified. verify is the evidence for both, and it needs Python
+# and the checkout; check alone does not, which is why none of this is
+# in cmd/check.
 #
 # The hashes go through grep because the first of the two lines carries
 # a label and sha256sum would skip it, checking one file of two and
