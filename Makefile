@@ -12,13 +12,8 @@ cmd/dump: $(OBJ)
 .c.o:
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Every object against every header. Over-approximated on purpose: a
-# per-file list is four lines that can leave one out, and rebuilding
-# five objects for a header nothing reads costs a second.
 $(OBJ): cmd/sha256.h cmd/hmac.h cmd/aes256.h cmd/tweetnacl.h
 
-# Vendored, kept verbatim. Built without the warning flags applied to
-# the corpus's own code, which is what this rule is for. See cmd/VENDOR.
 cmd/tweetnacl.o: cmd/tweetnacl.c
 	$(CC) $(VENDORCFLAGS) -c -o $@ cmd/tweetnacl.c
 
@@ -28,14 +23,6 @@ check: cmd/dump
 gen:
 	tools/gen
 
-# Every meta file claims a source and cmd/VENDOR says the vendored file
-# is unmodified. verify is the evidence for both, and it needs Python
-# and the checkout; check alone does not, which is why none of this is
-# in cmd/check.
-#
-# The hashes go through grep because the first of the two lines carries
-# a label and sha256sum would skip it, checking one file of two and
-# exiting zero.
 verify: check
 	{ cmd/dump -l | LC_ALL=C sort -u; \
 	  cut -d/ -f1 test/INDEX | LC_ALL=C sort -u; } | LC_ALL=C sort | uniq -c \
