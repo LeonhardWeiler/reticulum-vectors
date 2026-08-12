@@ -34,11 +34,11 @@ Ten bytes, in two parts:
     0       5     random
     5       5     unix seconds, big endian
 
-The timestamp is truncated to five bytes, not five bytes of a larger
-field. The same destination announcing twice therefore produces
-different bytes, which is why no announce vector can be produced a
-second time. It can still be rebuilt: expect records the ten bytes as
-they came out, so announce vectors are encode class.
+The timestamp is truncated to five bytes field. The same destination
+announcing twice therefore produces different bytes, which is why no
+announce vector can be produced a second time. It can still be rebuilt:
+expect records the ten bytes as they came out, so announce vectors
+are encode class.
 
     RNS/Destination.py#get_random_hash
 
@@ -47,9 +47,6 @@ Signed data
 
     signed_data = destination_hash || public_key || name_hash
                   || random_hash || ratchet || app_data
-
-Two things differ from the wire layout, and both are easy to get
-wrong.
 
 The destination hash is signed but is not part of the payload. It is
 taken from the packet header.
@@ -92,7 +89,7 @@ belongs to the announced key, but cannot recover the aspect names.
 
 Ratchet
 
-Thirty-two bytes, an X25519 public key, present when and only when the
+32 bytes, an X25519 public key, present when and only when the
 context flag in the header is set. A receiver that ignores the context
 flag will read the first 32 bytes of the ratchet as part of the
 signature and reject every ratchet announce.

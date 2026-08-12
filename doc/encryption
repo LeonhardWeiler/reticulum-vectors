@@ -196,8 +196,7 @@ shared_key, signing_key and encryption_key are all printed. An
 implementation whose decryption fails can find the step where it
 diverged rather than guessing.
 
-    plaintext_length   the length in bytes, or "-" if nothing was
-                       decrypted
+    plaintext_length   the length in bytes, or "-" if nothing was decrypted
     plaintext          the bytes as hex, or "-" when empty or absent
 
 The two together are unambiguous: length 0 with plaintext "-" is an

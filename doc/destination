@@ -14,8 +14,7 @@ joined with a single dot.
 
     name = app_name [ "." aspect ]*
 
-No component may contain a dot. This is enforced, not merely
-conventional.
+No component may contain a dot.
 
     RNS/Destination.py#app_name, RNS/Destination.py#aspect
 
@@ -31,8 +30,8 @@ Name hash
 
     name_hash = SHA-256(utf8(name))[0:10]
 
-10 bytes, that is 80 bits, not 128. The name is hashed as its utf-8
-bytes exactly as given. No unicode normalisation is applied.
+10 bytes. The name is hashed as its utf-8 bytes exactly as given.
+No unicode normalisation is applied.
 
 test/destination/utf8-precomposed and test/destination/utf8-decomposed carry the same name in
 precomposed and decomposed form. They look identical and produce
