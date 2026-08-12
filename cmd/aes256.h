@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Both return 0, or -1 on input the caller must then reject. */
+/* Both return 0, or -1 on input */
 
 int aes256_cbc_decrypt(const uint8_t key[32], const uint8_t iv[16],
                        const uint8_t *in, size_t len, uint8_t *out);

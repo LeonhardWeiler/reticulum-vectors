@@ -2,13 +2,8 @@
  *
  * Reticulum derives a 64-byte token key and splits it into a 32-byte
  * HMAC key and a 32-byte cipher key, so every token in this corpus is
- * AES-256. The 128-bit mode exists, and no link the reference
- * establishes uses it: MODE_AES256_CBC is the only enabled mode at the
- * pin. Nothing here is written before a vector needs it.
- *
- * Decryption only, for the same reason: every vector is decode class,
- * because the initialisation vector is drawn at random and is not
- * recoverable from the plaintext. */
+ * AES-256.
+*/
 
 #include "aes256.h"
 
@@ -201,10 +196,6 @@ int pkcs7_unpad(const uint8_t *in, size_t len, size_t *outlen)
 	if (len == 0 || len % 16 != 0)
 		return -1;
 
-	/* The upper bound is the only one the reference applies. A length of
-	 * zero removes nothing there, and refusing it here made dump report
-	 * no plaintext for a token the reference opens. See
-	 * test/group/zero-padding. */
 	n = in[len - 1];
 	if (n > 16)
 		return -1;

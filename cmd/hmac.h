@@ -4,11 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* The largest message either function is asked to authenticate. A
- * Reticulum token is bounded by the MTU of 500 bytes; the margin is
- * for the corpus, which also authenticates whole vectors. cmd/dump
- * checks at compile time that its own bound fits inside this one, so
- * the check in hmac_sha256 cannot fire. */
 #define HMAC_MAXMSG 8192
 
 void hmac_sha256(const uint8_t *key, size_t keylen,

@@ -4,13 +4,9 @@
  *	dump -e kind expectfile		rebuild raw from fields
  *	dump -l				list the kinds it knows
  *
- * dump is a second implementation of the wire format, independent of
- * python-rns. That is its purpose. It deliberately shares no code with
- * the generator.
- *
  * Every value it prints is hex, a decimal number, or a keyword from a
- * fixed set. A destination name is arbitrary bytes, so printing it as
- * text would let a newline in an aspect forge or hide a field. */
+ * fixed set.
+*/
 
 #include "aes256.h"
 #include "hmac.h"
@@ -22,12 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Each bound is the largest thing the format can hold, not one number
- * applied everywhere. A packet is bounded by the 500-byte MTU; the
- * largest input in the corpus is the 950-byte message of the adopted
- * signature vector. No vector carries more than four blobs or more
- * than 36 fields, which a resource advertisement reaches: eleven of
- * its own on top of a link data packet's twenty-five. */
 #define MAXBLOB   2048
 #define MAXBLOBS  4
 #define MAXFIELDS 40
@@ -42,8 +32,7 @@
 #define RATCHETLEN   32
 #define IVLEN        16
 #define MACLEN       32
-/* RNS/Cryptography/Token.py#TOKEN_OVERHEAD */
-#define TOKEN_OVERHEAD (IVLEN + MACLEN)
+#define TOKEN_OVERHEAD (IVLEN + MACLEN) /* RNS/Cryptography/Token.py#TOKEN_OVERHEAD */ 
 #define DERIVEDLEN   64
 #define MAX_HOPS     128	/* RNS.Transport.PATHFINDER_M */
 #define ECPUBSIZE    64		/* RNS/Link.py#ECPUBSIZE */
@@ -52,10 +41,6 @@
 #define MODE_DEFAULT 0x01	/* RNS/Link.py#MODE_DEFAULT */
 #define ENVELOPELEN  6		/* RNS/Channel.py#MSGTYPE */
 
-/* Two bounds in two headers can drift apart, and the one that would
- * give way is inside hmac_sha256, which cannot report anything. This
- * declaration has a negative array size when it does, so the drift is a
- * compile error rather than a wrong verdict. */
 typedef char hmac_bound_fits[MAXBLOB <= HMAC_MAXMSG ? 1 : -1];
 
 static const char *argv0;

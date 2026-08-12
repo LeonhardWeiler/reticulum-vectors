@@ -8,18 +8,15 @@
 #	dump kind raw            matches expect
 #	dump -e kind expect      matches raw, for the encode class
 #
-# The second is the corpus proper. The third turns "determinism: encode"
-# from a claim in a text file into a test.
-#
 #	DUMP=./my-decoder cmd/check	check another implementation
 #	ENCODE=no cmd/check		skip the round trip
 #
 # A decoder that implements some kinds and not others exits 77 for the
 # rest; those vectors are reported as skipped and not counted against
-# it. Nothing else may use that status.
+# it.
 #
-# The kinds are the directories under test/. There is no list of them
-# here; dump -l prints the ones dump knows.
+# The kinds are the directories under test/.
+# dump -l prints the ones dump knows.
 #
 # Exits non-zero if any vector fails.
 
@@ -27,8 +24,6 @@ root=$(dirname "$0")/..
 DUMP=${DUMP:-$root/cmd/dump}
 ENCODE=${ENCODE:-yes}
 
-# A foreign harness that hangs would hang this script. timeout is not
-# POSIX; where it is missing the calls are made directly.
 if command -v timeout >/dev/null 2>&1; then
 	run() { timeout 30 "$@"; }
 else
@@ -50,9 +45,6 @@ skipped_kinds=
 err=$(mktemp) || exit 2
 trap 'rm -f "$err"' EXIT INT TERM
 
-# The corpus is what test/INDEX says it is. Counting what is present is
-# not a check: a copy of test/ with forty vectors removed passes every
-# one of the eight it kept.
 index="$root/test/INDEX"
 if [ ! -f "$index" ]; then
 	echo "no test/INDEX; the corpus cannot say what it is missing" >&2
@@ -69,7 +61,6 @@ if [ -n "$differs" ]; then
 fi
 
 fail_with() {
-	# Named from the repository root; the path built here runs through cmd/..
 	echo "FAIL ${1#"$root"/}"
 	shift
 	printf '%s\n' "$@" | sed 's/^/    /'
@@ -80,9 +71,7 @@ meta_field() {
 	sed -n "s/^$2  *//p" "$1/meta"
 }
 
-# A name wider than the column silently shifts the value, and two
-# vectors that disagree only in alignment compare equal to a decoder
-# that pads the same way. Nothing else reads the width.
+# A name wider than the column silently shifts the value
 check_format() {
 	awk -v w=18 '
 		NF == 0 { next }
@@ -121,7 +110,7 @@ for dir in "$root"/test/*/*/; do
 		*) fail_with "$dir" "meta names an unknown determinism class: $determinism"; continue ;;
 	esac
 
-	# stderr is kept out of the comparison: a warning is not a field.
+	# stderr is kept out of the comparison
 	out=$(run "$DUMP" "$kind" "$dir/raw" 2>"$err")
 	status=$?
 
@@ -136,17 +125,12 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
-	# The status is named: a decoder that dies on a signal writes nothing
-	# to stderr, and 134 or 139 is a different thing to look at than a
-	# decoder that printed a reason and exited 1.
-	if [ "$status" -ne 0 ]; then
+	# The status is named: a decoder that dies on a signal writes nothing to stderr
+  if [ "$status" -ne 0 ]; then
 		fail_with "$dir" "exit status $status" "$(cat "$err")"
 		continue
 	fi
 
-	# Not compared, but not discarded either: a sanitizer build otherwise
-	# reports every vector passing and prints its findings to a stream
-	# nothing mentions.
 	if [ -s "$err" ]; then
 		noise=$((noise + 1))
 	fi
@@ -156,8 +140,6 @@ for dir in "$root"/test/*/*/; do
 		continue
 	fi
 
-	# The exit status of a pipeline is the status of its last command, so
-	# diff's verdict is read from its output.
 	changed=$(printf '%s\n' "$out" | diff -u "$dir/expect" - | tail -n +3)
 	if [ -n "$changed" ]; then
 		fail_with "$dir" "$changed"
@@ -175,9 +157,6 @@ for dir in "$root"/test/*/*/; do
 			continue
 		fi
 
-	# The class is derived by tools/gen, which a consumer does not run.
-	# Without this, decode is the one field in meta whose error skips a
-	# check rather than causing one.
 	elif [ "$ENCODE" = yes ] &&
 	     back=$(run "$DUMP" -e "$kind" "$dir/expect" 2>/dev/null) &&
 	     [ -z "$(printf '%s\n' "$back" | diff "$dir/raw" -)" ]; then
@@ -188,17 +167,8 @@ for dir in "$root"/test/*/*/; do
 	pass=$((pass + 1))
 done
 
-# What the result was measured against, so a count recorded elsewhere can
-# be told from the same count against a different corpus. cksum because
-# it is POSIX and this is a fingerprint, not a signature.
-#
-# The order comes from INDEX, not from a glob: a glob is expanded in the
-# caller's collating order, and the same corpus fingerprints differently
-# under a UTF-8 locale and under C.
 corpus=$( { cat "$index"
             while read -r v; do
-                    # Quiet: a vector missing a file is already reported
-                    # by name above.
                     cat "$root/test/$v/raw" "$root/test/$v/expect" 2>/dev/null
             done < "$index"
           } | cksum | cut -d' ' -f1)
@@ -206,8 +176,6 @@ corpus=$( { cat "$index"
 if [ "$skip" -eq 0 ]; then
 	echo "$pass passed, $fail failed, corpus $corpus"
 else
-	# Naming the kinds keeps a partial result from reading as a whole one.
-	# Unquoted, so the shell splits the list and drops the empty first line.
 	echo "$pass passed, $fail failed, corpus $corpus, $skip skipped:" \
 	     $(printf '%s\n' "$skipped_kinds" | sort -u)
 fi
@@ -221,8 +189,6 @@ if [ "$seen" -eq 0 ]; then
 	exit 2
 fi
 
-# Nothing ran, which is not a result. A decoder that exits 77 for every
-# kind has measured itself against no vector at all.
 if [ "$pass" -eq 0 ] && [ "$fail" -eq 0 ]; then
 	echo "nothing was checked" >&2
 	exit 2

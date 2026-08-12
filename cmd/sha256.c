@@ -1,5 +1,4 @@
-/* SHA-256, FIPS 180-4. One-shot only; the corpus never hashes more
- * than a few kilobytes at a time. */
+/* SHA-256, FIPS 180-4 */
 
 #include "sha256.h"
 

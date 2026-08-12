@@ -7,9 +7,6 @@ cmd/check they are how the results in ../CONFORMANCE were produced.
 
     ENCODE=no DUMP=conformance/<impl>/<binary> cmd/check
 
-ENCODE=no because none of them implements the -e direction. It is not
-part of the wire format, only of the corpus.
-
 
 Where to put the implementations
 
@@ -44,8 +41,7 @@ and the row is only reproducible at that commit.
 
 What a harness may and may not do
 
-The six rules are in ../doc/harness. What follows is what they mean for
-the directory, and not a second copy of them.
+The six rules are in ../doc/harness.
 
 ../CONFORMANCE says per implementation which fields were called and
 which were transcribed. Read the numbers with that in mind: a
@@ -69,10 +65,7 @@ One directory here is not a measurement
     example/vectors.yml
                       the workflow that runs it, to copy into another
                       repository as .github/workflows/vectors.yml
-                      behind it. It is here because this is where
-                      harnesses live and doc/harness sends a first
-                      reader to it, and it is not a row in
-                      ../CONFORMANCE because it measures nothing.
+                      behind it.
 
                       DUMP=conformance/example/dump.py ENCODE=no cmd/check
 

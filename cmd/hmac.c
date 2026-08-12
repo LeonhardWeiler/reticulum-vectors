@@ -1,7 +1,4 @@
-/* HMAC-SHA256 (RFC 2104) and HKDF-SHA256 (RFC 5869).
- *
- * Written out rather than vendored, for the same reason as sha256.c:
- * both are short, and every vector in the corpus exercises them. */
+/* HMAC-SHA256 (RFC 2104) and HKDF-SHA256 (RFC 5869). */
 
 #include "hmac.h"
 #include "sha256.h"
@@ -19,11 +16,6 @@ void hmac_sha256(const uint8_t *key, size_t keylen,
 	uint8_t digest[HASH];
 	size_t i;
 
-	/* Unreachable: dump.c refuses to compile unless its own bound fits
-	 * inside this one. It is here rather than nowhere because the
-	 * alternative to stopping is writing nothing to out and letting the
-	 * caller compare an uninitialised buffer, which reads as a failed
-	 * authentication and is indistinguishable from a real one. */
 	if (datalen > HMAC_MAXMSG)
 		abort();
 
@@ -45,7 +37,7 @@ void hmac_sha256(const uint8_t *key, size_t keylen,
 }
 
 /* RNS/Cryptography/HKDF.py#hkdf. An absent salt is 32 zero bytes and an
- * absent context is empty, which is what Identity passes. */
+ * absent context is empty. */
 void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
                  const uint8_t *salt, size_t saltlen,
                  const uint8_t *context, size_t contextlen,
@@ -56,13 +48,6 @@ void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
 	size_t produced = 0, blocklen = 0;
 	unsigned counter = 0;
 
-	/* The reference raises on both, and no caller here reaches either:
-	 * dump checks the one input a file can make empty, the interface
-	 * access code, where it reads it. That claim was once wrong, and an
-	 * access code of zero bytes ended dump here with no message.
-	 *
-	 * Returning quietly would leave out untouched for the caller to
-	 * compare, which reads as a derivation that came out wrong. */
 	if (outlen == 0 || ikmlen == 0)
 		abort();
 
@@ -78,9 +63,6 @@ void hkdf_sha256(const uint8_t *ikm, size_t ikmlen,
 		size_t n = 0, take;
 
 		memcpy(input + n, block, blocklen);        n += blocklen;
-		/* Guarded because every caller here passes NULL with a length
-		 * of zero, and C11 7.24.1p2 leaves memcpy from a null pointer
-		 * undefined even then. */
 		if (contextlen > 0) {
 			memcpy(input + n, context, contextlen); n += contextlen;
 		}
