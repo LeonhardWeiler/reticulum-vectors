@@ -1,24 +1,15 @@
 Reticulum Vector Corpus
 
-Verified Reticulum protocol data, stored as files that can be checked
-without running Python.
-
-
 What this is
 
-Each vector is a directory holding input bytes, the expected field
-decomposition, and a record of where the data came from. An
-implementation checks itself by decoding the input and comparing its
-output to the expected decomposition.
+Each vector is a directory holding input bytes, the expected field decomposition, and a record of where the data came from. An implementation checks itself by decoding the input and comparing its output to the expected decomposition.
 
-This is not a specification. It does not define correct behaviour. It
-records the observed behaviour of one implementation at one version:
+This is not a specification. It does not define correct behaviour. It records the observed behaviour of one implementation at one version:
 
     python-rns 1.4.2, commit b48b96e61676504e0a4e527b33b9a0b4495c6872,
     openssl backend
 
-Every vector records that pin. When the pin moves, vectors are
-regenerated and the differences are examined.
+Every vector records that pin. When the pin moves, vectors are regenerated and the differences are examined.
 
 
 Checking an implementation
@@ -26,38 +17,24 @@ Checking an implementation
     make
     cmd/check
 
-runs the corpus against cmd/dump. To check your own implementation,
-make it print the same field format and substitute it for dump:
+runs the corpus against cmd/dump. To check your own implementation, make it print the same field format and substitute it for dump:
 
     DUMP=./my-implementation cmd/check
 
-A decoder that implements only the decode direction can skip the
-round trip described below:
+A decoder that implements only the decode direction can skip the round trip described below:
 
     DUMP=./my-implementation ENCODE=no cmd/check
 
-It gives up most of what the corpus can tell it. Decoding proves an
-implementation reads what python-rns writes; the round trip is the only
-thing here that says anything about what it writes.
+It gives up most of what the corpus can tell it. Decoding proves an implementation reads what python-rns writes; the round trip is the only thing here that says anything about what it writes.
 
-doc/harness is the whole of what a program has to do to be substituted
-for dump here, including which kinds it may leave out and how that
-appears in the result, and cmd/dump -l lists the kinds it can be asked
-for. It also shows how to run this from an implementation's own CI,
-which is the two commands above and nothing to install.
+doc/harness is the whole of what a program has to do to be substituted for dump here, including which kinds it may leave out and how that appears in the result, and cmd/dump -l lists the kinds it can be asked for. It also shows how to run this from an implementation's own CI.
 
-The corpus number is a checksum over test/INDEX and every raw and
-expect. It says what the result was measured against. A count alone
-does not: two vectors have changed shape without changing the count,
-and any number recorded elsewhere against the old shape would still
-have looked current. Record it beside any result kept outside this
-repository.
+The corpus number is a checksum over Test/INDEX, every raw and expect. It says what the result was measured against. A count alone does not: two vectors have changed shape without changing the count, and any number recorded elsewhere against the old shape would still have looked current. Record it beside any result kept outside this repository.
 
 
 One vector
 
-Every vector is three files, and the smallest kind shows the shape.
-test/identity/upstream-0 is a public key and what is derived from it:
+Every vector is three files, and the smallest kind shows the shape. Test/identity/upstream-0 is a public key and what is derived from it:
 
     $ cmd/dump identity test/identity/upstream-0/raw
     public_key         4219d9ce29da42bc823b66b24a051c65...c616501b
@@ -65,26 +42,21 @@ test/identity/upstream-0 is a public key and what is derived from it:
     ed25519_public     1cd07b674027511e73469c4edec93634...c616501b
     identity_hash      650b5d76b6bec0390d1f8cfca5bd33f9
 
-That output is test/identity/upstream-0/expect, byte for byte, and that
-is the whole contract. A decoder passes a vector when
+That output is test/identity/upstream-0/expect, byte for byte, and that is the whole contract. A decoder passes a vector when
 
     my-decoder <kind> test/<kind>/<name>/raw
 
-prints the expect file. Where the determinism class is encode, cmd/check
-also runs
+prints the expect file. Where the determinism class is encode, cmd/check also runs
 
     my-decoder -e <kind> test/<kind>/<name>/expect
 
 and requires raw back.
 
-The hex above is shortened to fit this page. Nothing in the format wraps
-or elides, so read a vector rather than a description of one:
+The hex above is shortened to fit this page. Nothing in the format wraps or elides, so read a vector rather than a description of one:
 
     cat test/pathrequest/tagged/*
 
-That one is a whole packet and uses no cryptography. Its expect file
-holds the eleven header fields every packet kind carries, then five of
-its own. doc/fields is the index of all of them.
+That one is a whole packet and uses no cryptography. Its expect file holds the eleven header fields every packet kind carries, then five of its own. doc/fields is the index of all of them.
 
 
 Vector format
@@ -97,13 +69,7 @@ Vector format
         raw       input, hex, one blob per line
         expect    field decomposition, one field per line
 
-Vectors are named after what they record, not numbered. Inserting a
-case does not renumber the rest, and doc/ can refer to one by name.
-
-cmd/check refuses to run against a test/ that does not hold exactly
-what INDEX lists, and names what is missing. Without that, a corpus
-with forty vectors removed reports "8 passed, 0 failed" and exits
-zero, and a count is not a claim about anything.
+cmd/check refuses to run against a test/ that does not hold exactly what INDEX lists, and names what is missing.
 
 meta records these fields, spelled in lower case as shown:
 
@@ -112,16 +78,8 @@ meta records these fields, spelled in lower case as shown:
     purpose       one line
 
 cmd/check requires all three and rejects an unknown determinism class.
-A field nothing reads is a field that drifts.
 
-The kind is not among them. It is the directory the vector is filed
-under, and recording it twice only bought a rule to keep the two
-agreeing.
-
-A vector of the encode class carries in expect everything raw contains,
-so raw can be rebuilt from it; cmd/check does exactly that and diffs
-the result against raw. Nearly every vector is of that class. Those
-that are not name their reason:
+A vector of the encode class carries in expect everything raw contains, so raw can be rebuilt from it; cmd/check does exactly that and diffs the result against raw. Nearly every vector is of that class. Those that are not name their reason:
 
     test/signature/, test/sign/   expect records the 950-byte message
                                   by length and digest, not by content
@@ -129,38 +87,19 @@ that are not name their reason:
                                   printed, so expect names the rule and
                                   the numbers behind it instead
 
-A broken rule does not by itself put a vector in the decode class.
-short-plaintext is broken inside a plaintext the packet around it
-decoded whole, so expect holds every byte of raw; test/linkdata holds
-four of those. See doc/fields, section Rejection.
+A broken rule does not by itself put a vector in the decode class. short-plaintext is broken inside a plaintext the packet around it decoded whole, so expect holds every byte of raw; test/linkdata holds four of those. See doc/fields, section Rejection.
 
-The class says whether expect is total, not whether the reference
-could produce these bytes a second time. Most Reticulum objects
-contain randomness and cannot be produced twice; expect records what
-that randomness came out as, and raw follows from it.
+The class says whether expect is total, not whether the reference could produce these bytes a second time. Most Reticulum objects contain randomness and cannot be produced twice; expect records what that randomness came out as, and raw follows from it.
 
-An object whose input is not the object itself carries that input in
-expect too, so that expect stays total: the recipient key of an
-encrypted packet, the link request a proof answers. Every such value is
-already a line of raw. See doc/.
+An object whose input is not the object itself carries that input in expect too, so that expect stays total: the recipient key of an encrypted packet, the link request a proof answers. Every such value is already a line of raw. See doc/.
 
-Every value in expect is one of three things: hex, a decimal number, or
-a keyword from a fixed set. Byte strings are always hex, names
-included. A destination name is arbitrary bytes, and printed as text a
-newline in an aspect would end the line early and let a vector forge or
-hide a field.
+Every value in expect is one of three things: hex, a decimal number, or a keyword from a fixed set. Byte strings are always hex, names included. 
 
-No value is ever empty. Hex cannot spell the empty byte string, and a
-field name followed by nothing is a line with a trailing space that
-cannot be told from a truncated one, so the empty byte string is
-written "-" like every other absent value. test/destination/empty-aspect
-and test/plain/empty are where it happens.
+No value is ever empty. Hex cannot spell the empty byte string, and a field name followed by nothing is a line with a trailing space that cannot be told from a truncated one, so the empty byte string is written "-" like every other absent value.
 
-The number of hex lines in raw depends on the kind and is documented
-in doc/.
+The number of hex lines in raw depends on the kind and is documented in doc/.
 
-An object that cannot be decoded yields the rule it broke and the
-numbers behind it, rather than a single word:
+An object that cannot be decoded yields the rule it broke and the numbers behind it:
 
     invalid            short-payload
     payload_length     147
@@ -169,125 +108,62 @@ numbers behind it, rather than a single word:
 
 Layout
 
-    CONFORMANCE results of running the corpus against other
-                implementations
+    CONFORMANCE results of running the corpus against other implementations
     conformance/ the harnesses those results were produced with
-    doc/        byte layouts and derivation rules; start at doc/fields,
-                and at doc/harness to check your own implementation
+    doc/        byte layouts and derivation rules; start at doc/fields, and at doc/harness to check your own implementation
     test/       the vectors
     cmd/        dump, a decoder written in C; check, a shell script
     tools/      gen, the Python generator
 
-What a consumer needs is test/, doc/ and cmd/. The other two are the
-larger half of the repository and neither is part of the corpus:
-tools/ needs Python and the pinned checkout, and conformance/ holds
-seven harnesses in six languages, needing Go, Rust, Node, Elixir and a
-C++ compiler between them. They are here because a result is only evidence
-if the thing that produced it is on file. Nothing under either is
-needed to check an implementation against these vectors.
+A user needs test/, doc/ and cmd/. The other two are the larger half of the repository and neither is part of the corpus: tools/ needs Python and the pinned checkout, and conformance/ needs the compiler for the languages the harness is implemented in.
 
-doc/fields is the index of every name an expect file can carry, what it
-holds and which kinds carry it. It is the shortest path from this
-README to a working harness. The vectors are the authority on which
-names exist; the document is where what they mean is written.
+doc/fields is the index of every name an expect file can carry, what it holds and which kinds carry it. The vectors are the authority on which names exist.
 
-dump needs a C compiler and nothing else. SHA-256, HMAC-SHA256, HKDF
-and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies
-Ed25519 signing and verification, SHA-512 and X25519 and is vendored
-unmodified, see cmd/VENDOR.
+dump only needs a C compiler. SHA-256, HMAC-SHA256, HKDF and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies Ed25519 signing and verification, SHA-512 and X25519 and is vendored unmodified, see cmd/VENDOR.
 
 
 Where raw and expect come from
 
-raw is what the reference produced, or configuration a human would have
-typed. No line of it is a value tools/gen composed out of the
-reference's own functions: the one that was, the interface key of
-test/ifac, is now derived in expect from the two strings it comes from,
-so cmd/dump derives it too and the two are diffed. See doc/packet.
+raw is what the reference produced, or configuration a human would have typed. No line of it is a value tools/gen composed out of the reference's own functions. See doc/packet.
 
-expect is a different matter. It is tools/gen's own reading of raw, and
-cmd/dump reads raw again without sharing a line of code with it. Two
-readings that agree is the point; one reading copied twice would not
-be.
+expect is tools/gen's own reading of raw, and cmd/dump reads raw again without sharing a line of code with it.
 
-Those two share no code and they do share a reader. Where the reading
-itself is wrong, both are wrong together and the round trip agrees with
-itself. CONFORMANCE is the answer to that and the only one there is:
-seven implementations, six languages, seven authors who read the
-reference without reading this. That is what makes it more than a
-scoreboard, and one of them has already found a rule the corpus had
-wrong.
+The backend is part of the pin because python-rns ships two curve implementations, picks one at import time by what is installed, and they do not agree everywhere. Vectors turn on the difference, and tools/gen refuses to run under the other one. Which vectors is not counted here: see doc/identity, section "Canonical signatures", and doc/encryption, section "Contributory behaviour", which name them.
 
-The backend is part of the pin because python-rns ships two curve
-implementations, picks one at import time by what is installed, and
-they do not agree everywhere. Vectors turn on the difference, and
-tools/gen refuses to run under the other one. Which vectors is not
-counted here: see doc/identity, section "Canonical signatures", and
-doc/encryption, section "Contributory behaviour", which name them.
-
-gen needs Python and a checkout of the pinned reference implementation.
-It looks for one in ../upstream and takes --checkout PATH otherwise.
-Consumers of the corpus need neither.
+gen needs Python and a checkout of the pinned reference implementation. It looks for one in ../upstream and takes --checkout PATH otherwise. Consumers of the corpus need neither.
 
     make verify
 
-runs check and additionally regenerates every vector from the pinned
-reference implementation and fails if a single byte would change, and
-checks the vendored file against the hashes in cmd/VENDOR.
+runs check and additionally regenerates every vector from the pinned reference implementation and fails if a single byte would change, and checks the vendored file against the hashes in cmd/VENDOR.
 
 doc/ and the programs name the reference by symbol:
 
     RNS/Packet.py#get_hashable_part
 
-The anchor is the name to grep for. There is no line number, so there
-is nothing in a citation that goes stale while the pin holds; when the
-pin moves and a symbol is gone, the vectors are regenerated anyway.
-
-The regeneration is the evidence behind the source line in every meta
-file. It needs Python and the checkout; cmd/check alone needs neither.
+The anchor is the name to grep for.
 
 
 Every private key here is public
 
-Five kinds carry a private key in every one of their vectors:
-test/keyset/ and test/sign/ carry an identity key, test/encrypted/ the
-recipient's, test/linkdata/ the responder's link key, and test/ifac/
-the interface key, which is derived rather than given and no less
-public for it. The ones named upstream are lifted from the upstream
-test suite; the rest are generated from a fixed seed or derived from a
-published network name and passphrase. They are published, in this
-repository, on purpose, because a decryption vector cannot be checked
-without one.
+Five kinds carry a private key in every one of their vectors: test/keyset/ and test/sign/ carry an identity key, test/encrypted/ the recipient's, test/linkdata/ the responder's link key, and test/ifac/ the interface key, which is derived rather than given and no less public for it. The ones named upstream are lifted from the upstream test suite; the rest are generated from a fixed seed or derived from a published network name and passphrase. They are published, in this repository, on purpose, because a decryption vector cannot be checked without one.
 
-Never load one into anything that talks to a network. An identity built
-from a key in this corpus can be impersonated by anyone who has read
-this corpus, and every destination derived from it is already known.
+Never load one into anything that talks to a network. An identity built from a key in this corpus can be impersonated by anyone who has read this corpus, and every destination derived from it is already known.
 
 
 Known limitation
 
-Vectors generated from python-rns cannot detect bugs in python-rns.
-They define "compatible" as "identical to the reference
-implementation". That is the right definition for interoperability and
-the wrong one for correctness.
+Vectors generated from python-rns cannot detect bugs in python-rns. They define "compatible" as "identical to the reference implementation".
 
 
 Relationship to the upstream test suite
 
-The upstream suite is a regression suite. It builds objects with RNS
-and validates them with RNS, and asserts nothing about the resulting
-bytes. It cannot detect an incompatibility in a different
-implementation.
+The upstream suite is a regression suite. It builds objects with RNS and validates them with RNS, and asserts nothing about the resulting bytes. It cannot detect an incompatibility in a different implementation.
 
-Where upstream does provide reusable values, they are adopted here
-verbatim and their origin recorded in meta, rather than re-derived.
+Where upstream does provide reusable values, they are adopted here verbatim and their origin recorded in meta, rather than re-derived.
 
 Primitives that every language already provides are not tested here.
 
 
 Upstream license
 
-Reticulum is licensed permissively with two added restrictions: no use
-in systems intended to harm humans, and no use in AI or language model
-training datasets. Adopted values are attributed in the meta file of
-the vector that carries them.
+Reticulum is licensed permissively with two added restrictions: no use in systems intended to harm humans, and no use in AI or language model training datasets. Adopted values are attributed in the meta file of the vector that carries them.
