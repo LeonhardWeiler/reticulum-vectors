@@ -8,11 +8,11 @@ field names.
 
 Constants
 
-    MAPHASH_LEN         4 bytes    RNS/Resource.py#MAPHASH_LEN
-    RANDOM_HASH_SIZE    4 bytes    RNS/Resource.py#RANDOM_HASH_SIZE
-    SDU                 464 bytes  RNS/Resource.py#SDU
-    HASHMAP_MAX_LEN     74 entries RNS/Resource.py#HASHMAP_MAX_LEN
-    WINDOW              4 parts    RNS/Resource.py#WINDOW
+    MAPHASH_LEN         4   bytes     RNS/Resource.py#MAPHASH_LEN
+    RANDOM_HASH_SIZE    4   bytes     RNS/Resource.py#RANDOM_HASH_SIZE
+    SDU                 464 bytes     RNS/Resource.py#SDU
+    HASHMAP_MAX_LEN     74  entries   RNS/Resource.py#HASHMAP_MAX_LEN
+    WINDOW              4   parts     RNS/Resource.py#WINDOW
 
 HASHMAP_MAX_LEN is derived from the link MDU and is how many four-byte
 map hashes fit in one advertisement or one update. It decides where a
@@ -208,7 +208,7 @@ A receiver that has the whole resource can compute it. So can anyone
 else who has the data, which is what it is for: it says the transfer
 arrived, not who sent it.
 
-Sixty-four bytes is the only length that decodes. Any other is rejected
+64 bytes is the only length that decodes. Any other is rejected
 as invalid-length, with the one accepted length beside it, and
 test/resourceproof/invalid-length is one byte under. A delivery proof
 has two accepted lengths where this has one, and 64 is one of them: a
@@ -218,10 +218,9 @@ delivery proof path takes a hash of the data for a signature.
 
 Cancels, 0x06 and 0x07
 
-The resource hash, 32 bytes, and nothing else. 0x06 is the sender
-giving up and 0x07 the receiver. Either end sends one only while it
-still believes the transfer is running: a resource that has completed
-cancels nothing.
+The resource hash isi 32 bytes. 0x06 is the sender giving up and 0x07 the
+receiver. Either end sends one only while it still believes the transfer
+is running: a resource that has completed cancels nothing.
 
     RNS/Resource.py#COMPLETE
 

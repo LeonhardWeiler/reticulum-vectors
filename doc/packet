@@ -12,11 +12,11 @@ test/ifac/.
 
 Constants
 
-    MTU                 500 bytes    RNS/Reticulum.py#MTU
-    HEADER_MAXSIZE       35 bytes    RNS/Reticulum.py#HEADER_MAXSIZE
-    IFAC_MIN_SIZE         1 byte     RNS/Reticulum.py#IFAC_MIN_SIZE
-    MDU                 464 bytes    RNS/Reticulum.py#MDU
-    PATHFINDER_M        128 hops     RNS/Transport.py#PATHFINDER_M
+    MTU               500 bytes    RNS/Reticulum.py#MTU
+    HEADER_MAXSIZE     35 bytes    RNS/Reticulum.py#HEADER_MAXSIZE
+    IFAC_MIN_SIZE       1 byte     RNS/Reticulum.py#IFAC_MIN_SIZE
+    MDU               464 bytes    RNS/Reticulum.py#MDU
+    PATHFINDER_M      128 hops     RNS/Transport.py#PATHFINDER_M
 
 
 Header
@@ -102,12 +102,6 @@ threshold from a missing one:
 
     test/announce/hop-limit         128 hops, rejected
     test/announce/hop-limit-below   127 hops, decodes
-
-Six of the seven implementations measured in CONFORMANCE fail the
-first, and they do not fail it for the same reason: one threshold is a
-hop too high, another a hop too low, and three implementations have no
-threshold at all. Only the pair separates them, and one implementation
-now passes both.
 
 The hop count is not part of any signed material, so the second vector
 verifies exactly as test/announce/minimal does.
@@ -381,7 +375,7 @@ and diffs the result against raw. A packet that broke a rule has no
 fields to lay out and is decode class.
 
 A packet that cannot be decoded produces the rule it broke and the
-numbers behind it, and nothing else. Each rule has a vector:
+numbers behind it. Each rule has a vector:
 
     invalid            short-header       test/announce/no-header
     length             1
@@ -453,11 +447,6 @@ no function to call, so tools/gen composes it from the same three RNS
 functions in the same order.
 
     RNS/Reticulum.py#ifac_netname to :971
-
-The key is a field rather than a line of raw for that reason. cmd/dump
-derives it again from the two strings, sharing no code with tools/gen,
-and cmd/check diffs the results: a composed value nothing can check
-becomes a derived value two implementations agree on.
 
 Encode class: cmd/check masks the packet again and diffs the frame.
 The corpus therefore checks both directions of the mask, which is the

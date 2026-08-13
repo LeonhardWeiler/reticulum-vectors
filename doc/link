@@ -13,11 +13,11 @@ are described here.
 
 Constants
 
-    ECPUBSIZE       64 bytes   RNS/Link.py#ECPUBSIZE, both public keys
-    LINK_MTU_SIZE    3 bytes   RNS/Link.py#LINK_MTU_SIZE
-    MTU_BYTEMASK  0x1fffff     RNS/Link.py#MTU_BYTEMASK
-    MODE_BYTEMASK     0xe0     RNS/Link.py#MODE_BYTEMASK
-    MODE_DEFAULT      0x01     RNS/Link.py#MODE_DEFAULT, AES-256-CBC
+    ECPUBSIZE        64 bytes   RNS/Link.py#ECPUBSIZE, both public keys
+    LINK_MTU_SIZE    3  bytes   RNS/Link.py#LINK_MTU_SIZE
+    MTU_BYTEMASK     0x1fffff   RNS/Link.py#MTU_BYTEMASK
+    MODE_BYTEMASK    0xe0       RNS/Link.py#MODE_BYTEMASK
+    MODE_DEFAULT     0x01       RNS/Link.py#MODE_DEFAULT, AES-256-CBC
 
 Only MODE_AES256_CBC is enabled at this pin. ENABLED_MODES holds that
 one value, and signalling_bytes raises on any other, so no packet the
@@ -151,16 +151,13 @@ carries a signature where a request carries an Ed25519 key.
 
 Signed material
 
-    link id || responder X25519 public || signer Ed25519 public
-             || signalling
+    link id || responder X25519 public || signer Ed25519 public || signalling
 
 Three of the four parts are not in the packet.
 
     link id            derived from the link request
-    signer Ed25519     the Ed25519 half of the identity of the
-                       destination the request was addressed to
-    signalling         present in the packet, and signed in the
-                       position it occupies there
+    signer Ed25519     the Ed25519 half of the identity of the destination the request was addressed to
+    signalling         present in the packet, and signed in the position it occupies there
 
 The signature is made with the identity key of the destination, not
 with a key drawn for the link. That is not a rule about link request
@@ -173,8 +170,7 @@ section on delivery proofs below.
     RNS/Link.py#signed_data, RNS/Link.py#signed_data,
     RNS/Link.py#peer_sig_pub_bytes
 
-An initiator that verifies against a key it did not already hold
-proves nothing. The identity comes from an announce received earlier,
+The identity comes from an announce received earlier,
 which is what binds a link to a destination.
 
 test/linkproof/signalling-removed is the 96-byte form, made by
@@ -234,8 +230,7 @@ encrypted at all:
     0x09   request         a msgpack array of three
     0x0a   response        a msgpack array of two
     0x0e   channel         a channel envelope
-    0xfa   keepalive       one byte, in clear, not a token: 0xff from
-                           the initiator and 0xfe in reply
+    0xfa   keepalive       one byte, in clear, not a token: 0xff from the initiator and 0xfe in reply
     0xfb   link identify   identity public key || signature
     0xfc   link close      the link id
     0xfe   link rtt        msgpack float, sent by the initiator
@@ -273,10 +268,8 @@ PacketReceipt would read it.
 
 The key that signs is not the same at the two ends:
 
-    initiator   the Ed25519 key it drew for this link, whose public
-                half is in the link request
-    responder   the identity key of the destination, whose public half
-                is in an announce
+    initiator   the Ed25519 key it drew for this link, whose public half is in the link request
+    responder   the identity key of the destination, whose public half is in an announce
 
     RNS/Link.py#X25519PrivateKey, RNS/Link.py#X25519PrivateKey
 
@@ -297,9 +290,8 @@ identity.
 Request and response
 
 Contexts 0x09 and 0x0a, and the first place msgpack is part of the wire
-format rather than of an application above it. Both plaintexts are one
-msgpack array and nothing else: no length, no type byte, no framing of
-their own.
+format rather than of an application above it. Both plaintexts are only one
+msgpack array.
 
 A request is three elements:
 
