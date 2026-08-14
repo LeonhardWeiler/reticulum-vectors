@@ -57,6 +57,7 @@ linkdata/identify
 linkdata/keepalive
 linkdata/minimal
 linkdata/request
+linkdata/request-empty-data
 linkdata/request-no-data
 linkdata/request-short
 linkdata/resource-advertisement
@@ -71,6 +72,7 @@ linkdata/resource-request-exhausted
 linkdata/resource-request-exhausted-short
 linkdata/resource-request-short
 linkdata/response
+linkdata/response-empty-data
 linkdata/rtt
 linkdata/short-payload
 linkproof/altered-signature

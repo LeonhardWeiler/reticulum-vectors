@@ -333,9 +333,11 @@ rather than a decimal, because that is what the wire carries.
     RNS/vendor/umsgpack.py#_pack2
 
 nil and a zero-length byte string are different on the wire, 0xc0
-against 0xc4 0x00, and this format spells both "-". Only the nil case
-has a vector; a request with no data is what Link.request produces when
-it is called with a path alone.
+against 0xc4 0x00, and this format spells both "-". Both have a vector,
+and both are what Link.request produces: the nil when it is called with
+a path alone, the empty bin when it is called with b"" as the data.
+test/linkdata/request-no-data and test/linkdata/request-empty-data, and
+the same pair for the response.
 
 The array header is one byte and everything inside it carries its own
 length, so msgpack bounds the read from the second byte on. The first

@@ -2072,6 +2072,7 @@ def gen_linkdata(RNS, w, verify, session):
 
 
 REQUEST_PATH = "/vectors/echo"
+EMPTY_PATH   = "/vectors/empty"
 
 
 def gen_request(RNS, w, verify, session, initiator, request_raw, responder_private):
@@ -2093,6 +2094,15 @@ def gen_request(RNS, w, verify, session, initiator, request_raw, responder_priva
         response_generator=lambda path, data, rid, lid, ident, at: b"ok",
         allow=RNS.Destination.ALLOW_ALL)
 
+    # The empty body, on both sides. msgpack writes it as a bin of
+    # length zero where an absent one is nil, so the two differ in raw
+    # and print the same "-": hex cannot spell the empty byte string.
+    # A decoder that reads the length and returns before the bytes gets
+    # the same line for the wrong reason.
+    session["in_destination"].register_request_handler(EMPTY_PATH,
+        response_generator=lambda path, data, rid, lid, ident, at: b"",
+        allow=RNS.Destination.ALLOW_ALL)
+
     with pinned(RNS, "linkdata-request"):
         with captured(RNS) as asked:
             initiator.request(REQUEST_PATH, data=b"reticulum")
@@ -2102,6 +2112,19 @@ def gen_request(RNS, w, verify, session, initiator, request_raw, responder_priva
         with captured(RNS) as answered:
             responder.handle_request(asked[0].getTruncatedHash(),
                                      umsgpack.unpackb(packed))
+
+        # Last, so that every packet above draws the randomness it drew
+        # before this pair existed. pinned() replaces both sources with
+        # a counter, and an insertion anywhere earlier moves every iv
+        # after it.
+        with captured(RNS) as asked_empty:
+            initiator.request(EMPTY_PATH, data=b"")
+        with captured(RNS) as answered_empty:
+            responder.handle_request(asked_empty[0].getTruncatedHash(),
+                umsgpack.unpackb(responder.decrypt(asked_empty[0].raw[HEADER1LEN:])))
+
+    asked    += asked_empty
+    answered += answered_empty
 
     # The id in the response names the request packet, not the request.
     assert umsgpack.unpackb(packed) == umsgpack.unpackb(asked[0].data)
@@ -2124,8 +2147,12 @@ def gen_request(RNS, w, verify, session, initiator, request_raw, responder_priva
          "a request: the time, the hash of the path, and the data"),
         ("request-no-data", asked[1],
          "a request with no data, which msgpack writes as nil"),
+        ("request-empty-data", asked[2],
+         "a request whose body is the empty byte string, which msgpack writes as a bin of length zero"),
         ("response", answered[0],
          "the answer, naming the request by the truncated hash of its packet"),
+        ("response-empty-data", answered[1],
+         "an answer whose body is the empty byte string; the dash a body of nil would also print"),
     ]
     for name, packet, purpose in cases:
         w.vector("linkdata", name, purpose,

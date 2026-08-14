@@ -217,8 +217,10 @@ raw.
 
 request_data and response_data are "-" for both an absent value and an
 empty one: msgpack writes nil and a zero-length byte string
-differently, and this format spells both absences the same way. No
-vector carries the second.
+differently, and this format spells both absences the same way.
+test/linkdata/request-no-data carries the nil, c0, and
+test/linkdata/request-empty-data the bin of length zero, c4 00. The
+same pair exists for the response.
 
 All five are "-" when the msgpack body could not be read that far, the
 third meaning of the dash. No vector carries that either; see doc/link.
