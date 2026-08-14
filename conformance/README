@@ -61,7 +61,7 @@ them. They exist for the encode direction, which no harness runs.
 One directory here is not a measurement
 
     example/dump.py   the smallest harness that produces a result:
-                      test/identity, thirteen lines, no implementation
+                      test/identity, 13 lines, no implementation
     example/vectors.yml
                       the workflow that runs it, to copy into another
                       repository as .github/workflows/vectors.yml

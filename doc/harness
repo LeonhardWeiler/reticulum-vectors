@@ -57,9 +57,9 @@ Six rules
    test/identity is a SHA-256 of 64 bytes, truncated to 16. Five
    vectors, four fields each, no packets and no cryptography beyond a
    hash. If the implementation exposes an identity at all, that harness
-   is twenty lines and produces a real number.
+   is 20 lines and produces a real number.
 
-   conformance/example/dump.py is that harness, in thirteen lines of
+   conformance/example/dump.py is that harness, in 13 lines of
    code, and it runs:
 
        DUMP=conformance/example/dump.py ENCODE=no cmd/check
@@ -94,10 +94,9 @@ Six rules
 
 What to expect it to cost
 
-The seven harnesses in conformance/ run from five hundred lines to a
-thousand, in six languages, and every one of them covers announce and
-the link kinds. The smallest, conformance/rns.js/dump.js, is the one to
-read first.
+The seven harnesses in conformance/ run from 500 lines to 1000, in six
+languages, and every one of them covers announce and the link kinds.
+The smallest, conformance/rns.js/dump.js, is the one to read first.
 
 Most of that length is neither parsing nor cryptography. It is
 reaching past an API that was written for an application rather than

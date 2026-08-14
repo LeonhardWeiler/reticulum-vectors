@@ -44,7 +44,7 @@ is then cut into parts of SDU bytes:
 So a part is a slice of one token and not a token of its own. Only the
 first part begins with the initialisation vector and only the last ends
 with the hmac, and no part can be opened alone. A decoder that reads a
-part as a token finds sixteen bytes it takes for an iv and no hmac that
+part as a token finds 16 bytes it takes for an iv and no hmac that
 verifies.
 
 The packet layer does not encrypt a part either, for the same reason it

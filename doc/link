@@ -315,7 +315,7 @@ A response is two elements:
 The request id is the truncated hash of the request *packet*, taken by
 the receiver, not a hash of the packed request. So it depends on the
 header the request arrived with, and a decoder that hashes the payload
-instead gets sixteen different bytes that look equally plausible.
+instead gets 16 different bytes that look equally plausible.
 
     RNS/Link.py#getTruncatedHash
 

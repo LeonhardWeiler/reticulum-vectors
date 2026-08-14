@@ -36,7 +36,7 @@ capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
 Out of 85, not 104: every harness exits 77 for at least five kinds, and
-those nineteen vectors are skipped rather than counted against anyone.
+those 19 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
     pathrequest     6
@@ -44,7 +44,7 @@ those nineteen vectors are skipped rather than counted against anyone.
     ifac            4
     resourceproof   2
 
-One of the nineteen is no longer a skip for everyone. Reticulum-Go's
+One of the 19 is no longer a skip for everyone. Reticulum-Go's
 harness runs the ifac kind and passes all four, so its own run reads
 82 / 89; the row above is the same run restricted to the 85 the other
 six can be compared on. See "The interface access codes, measured
@@ -466,8 +466,8 @@ the defect is invisible until a ratchet is used.
 
 Finding 7: sgiath/reticulum cannot load an identity from a private key
 
-Affects sgiath/reticulum. Fourteen of its failures: every
-test/keyset/, every test/encrypted/, and test/sign/. The fourteenth is
+Affects sgiath/reticulum. 14 of its failures: every
+test/keyset/, every test/encrypted/, and test/sign/. The 14th is
 encrypted/low-order-ephemeral, which the previous run charged to
 finding 16; the implementation refuses that point correctly and fails
 the vector here instead.
@@ -631,9 +631,9 @@ Reticulum-Go and go-reticulum only in that their readers are
 unexported. Vectors test/linkrequest/ and test/linkproof/.
 
 The three signalling bytes of a link request carry the mode in the top
-three bits and the MTU in the low twenty-one
-(RNS/Link.py#signalling_bytes). Three
-of the seven implementations have no function anywhere that reads them:
+three bits and the MTU in the low 21 (RNS/Link.py#signalling_bytes).
+Three of the seven implementations have no function anywhere that reads
+them:
 
     rsReticulum       SignallingData::unpack, both directions
     microReticulum    mode_from_lr_packet, mtu_from_lr_packet, and the
@@ -800,7 +800,7 @@ Finding 18: two implementations name the wrong numbers for a short header
 Affects rns.js and sgiath/reticulum. Vectors test/announce/short-header
 and test/announce/no-header.
 
-Eighteen bytes is one short of a header 1 header, and nothing about the
+18 bytes is one short of a header 1 header, and nothing about the
 packet can be read, not even the context byte. rns.js reports
 short-payload with a payload length of 0 against a minimum of 148: it
 reads a header out of bytes that do not hold one and then measures what
@@ -814,7 +814,7 @@ bit, which is in the byte that is missing. sgiath/reticulum answers 19,
 the header 1 length, for a packet of one byte. It is the same defect at
 the other end of the same rule, and its harness makes the distinction
 its implementation does not: it guards on two bytes and then reports
-nineteen. The other five of the six answer 2. The seventh answers 3,
+19. The other five of the six answer 2. The seventh answers 3,
 by a constant of its own rather than by a misread, which is finding 25.
 
 
@@ -997,7 +997,7 @@ The seventh has the length rule and puts it 16 bytes too high.
 Reticulum-Go's decryptWithKeys refuses anything under 64 bytes, an iv,
 a whole block of ciphertext and an hmac, where the reference refuses
 under 48 and lets a token with no ciphertext through to the hmac. The
-gap is the sixteen bytes of one empty block, and no vector in the
+gap is the 16 bytes of one empty block, and no vector in the
 corpus lands in it: an empty plaintext still pads to a full block, so
 every token the reference produces is at least 64 bytes anyway. It is
 recorded because it is a threshold, not because a packet is lost to it.
@@ -1081,7 +1081,7 @@ Reticulum-Go refuses at three:
 Nothing is lost to it. A two-byte frame carries a header type and
 nothing the type selects, so both the reference and Reticulum-Go drop
 it; they name different numbers for why. This is finding 18 with the
-threshold one too high instead of seventeen too high, and it is the
+threshold one too high instead of 17 too high, and it is the
 only vector of the eleven rejection vectors where Reticulum-Go names a
 number the reference does not.
 
@@ -1191,7 +1191,7 @@ does not report. That is the half of a wire format a generator writes
 last, because nothing in an implementation asks for it.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-fifty-one vectors here. Its runner covers HKDF, tokens, packet pack and
+51 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the

@@ -1896,7 +1896,7 @@ static void emit_field(struct kv *f, int n, const char *name)
 	printf("%s\n", lookup(f, n, name));
 }
 
-/* Twelve of the fourteen encoders were a list of field names, so the
+/* Twelve of the 14 encoders were a list of field names, so the
  * list is what is written down; see the layout column of kinds below. A
  * name before "=" is a whole line of raw, printed as it stands. "="
  * stands for the five header fields, and every name after it is
