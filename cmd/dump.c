@@ -68,11 +68,6 @@ static void field(const char *name, const char *fmt, ...)
 	putchar('\n');
 }
 
-/* The empty byte string is written "-", not as an empty value. A name
- * followed by nothing is a line with a trailing space: it cannot be
- * told from a truncated line, and cmd/check rejects it. Every optional
- * field already spells absence that way, and a destination aspect may
- * legitimately be empty. See doc/destination. */
 static void field_hex(const char *name, const uint8_t *p, size_t n)
 {
 	size_t i;
@@ -94,8 +89,6 @@ struct blob {
 	int      absent;	/* the line was "-" */
 };
 
-/* An input blob is echoed as a field so that expect holds every byte of
- * raw and the encode direction has something to rebuild from. */
 static void field_blob(const char *name, const struct blob *b)
 {
 	if (b->absent)
@@ -104,9 +97,6 @@ static void field_blob(const char *name, const struct blob *b)
 		field_hex(name, b->data, b->len);
 }
 
-/* Lower case only. Two raw files differing only in the case of their
- * hex are the same input to a decoder and different files to the diff
- * cmd/check compares the round trip with. */
 static int unhex(int c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
@@ -132,8 +122,6 @@ static void decode_hex(struct blob *b, const char *s, size_t len, const char *wh
 	}
 }
 
-/* Read one line, rejecting any that did not fit. A silently split line
- * would decode as two blobs and quietly change what is being tested. */
 static int readline(FILE *f, char *buf, size_t size, const char *path, int n)
 {
 	size_t len;
@@ -273,9 +261,6 @@ static void ed25519_public(const uint8_t seed[32], uint8_t out[32])
 	ed25519_keypair(seed, out, sk);
 }
 
-/* Ed25519 signing is deterministic, RFC 8032 section 5.1.6: the nonce
- * is derived from the key and the message and not drawn at random. A
- * signature is therefore something a vector can state. */
 static void ed25519_sign(const uint8_t seed[32], const uint8_t *msg, size_t mlen,
                          uint8_t out[64])
 {
@@ -299,14 +284,6 @@ static const uint8_t ed25519_L[32] = {
 	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x10,
 };
 
-/* A signature is R || S with S a scalar, and RFC 8032 section 5.1.7
- * admits only S < L. Adding L to S yields a second encoding of the same
- * signature, which the pinned backend rejects and tweetnacl accepts:
- * crypto_sign_open reduces S rather than refusing it. The check belongs
- * here rather than in the vendored file, which is not edited.
- *
- * Without it dump reports signature_valid yes for an announce python-rns
- * drops. See doc/identity, section Canonical signatures. */
 static int scalar_canonical(const uint8_t s[32])
 {
 	int i;
@@ -336,13 +313,6 @@ static int ed25519_verify(const uint8_t pk[32], const uint8_t sig[64],
 	return crypto_sign_open(m, &got, sm, (unsigned long long)mlen + 64, pk) == 0;
 }
 
-/* X25519 against a point of small order yields an all-zero secret. The
- * pinned backend raises rather than returning it; tweetnacl returns it
- * and says nothing. A packet built that way has a key every reader of
- * the announce can compute, so the two behaviours are not equivalent.
- *
- * Returns 0 when no usable secret exists. See doc/encryption, section
- * Contributory behaviour. */
 static int x25519_shared(uint8_t out[KEYHALF], const uint8_t scalar[KEYHALF],
                          const uint8_t peer[KEYHALF])
 {
@@ -462,10 +432,6 @@ static void dump_signature(struct blob *b)
 	      ed25519_verify(ed_pub, b[2].data, b[1].data, b[1].len) ? "yes" : "no");
 }
 
-/* The other direction of test/signature: the signature is not given,
- * it is produced. An implementation that verifies correctly and signs
- * with a nonce of its own choosing passes every other vector here and
- * emits announces and link proofs nothing accepts. */
 static void dump_sign(struct blob *b)
 {
 	uint8_t pub[KEYHALF], sig[SIGLEN], digest[32];
@@ -599,9 +565,6 @@ static int parse_announce(const struct header *h, struct announce *a,
  * only because the signature is the larger of the two. */
 typedef char signed_data_fits[ADDRLEN <= SIGLEN ? 1 : -1];
 
-/* app_data is transmitted after the signature but signed before it.
- * Getting this wrong is the most likely reason for a valid announce to
- * be rejected, so the assembled bytes are printed. */
 static size_t assemble_signed(const struct header *h, const struct announce *a,
                               uint8_t *out)
 {
@@ -632,12 +595,6 @@ static void print_fault(const struct fault *f)
 	invalid(f->rule, f->gotname, f->got, f->needname, f->need);
 }
 
-/* The packet a vector records: a header that does not parse is the
- * whole result, so this prints the rule it broke and returns 0.
- *
- * The three decoders that parse a second packet call parse_header
- * directly and fatal instead. That one is an input rather than the
- * object, and a vector carrying one that will not parse is broken. */
 static int open_packet(const struct blob *b, struct header *h)
 {
 	struct fault f;
@@ -748,9 +705,6 @@ struct token {
 	int      mac_ok, opened, keyed;
 };
 
-/* A null derived key means no key agreement was possible. The token is
- * still laid out, because its three parts are in the packet, but no
- * verdict about it can be reached. */
 static void token_open(const uint8_t *p, size_t len,
                        const uint8_t *derived, struct token *t)
 {
@@ -880,10 +834,6 @@ static void dump_encrypted(struct blob *b)
 	print_plaintext(&t);
 }
 
-/* Destination type 1. The payload is a bare token under the shared
- * symmetric key: no ephemeral key in front of it and no derivation
- * behind it, so the two halves of the key are the key as configured.
- * RNS/Destination.py#GROUP. */
 static void dump_group(struct blob *b)
 {
 	struct header h;
@@ -928,9 +878,6 @@ static void dump_announce(struct blob *b)
 	print_announce(&h, &a);
 }
 
-/* A packet to a plain destination. Destination.encrypt returns the
- * plaintext unchanged for this type, so the payload is the data, with
- * no ephemeral key, no token and no padding. RNS/Destination.py#PLAIN. */
 static void dump_plain(struct blob *b)
 {
 	struct header h;
@@ -944,11 +891,6 @@ static void dump_plain(struct blob *b)
 	field_hex("plaintext", h.payload, h.payload_len);
 }
 
-/* A path request names a destination, optionally the transport instance
- * asking after it, and optionally a tag. Nothing on the wire says which
- * of the three are present: the reader decides by length alone, so a
- * 17-byte tag is read as a transport id and a tag of one.
- * RNS/Transport.py#TRUNCATED_HASHLENGTH. */
 static void dump_pathrequest(struct blob *b)
 {
 	struct header h;
@@ -998,9 +940,6 @@ static void dump_pathrequest(struct blob *b)
 	field("accepted", "%s", taglen > 0 ? "yes" : "no");
 }
 
-/* The bytes a packet is hashed over. The low four flag bits and the hop
- * count are excluded, so that the hash survives a hop.
- * RNS/Packet.py#get_hashable_part. */
 static size_t hashable_part(const uint8_t *raw, size_t len,
                             const struct header *h, uint8_t *out)
 {
@@ -1011,9 +950,6 @@ static size_t hashable_part(const uint8_t *raw, size_t len,
 	return 1 + len - from;
 }
 
-/* The link id is that hash truncated, with any signalling bytes chopped
- * off the end first, so that signalling the MTU does not change the
- * identity of the link. RNS/Link.py#link_id_from_lr_packet. */
 static void link_id_of(const uint8_t *raw, size_t len,
                        const struct header *h, uint8_t *out)
 {
@@ -1026,8 +962,6 @@ static void link_id_of(const uint8_t *raw, size_t len,
 	truncated_hash(part, n, out, ADDRLEN);
 }
 
-/* The hash a proof is taken over: the same bytes, untrimmed and not
- * truncated. RNS/Packet.py#get_hash. */
 static void packet_hash_of(const uint8_t *raw, size_t len,
                            const struct header *h, uint8_t out[32])
 {
@@ -1036,11 +970,6 @@ static void packet_hash_of(const uint8_t *raw, size_t len,
 	sha256(part, hashable_part(raw, len, h, part), out);
 }
 
-/* Three bytes, big endian: three bits of mode and 21 of mtu. A link
- * request and the proof that answers it carry the same three bytes in
- * different positions and read them the same way. NULL is the shorter
- * form, where the mode falls back to the default and the mtu has no
- * fallback at all. RNS/Link.py#signalling_bytes. */
 static void print_signalling(const uint8_t *p)
 {
 	unsigned value = 0, mode = MODE_DEFAULT;
@@ -1170,9 +1099,6 @@ struct mp {
 	int            bad;
 };
 
-/* 0xc1 is the one byte msgpack assigns to nothing, so a failed read
- * fails every type test below and needs no second check in the eight
- * readers that follow. */
 static unsigned mp_head(struct mp *m)
 {
 	if (m->bad || m->left == 0) {
@@ -1226,7 +1152,6 @@ static size_t mp_map(struct mp *m)
 	return h & 0x0f;
 }
 
-/* Every key in an advertisement is one character. */
 static char mp_key(struct mp *m)
 {
 	const uint8_t *p;
@@ -1249,9 +1174,6 @@ static uint64_t mp_uint(struct mp *m)
 	return 0;
 }
 
-/* nil and an empty byte string are both length zero, which the format
- * spells "-" either way. No shape the corpus carries distinguishes
- * them; see doc/link. */
 static const uint8_t *mp_bin(struct mp *m, size_t *len)
 {
 	unsigned h = mp_head(m);
@@ -1264,9 +1186,6 @@ static const uint8_t *mp_bin(struct mp *m, size_t *len)
 	return NULL;
 }
 
-/* Printed as its eight bytes. A decimal would have to survive being
- * written and read back to reproduce raw, and the wire carries the
- * bytes. */
 static const uint8_t *mp_double(struct mp *m)
 {
 	if (mp_head(m) != 0xcb)
@@ -1315,16 +1234,6 @@ static void mp_field_double(struct mp *m, const char *name)
 #define HASHLEN      32		/* RNS/Identity.py#HASHLENGTH */
 #define EXHAUSTED    0xff	/* RNS/Resource.py#HASHMAP_IS_EXHAUSTED */
 
-/* A plaintext too short for the context it arrived in. Every context
- * whose reader is bounded by a length rather than by framing names this
- * rule: a part request, a hashmap update, a channel envelope and the
- * two msgpack bodies. One rule, one name, one threshold printed; the
- * length itself is already on the line above, as plaintext_length.
- *
- * The advertisement needs no such check, because msgpack carries its
- * own lengths and mp_take refuses to read past them; nor do the two
- * cancels, whose payload is the resource hash and however many bytes
- * arrived. RNS/Resource.py#cancel. */
 static int short_plaintext(size_t len, size_t need)
 {
 	if (len >= need)
@@ -1335,12 +1244,6 @@ static int short_plaintext(size_t len, size_t need)
 	return 1;
 }
 
-/* What the plaintext holds for each resource context. The
- * advertisement is a msgpack map of eleven one-letter keys, in the
- * order the reference writes them; a part request is three pieces
- * concatenated with no framing, read by length; a cancel is the
- * resource hash by itself.
- * RNS/Resource.py#dictionary, RNS/Resource.py#request_data. */
 static void print_resource(unsigned context, const uint8_t *p, size_t len)
 {
 	static const char order[] = "tdnhroilqfm";
@@ -1556,10 +1459,6 @@ static void dump_linkdata(struct blob *b)
 	}
 }
 
-/* A proof is what a receiver sends back for a data packet it accepted.
- * It is addressed to the first 16 bytes of the proved packet's hash
- * rather than to a destination, which is how the sender recognises the
- * answer to its own packet. RNS/Packet.py#get_hash. */
 static void dump_proof(struct blob *b)
 {
 	struct header h, ph;
@@ -1635,11 +1534,6 @@ static void dump_proof(struct blob *b)
 	      ed25519_verify(signer, signature, packet_hash, sizeof packet_hash) ? "yes" : "no");
 }
 
-/* A proof over a resource, which is not a proof over a packet. It is
- * the same packet type and the same 64 bytes as an implicit delivery
- * proof, and neither half means here what it means there: the first 32
- * name the resource and the second are a hash of its data, not a
- * signature over anything. RNS/Resource.py#proof_data. */
 static void dump_resourceproof(struct blob *b)
 {
 	struct header h;
@@ -1676,11 +1570,6 @@ static const uint8_t ifac_salt[32] = {
 	0x41,0x6d,0x9f,0x90,0x7e,0x55,0xcf,0xf8,
 };
 
-/* origin is the two hashes concatenated, name first, with either half
- * omitted when that half is not configured. Both ends of an interface
- * derive the key from strings a human typed, so nothing on the wire
- * says which of the four shapes was used.
- * RNS/Reticulum.py#ifac_netname. */
 static size_t ifac_origin(const struct blob *netname, const struct blob *netkey,
                           uint8_t *out)
 {
@@ -1706,10 +1595,6 @@ static void ifac_key(const uint8_t *origin, size_t originlen, uint8_t key[KEYSIZ
 	            key, KEYSIZE);
 }
 
-/* The mask covers the whole frame except the access code itself, which
- * has to be readable before the mask it keys can be generated. Both
- * header bytes are masked; the IFAC flag is put back afterwards.
- * RNS/Transport.py#masked_raw, RNS/Transport.py#unmasked_raw. */
 static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
                       const uint8_t key[KEYSIZE],
                       const uint8_t *in, size_t len, uint8_t *out)
@@ -1730,10 +1615,6 @@ static void ifac_mask(const uint8_t *ifac, size_t ifac_size,
 	}
 }
 
-/* Packet.unpack never reads bit 7 (RNS/Packet.py#header_type).
- * Transport does, and a frame on an interface with a named network or a
- * passphrase is not a packet until it has been unmasked. See
- * doc/packet. */
 static void dump_ifac(struct blob *b)
 {
 	static uint8_t unmasked[MAXBLOB], packet[MAXBLOB];
@@ -1837,8 +1718,6 @@ static void put_bytes(struct out *o, const uint8_t *p, size_t n)
 		put_byte(o, p[i]);
 }
 
-/* Absent fields carry no bytes, so an optional one needs no separate
- * case anywhere in the encoders. */
 static void put_field(struct out *o, struct kv *f, int n, const char *name)
 {
 	const char *v = lookup(f, n, name);
@@ -1889,22 +1768,11 @@ static void emit(struct out *o)
 	o->hex[0] = '\0';
 }
 
-/* A blob that is one whole field is written out as it stands, "-"
- * included: an absent blob is a line, not a missing line. */
 static void emit_field(struct kv *f, int n, const char *name)
 {
 	printf("%s\n", lookup(f, n, name));
 }
 
-/* Twelve of the 14 encoders were a list of field names, so the
- * list is what is written down; see the layout column of kinds below. A
- * name before "=" is a whole line of raw, printed as it stands. "="
- * stands for the five header fields, and every name after it is
- * concatenated into that one line. The order is the order of raw: the
- * echoed input blobs first, the packet last.
- *
- * ifac and linkdata are not concatenations and keep their own functions
- * below. */
 static void encode_layout(const char *layout, struct kv *f, int n)
 {
 	struct out o = { "", 0 };
@@ -1930,9 +1798,6 @@ static void encode_layout(const char *layout, struct kv *f, int n)
 		emit(&o);
 }
 
-/* The one encoder that is not a concatenation. Going out, the flag is
- * set, the access code is inserted after the two header bytes, and the
- * same mask is applied. RNS/Transport.py#new_header. */
 static void get_blob(struct kv *f, int n, const char *name, struct blob *b)
 {
 	const char *v = lookup(f, n, name);
@@ -1992,8 +1857,6 @@ static void encode_ifac(struct kv *f, int n)
 	emit(&o);
 }
 
-/* A keepalive is the one link packet the reference does not encrypt, so
- * its payload is the plaintext and there is no token to write out. */
 static void encode_linkdata(struct kv *f, int n)
 {
 	struct out o = { "", 0 };

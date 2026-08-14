@@ -436,8 +436,6 @@ def determinism(kind, expect):
 
 
 class Writer:
-    # Counted apart: the run that changes nothing is the run that
-    # passes, and that has to be what the last line says.
     def __init__(self, root, force):
         self.root      = root
         self.force     = force
@@ -467,20 +465,9 @@ class Writer:
             field_name, value = l.split()
             self.cases.setdefault(field_name, set()).add(value == "-")
 
-    # The encoders in cmd/dump decide a field is present by looking for
-    # "-" and the decoders decide it by reading the packet. The round
-    # trip only holds those two rules together where both cases are on
-    # file, so an optional field needs a vector each way.
-    #
-    # Per field, not per kind: transport_id is written by one line of
-    # put_header that nine encoders share.
     def uncrossed(self):
         return sorted(n for n, seen in self.cases.items() if seen == {True})
 
-    # test/INDEX is what makes a count an assertion. cmd/check refuses to
-    # run against a test/ that does not hold exactly these vectors, so a
-    # copy with some of them removed reports nothing rather than passing
-    # the ones it kept.
     def index(self):
         self.file(os.path.join(self.root, "test", "INDEX"),
                   sorted(self.names))
