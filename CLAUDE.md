@@ -332,12 +332,20 @@ Ask, in order:
 
 If the first answer is yes, stop.
 
-The third has been asked and answered for six cases, and doc/packet,
-section "What has no vector", holds the six with the reason each one
+The third has been asked and answered for five cases, and doc/packet,
+section "What has no vector", holds the five with the reason each one
 cannot be produced. Read it before proposing a vector for any of them.
-A seventh was on that list until it was written down and turned out to
-be a truncation like any other, which is the argument for writing the
-list rather than carrying it in someone's head.
+
+Two have left that list since it was written, and both left the same
+way: the reason was read again and did not hold. One turned out to be a
+truncation like any other. The other, a resource payload of the wrong
+msgpack shape, was excluded because the layers above the packet do not
+build such a payload, which is not the question the third asks: what a
+link carries is chosen by the sender, and four vectors already handed a
+chosen plaintext to Link.encrypt. It now has five vectors and it found
+a defect in cmd/dump. That is the argument for writing the list rather
+than carrying it in someone's head, and for reading a reason rather
+than counting on it.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:

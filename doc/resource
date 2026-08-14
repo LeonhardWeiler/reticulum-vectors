@@ -92,7 +92,28 @@ A msgpack map of eleven one-character keys, in this order:
 The order is the order the reference writes them and msgpack preserves
 it, but a map is not a sequence: a reader that goes by position rather
 than by key agrees with this reference and with nothing that is
-entitled to reorder them.
+entitled to reorder them. unpack names all eleven and names them in
+another order than pack writes them, so neither the order nor the count
+is a rule of the format.
+
+    RNS/Resource.py#unpack
+
+test/linkdata/resource-advertisement-reordered is that map: the same
+eleven keys and the same values, written by the reference's own
+umsgpack in the order unpack reads them. It is the same length as the
+advertisement it was built from and not the same bytes, and the
+reference reads the two identically.
+
+What follows from reading by key is that a key which is not there costs
+its own field and nothing else. Three vectors carry the cases, all of
+them plaintexts the layers above the packet never build:
+
+    resource-advertisement-no-hash        h is absent; the other ten
+                                          fields all read
+    resource-advertisement-not-a-number   t is a string; the ten keys
+                                          after it still read
+    resource-advertisement-not-a-map      one byte, no map at all;
+                                          eleven dashes
 
 A uint is written at the width the value needs and a bin at the width
 its length needs, so the widths in an advertisement are decided by the
@@ -209,6 +230,13 @@ The msgpack half carries its own lengths and a reader cannot run past
 them. The raw half carries none, so the least an update can be is 33
 bytes: the hash and one byte of the array behind it. Shorter is
 rejected as short-plaintext.
+
+That one byte does not have to be an array header, and a byte that is
+not one is no rejection either. The rule is the one a request body
+follows: the elements it would have yielded are "-", the hash before it
+is fixed width and reads either way.
+test/linkdata/resource-hashmap-update-not-an-array is 33 bytes whose
+last is 0x01. See doc/link.
 
 
 Proof, 0x05

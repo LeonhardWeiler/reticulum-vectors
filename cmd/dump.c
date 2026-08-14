@@ -1174,6 +1174,24 @@ static char mp_key(struct mp *m)
 	return p != NULL ? (char)*p : '\0';
 }
 
+static void mp_skip(struct mp *m)
+{
+	unsigned h = mp_head(m);
+
+	/* Every type the reference puts in a map value, so that the value
+	 * of a key this reader does not want can be stepped over to reach
+	 * the next key. Anything else is not msgpack the reference wrote. */
+	if (h < 0x80 || h == 0xc0)       return;
+	if (h == 0xcc) { mp_take(m, 1); return; }
+	if (h == 0xcd) { mp_take(m, 2); return; }
+	if (h == 0xce) { mp_take(m, 4); return; }
+	if (h == 0xcb) { mp_take(m, 8); return; }
+	if (h == 0xc4) { mp_take(m, (size_t)mp_be(mp_take(m, 1), 1)); return; }
+	if (h == 0xc5) { mp_take(m, (size_t)mp_be(mp_take(m, 2), 2)); return; }
+	if ((h & 0xe0) == 0xa0) { mp_take(m, h & 0x1f); return; }
+	m->bad = 1;
+}
+
 static uint64_t mp_uint(struct mp *m)
 {
 	unsigned h = mp_head(m);
@@ -1263,23 +1281,53 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 	size_t i;
 
 	if (context == RESOURCE_ADV) {
-		if (mp_map(&m) != sizeof order - 1)
-			m.bad = 1;
+		/* The reference reads this map by key and not by position:
+		 * unpack names all eleven, in an order that is not the one
+		 * pack writes them in, so neither the order nor the count is
+		 * a rule of the format. RNS/Resource.py#unpack.
+		 *
+		 * Each key is therefore located first and the fields are
+		 * printed in the corpus's own order afterwards. A key that is
+		 * not there leaves its stream bad and prints "-", which is
+		 * what a value the reader never reached prints everywhere
+		 * else. A key that is there twice is read at the first of
+		 * them, as a dict built by insertion would not be; no
+		 * reference output holds one. */
+		struct mp value[sizeof order - 1];
+		size_t pairs = mp_map(&m);
+
+		for (i = 0; i < sizeof order - 1; i++) {
+			value[i].p    = NULL;
+			value[i].left = 0;
+			value[i].bad  = 1;
+		}
+
+		for (i = 0; i < pairs && !m.bad; i++) {
+			char        key = mp_key(&m);
+			const char *at  = key != '\0' ? strchr(order, key) : NULL;
+
+			if (at != NULL && value[at - order].bad) {
+				value[at - order]     = m;
+				value[at - order].bad = 0;
+			}
+			mp_skip(&m);
+		}
+
 		for (i = 0; order[i] != '\0'; i++) {
-			if (mp_key(&m) != order[i])
-				m.bad = 1;
+			struct mp *v = &value[i];
+
 			switch (order[i]) {
-			case 't': mp_field_uint(&m, "transfer_size",  "%llu");   break;
-			case 'd': mp_field_uint(&m, "data_size",      "%llu");   break;
-			case 'n': mp_field_uint(&m, "resource_parts", "%llu");   break;
-			case 'i': mp_field_uint(&m, "segment_index",  "%llu");   break;
-			case 'l': mp_field_uint(&m, "total_segments", "%llu");   break;
-			case 'f': mp_field_uint(&m, "resource_flags", "%02llx"); break;
-			case 'h': mp_field_bin(&m, "resource_hash");   break;
-			case 'r': mp_field_bin(&m, "resource_random"); break;
-			case 'o': mp_field_bin(&m, "original_hash");   break;
-			case 'q': mp_field_bin(&m, "request_id");      break;
-			case 'm': mp_field_bin(&m, "hashmap");         break;
+			case 't': mp_field_uint(v, "transfer_size",  "%llu");   break;
+			case 'd': mp_field_uint(v, "data_size",      "%llu");   break;
+			case 'n': mp_field_uint(v, "resource_parts", "%llu");   break;
+			case 'i': mp_field_uint(v, "segment_index",  "%llu");   break;
+			case 'l': mp_field_uint(v, "total_segments", "%llu");   break;
+			case 'f': mp_field_uint(v, "resource_flags", "%02llx"); break;
+			case 'h': mp_field_bin(v, "resource_hash");   break;
+			case 'r': mp_field_bin(v, "resource_random"); break;
+			case 'o': mp_field_bin(v, "original_hash");   break;
+			case 'q': mp_field_bin(v, "request_id");      break;
+			case 'm': mp_field_bin(v, "hashmap");         break;
 			}
 		}
 		return;

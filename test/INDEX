@@ -69,9 +69,14 @@ linkdata/request-truncated
 linkdata/resource-advertisement
 linkdata/resource-advertisement-large
 linkdata/resource-advertisement-metadata
+linkdata/resource-advertisement-no-hash
+linkdata/resource-advertisement-not-a-map
+linkdata/resource-advertisement-not-a-number
+linkdata/resource-advertisement-reordered
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver
 linkdata/resource-hashmap-update
+linkdata/resource-hashmap-update-not-an-array
 linkdata/resource-hashmap-update-short
 linkdata/resource-part
 linkdata/resource-request
