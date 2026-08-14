@@ -81,6 +81,7 @@ linkdata/resource-request-exhausted-short
 linkdata/resource-request-short
 linkdata/response
 linkdata/response-empty-data
+linkdata/response-not-an-array
 linkdata/rtt
 linkdata/short-payload
 linkproof/altered-signature

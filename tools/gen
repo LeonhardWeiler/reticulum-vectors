@@ -2096,6 +2096,12 @@ def gen_linkdata(RNS, w, verify, session):
             # and they are not the same defect in a reader.
             RNS.Packet(link, b"\x01", context=RNS.Packet.REQUEST).send()
 
+            # The same byte in the other context. A request is three
+            # elements and a response two, so a reader has two array
+            # lengths to get right and the request vectors exercise one
+            # of them. RNS/Link.py#packed_response.
+            RNS.Packet(link, b"\x01", context=RNS.Packet.RESPONSE).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2115,6 +2121,8 @@ def gen_linkdata(RNS, w, verify, session):
          "an identify proof signed over another link id, which is what a replay carries"),
         ("request-not-an-array", sent[11],
          "a one-byte plaintext that is no msgpack array header, where a request is expected"),
+        ("response-not-an-array", sent[12],
+         "the same plaintext in the response context, where a two-element array is expected"),
     ]
 
     for name, packet, purpose in cases:

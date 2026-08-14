@@ -370,6 +370,12 @@ same three dashes, and a reader that treats an unexpected head byte as
 an error rather than as a stop parts company with the reference here
 and not at the vector above.
 
+The rule is the same in the response context and the number is not: a
+request is three elements and a response two, so a reader holds two
+array lengths and can hold one of them wrongly.
+test/linkdata/response-not-an-array is the same 0x01 plaintext in the
+context that expects two, and both of its fields are "-".
+
 Bytes after the value are ignored, because the reference ignores them.
 umsgpack.unpackb returns the value and discards the rest, and every
 call site hands it the whole plaintext.
