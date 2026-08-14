@@ -254,7 +254,7 @@ A part request adds four.
     last_map_hash      hex, -   4 bytes, present when exhausted
     requested_hashes   hex, -   four bytes per part asked for
 
-A cancel from either end carries resource_hash and nothing else.
+A cancel from either end carries only resource_hash.
 
 The proof is the kind resourceproof, and its raw carries the resource
 hash the receiver was advertised, because the packet does not say what

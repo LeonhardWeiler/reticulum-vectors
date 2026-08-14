@@ -274,9 +274,9 @@ def stub_transport(RNS, tmpdir):
     # in the repository root after every run.
     # RNS/Reticulum.py#cachepath, RNS/Transport.py#cachepath.
     RNS.Reticulum.cachepath = tmpdir
-    # The constructor sets this and nothing else does, so without an
-    # instance the attribute does not exist at all and every reader of
-    # it raises. RNS/Reticulum.py#__transport_enabled.
+    # Only the constructor sets this, so without an instance the
+    # attribute does not exist at all and every reader of it raises.
+    # RNS/Reticulum.py#__transport_enabled.
     RNS.Reticulum._Reticulum__transport_enabled = False
 
 
@@ -2005,7 +2005,7 @@ def gen_linkdata(RNS, w, verify, session):
         ("keepalive", sent[4], "one byte, and the one link packet that is not encrypted"),
         ("channel",   sent[5], "a channel message, sequence 0, inside the six-byte envelope"),
         ("channel-eof", sent[6],
-         "sequence 1, and a message that is its own two-byte header and nothing else"),
+         "sequence 1, and a message that is only its own two-byte header"),
         ("channel-short", sent[7],
          "five bytes of plaintext in the channel context, one short of an envelope header"),
         ("request-short", sent[8],
@@ -2503,7 +2503,7 @@ def gen_group(RNS, w):
 
     # PKCS7.pad writes 1..16, so the reference cannot be asked for a
     # token with a padding length of zero, and PKCS7.unpad accepts one:
-    # it applies the upper bound and nothing else, and removes nothing.
+    # it applies only the upper bound, and removes nothing.
     # Everything but pad is the reference running normally, and the
     # verdict below is the reference's own. See doc/encryption.
     from RNS.Cryptography import PKCS7
@@ -2540,7 +2540,7 @@ def describe_resource(context, plaintext):
 
     The advertisement is a msgpack map of eleven one-letter keys. The
     part request is three concatenated pieces with no framing, read by
-    length. The two cancels are the resource hash and nothing else.
+    length. The two cancels are the resource hash by itself.
 
         RNS/Resource.py#dictionary, RNS/Resource.py#request_data
     """

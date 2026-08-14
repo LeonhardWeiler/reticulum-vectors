@@ -1,4 +1,4 @@
-# The corpus contract: a C compiler, a POSIX shell, and nothing else.
+# The corpus contract: a C compiler and a POSIX shell.
 #
 # set -o pipefail because the exit status of a pipeline is the status of
 # its last command, and GitHub runs this with bash -e and no pipefail.

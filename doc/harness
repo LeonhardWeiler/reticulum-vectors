@@ -84,7 +84,7 @@ Six rules
 
    A library that logs to standard output writes into the field stream.
    Send its output to standard error before the first call; cmd/check
-   reads standard output and nothing else.
+   reads only standard output.
 
    The general form: a field the implementation produced nothing for is
    "-", a field it produced the wrong value for is that wrong value,

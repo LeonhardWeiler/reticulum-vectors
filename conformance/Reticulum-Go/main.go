@@ -325,8 +325,8 @@ func doAnnounce(b [][]byte) {
 	}
 
 	// Follows pkg/announce/announce.go:150 HandleAnnounce, which is
-	// the only entry point into the announce fields and returns an
-	// error and nothing else.
+	// the only entry point into the announce fields and returns only
+	// an error.
 	at := 0
 	publicKey := payload[at : at+keySize]
 	at += keySize

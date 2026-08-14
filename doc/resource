@@ -135,9 +135,9 @@ delimiter. The reader takes them by length:
     RNS/Resource.py#request_data
 
 The flag is one value compared against HASHMAP_IS_EXHAUSTED, not a
-byte tested for truth. A sender writes 0x00 or 0xff and nothing else,
-and a reader that treats every non-zero byte as exhausted looks for the
-last map hash where a 0x01 has no last map hash to find.
+byte tested for truth. A sender writes only 0x00 or 0xff, and a reader
+that treats every non-zero byte as exhausted looks for the last map
+hash where a 0x01 has no last map hash to find.
 
     RNS/Resource.py#HASHMAP_IS_EXHAUSTED
 

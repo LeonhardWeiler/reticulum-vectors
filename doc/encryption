@@ -216,7 +216,7 @@ reason.
 
 Group destinations
 
-Destination type 1. The payload is a bare token and nothing else:
+Destination type 1. The payload is a bare token:
 
     offset  size  field
     0       16    initialisation vector

@@ -1339,7 +1339,7 @@ static int short_plaintext(size_t len, size_t need)
  * advertisement is a msgpack map of eleven one-letter keys, in the
  * order the reference writes them; a part request is three pieces
  * concatenated with no framing, read by length; a cancel is the
- * resource hash and nothing else.
+ * resource hash by itself.
  * RNS/Resource.py#dictionary, RNS/Resource.py#request_data. */
 static void print_resource(unsigned context, const uint8_t *p, size_t len)
 {

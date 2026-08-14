@@ -187,7 +187,7 @@ What a result covers
 
 Not every field came from the implementation. Six of the seven expose
 no entry point that yields the parsed announce fields; their validator
-returns a boolean and nothing else. For those the harness follows the
+returns only a boolean. For those the harness follows the
 implementation's own code step by step, using its constants and its
 primitives, and marks the place. Such fields test the transcription as
 much as the implementation.
@@ -852,11 +852,11 @@ Finding 20: rsReticulum delivers a msgpack nil as the byte 0xc0
 
 Affects rsReticulum. Vector test/linkdata/request-no-data.
 
-Link.request called with a path and nothing else sends a three-element
-array whose third element is nil. rsReticulum's parse_request routes
-every element through msgpack_value_to_bytes
-(crates/rns-link/src/link.rs:97), which returns the bytes of a binary
-or a string and otherwise re-encodes the value:
+Link.request called with only a path sends a three-element array whose
+third element is nil. rsReticulum's parse_request routes every element
+through msgpack_value_to_bytes (crates/rns-link/src/link.rs:97), which
+returns the bytes of a binary or a string and otherwise re-encodes the
+value:
 
     } else {
         let mut encoded = Vec::new();
