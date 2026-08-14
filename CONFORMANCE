@@ -4,7 +4,7 @@ Run on 2026-08-14 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 2363261268
+    corpus 1594836295
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  87 / 95  39 / 44
-    go-reticulum        06621cc   2026-04-28  77 / 95  29 / 44
-    rsReticulum         07ca721   2026-08-02  76 / 95  29 / 44
-    Reticulum-rs        be7a7fc   2026-07-31  58 / 95  13 / 44
-    microReticulum      40fa628   2026-07-20  57 / 95  15 / 44
-    rns.js              d4602ca   2025-02-10  41 / 95   2 / 44
-    sgiath/reticulum    0c4904e   2026-07-09  36 / 95   2 / 44
+    Reticulum-Go        48f1517   2026-07-25  93 / 102  45 / 51
+    rsReticulum         07ca721   2026-08-02  80 / 102  33 / 51
+    go-reticulum        06621cc   2026-04-28  79 / 102  31 / 51
+    Reticulum-rs        be7a7fc   2026-07-31  61 / 102  16 / 51
+    microReticulum      40fa628   2026-07-20  57 / 102  15 / 51
+    rns.js              d4602ca   2025-02-10  41 / 102   2 / 51
+    sgiath/reticulum    0c4904e   2026-07-09  36 / 102   2 / 51
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 95, not 117: every harness exits 77 for at least five kinds, and
+Out of 102, not 124: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,21 +46,26 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-91 / 100; the row above is the same run restricted to the 95 the other
+97 / 107; the row above is the same run restricted to the 102 the other
 six can be compared on. The fifth fails, which is finding 29. See "The
 interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the two
-delivery proofs made on a link, which are filed under proof. 13 of them
+delivery proofs made on a link, which are filed under proof. 18 of them
 are the resource contexts.
 
-One vector was added since the last run and the corpus grew from 116 to
-117. It is announce/short-header-2, a header 2 one byte short of its
-own length, and it is of a kind every harness runs, so both
-denominators moved. Six of the seven pass it. No new finding came out
-of it: what it found is a defect in five of the seven harnesses, which
-is the sixth entry below, and three implementations failing an older
-vector once their harness stopped hiding it.
+Seven vectors were added since the last run and the corpus grew from
+117 to 124. All seven are link data packets, so both denominators moved
+and the link column moved with them. Three new findings came out of
+them, 31 to 33, finding 30 gained four vectors, and no existing count
+fell. The last paragraphs of "How the corpus grew" say what each
+answered.
+
+They were found the way the two before them were: a coverage build of
+cmd/dump against the corpus, reading the branches its own decoder
+implements and no vector reached. One of the seven found a defect in
+cmd/dump rather than in any implementation, which is the second corpus
+fault and is recorded below.
 
 Six harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
@@ -168,7 +173,7 @@ three implementations failing announce/no-header in the open instead of
 passing it on a number their code does not name.
 
 
-One corpus fault, found by a seventh implementation
+The first corpus fault, found by a seventh implementation
 
 The first byte of a part request is the hashmap exhausted flag, and
 what the reference does with it is compare it:
@@ -197,6 +202,39 @@ This is the first defect a foreign implementation has found in the
 corpus rather than the other way round, and it is the argument for
 harnesses in one sentence: an implementation that disagrees with a
 vector is evidence about the vector too.
+
+
+The second corpus fault, found by a vector that had no implementation to
+disagree with
+
+A resource advertisement is a msgpack map of eleven one-letter keys, and
+the reference reads it by key:
+
+    RNS/Resource.py#unpack
+        adv.t = dictionary["t"]
+
+It names all eleven and it names them in an order pack does not write
+them in, which settles what the format allows: neither the order of the
+map nor its size is a rule of it. doc/resource had said so since it was
+written. cmd/dump had not: it walked the keys in the order pack writes
+them and gave up on the first that did not match, so a map the reference
+reads correctly would have printed eleven dashes.
+
+    test/linkdata/resource-advertisement-reordered
+        the same eleven keys and values, in the order unpack reads
+        them; the same length, and not the same bytes
+
+cmd/dump now locates each key and prints in the corpus's own order, and
+a key that is not there costs its own field and no other. No existing
+vector changed.
+
+The vector passes in all three implementations that read an
+advertisement at all, so it is a finding about nothing but the corpus.
+That is the difference from the fault above: no implementation
+disagreed, because the ones that could have were right. A coverage
+build disagreed instead, and the argument it makes is the other half of
+the one above: a decoder written twice is worth the second writing, and
+neither writing is the authority. The reference is.
 
 Six of the seven produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The seventh cannot
@@ -297,10 +335,11 @@ signalled.
 
 Reticulum-Go is a second. It establishes the link, derives the same
 keys, decrypts every packet on it, and reads more of what those packets
-carry than any of the six. All five of its link failures are
-thresholds on a payload too short to be what its context byte said it
-was: findings 22, 23, 26 and 27. Not one of them is a packet it reads
-wrongly.
+carry than any of the six. Five of its six link failures are thresholds
+on a payload too short to be what its context byte said it was:
+findings 22, 23, 26 and 27. Not one of those is a packet it reads
+wrongly. The sixth is, and it is the only one in the corpus: finding
+32.
 
 
 How the corpus grew
@@ -388,7 +427,7 @@ under the same finding as the body that runs out.
 
 It also handed one implementation a pass that says nothing good about
 it. microReticulum decrypts the large advertisement correctly, and it
-is the only one of the 32 linkdata vectors it decrypts at all beyond
+is the only one of the 39 linkdata vectors it decrypts at all beyond
 the two that are not encrypted. Finding 11 says why, and the reason is
 the finding rather than an exception to it.
 
@@ -408,6 +447,44 @@ a finding. It is the only vector so far whose worth is what it proved
 about the evidence rather than about an implementation, and the three
 implementations it uncovered had been passing announce/no-header on a
 number their own code does not name.
+
+Seven took it from 117 to 124, all of them link data packets and all
+found by the same coverage build. Two are a branch the corpus had on
+one side only, and five are a msgpack shape that doc/packet had ruled
+out for a reason that did not hold; the section above says why it does
+not.
+
+    linkdata/link-id-mismatch      passed by four
+    linkdata/response-not-an-array failed by four, finding 30
+    linkdata/resource-advertisement-reordered
+                                   failed by four
+    linkdata/resource-advertisement-no-hash
+                                   failed by six, findings 30 and 31
+    linkdata/resource-advertisement-not-a-number
+                                   failed by all seven, findings 30,
+                                   31 and 32
+    linkdata/resource-advertisement-not-a-map
+                                   failed by four, finding 30
+    linkdata/resource-hashmap-update-not-an-array
+                                   failed by six, finding 33
+
+Three of the seven implementations read an advertisement at all. The
+other four fail every vector that carries one, for the reasons findings
+7, 10 and 11 already name, and nothing in the five above is a new
+sentence about them. Against the three the answer is poor: not one
+reads a map that is short a key without losing more than the key, and
+not one reads a value of the wrong type without either losing the whole
+map or printing a number that is not there.
+
+The one exception is the vector that was written to find a defect and
+found it in the corpus: all three read the reordered map correctly. The
+four that fail it fail it for reasons they were already failing.
+
+The first of the seven is the one that says something good. A packet
+addressed to another link is read correctly by all four implementations
+that establish a link at all, which is the same four that pass its
+counterpart on a link request proof, and it is the one vector of the
+seven that no implementation reading it got wrong.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -1355,8 +1432,11 @@ can be told apart.
 Finding 30: a msgpack body that gives less than the context wants is an
 error rather than a stop
 
-Affects go-reticulum. Vectors test/linkdata/request-truncated and
-test/linkdata/request-not-an-array.
+Affects go-reticulum. Vectors test/linkdata/request-truncated,
+test/linkdata/request-not-an-array, test/linkdata/response-not-an-array,
+test/linkdata/resource-advertisement-no-hash,
+test/linkdata/resource-advertisement-not-a-map and
+test/linkdata/resource-advertisement-not-a-number.
 
 The plaintext is one byte, 0x93, a msgpack array header announcing
 three elements over a body that holds none. The reference reads the
@@ -1383,6 +1463,112 @@ different branches in every reader that has them.
 
 The other three that fail these vectors fail test/linkdata/request as
 well and do not reach the body at all.
+
+Four vectors added since carry the same defect into four more shapes,
+and its own words name each one:
+
+    response-not-an-array     umsgpack: expected slice/array but got
+                              int64
+    advertisement-not-a-map   umsgpack: expected map but got int64
+    advertisement-no-hash     missing msgpack key "h"
+    advertisement-not-a-number
+                              unexpected msgpack int type string for
+                              key "t"
+
+The third is the one to read twice. A key that is not there is not a
+malformed body: everything before it and everything after it is
+well-formed msgpack that the reference reads, and only one of eleven
+fields has nothing behind it. go-reticulum answers for all eleven, and
+for the twenty-five other fields of the record, with one line.
+
+An error line where a field belongs is the harness reporting honestly
+what the implementation returned. Nothing in these six vectors is a
+packet the implementation reads wrongly. The whole finding is what it
+does with a payload it cannot read to the end, and the corpus format is
+built so that the difference shows: the reference stops reading, and
+this stops reporting.
+
+
+Finding 31: a map that is short one key loses all eleven
+
+Affects rsReticulum. Vectors
+test/linkdata/resource-advertisement-no-hash and
+test/linkdata/resource-advertisement-not-a-number.
+
+The reference reads the eleven keys of an advertisement by name, so a
+key that is not there costs the field it would have filled and costs
+nothing else: the other ten are in the map, in front of it and behind
+it, and reading them needs nothing from the one that is missing.
+RNS/Resource.py#unpack, and doc/resource.
+
+rsReticulum prints eleven dashes. It reads the map into a structure
+that has to be complete, so the first key that is not where it belongs
+ends the record, and a decoder that hands its caller nothing at all
+cannot say what it did read. The same happens when a key is there and
+its value is of another type: a transfer size written as the string
+"1856" costs the ten fields after it as well as itself.
+
+Nothing is at stake for a peer that is the reference, which writes all
+eleven every time. What is at stake is a peer that is not, and a
+version that adds a twelfth key: the format has no rule against one, the
+reference would ignore it, and an implementation that requires the map
+it expects will refuse a message the reference accepts.
+
+cmd/dump had the same defect for a different reason and it is the second
+corpus fault above. That two decoders arrived at it separately is what
+the vector is for.
+
+
+Finding 32: a string where a number belongs is read as zero
+
+Affects Reticulum-Go. Vector
+test/linkdata/resource-advertisement-not-a-number.
+
+The transfer size of an advertisement is a msgpack uint. The vector
+holds the string "1856" in its place, which is a type the reference
+would raise on rather than a number it would read.
+
+    reference     nothing; the field has no value to report
+    corpus        transfer_size      -
+    Reticulum-Go  transfer_size      0
+
+Zero is worse than a dash and worse than an error. A transfer size of
+zero is a value a resource can carry, so nothing downstream of the
+reader can tell it from a resource that really is empty, and the ten
+other fields of the map are read correctly and printed beside it. It is
+the only field of the record that is wrong, which is exactly what makes
+it hard to notice.
+
+Reticulum-Go is the implementation that reads an advertisement most
+completely, and this is the one vector of the seven added with it that
+no implementation got right. The other two that read advertisements
+refuse the whole map, findings 30 and 31, and refusing is not right
+either. Nobody prints the dash.
+
+
+Finding 33: a fixed-width hash is lost with the msgpack behind it
+
+Affects go-reticulum and rsReticulum. Vector
+test/linkdata/resource-hashmap-update-not-an-array.
+
+A hashmap update is 32 bytes of resource hash and then a msgpack array,
+and the corpus carries one whose array header is the byte 0x01 instead.
+The array yields nothing and prints two dashes, which is the rule a
+request body follows and doc/resource states for this payload too.
+
+The hash in front of it is not msgpack. It is fixed width, it is
+complete, and it is read before the array is reached. Both
+implementations print a dash for it:
+
+    resource_hash      -
+    segment_index      -
+    hashmap            -
+
+They read the payload as one value rather than as two halves, so the
+half that cannot be read takes the half that can. Reticulum-Go prints
+the hash and passes the vector, which is what makes this a finding
+rather than a property of the format: the payload says which resource
+the update is for, and that is the field a receiver needs first.
 
 
 What the implementations say about themselves
