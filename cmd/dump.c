@@ -847,7 +847,7 @@ static void dump_group(struct blob *b)
 
 	/* The one key in the corpus a human configures rather than a
 	 * derivation produces, and the only place either token key length
-	 * can turn up. Token takes 64 or 32 and nothing else, and the
+	 * can turn up. Token takes only 64 or 32, and the
 	 * length is what selects the cipher. RNS/Destination.py#GROUP. */
 	if (b[0].len != DERIVEDLEN && b[0].len != DERIVEDLEN / 2)
 		fatal("group: group key is %zu bytes, expected %d or %d",

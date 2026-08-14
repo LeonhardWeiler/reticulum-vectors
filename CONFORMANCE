@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-10 against the corpus test/ holds at that date, through
+Run on 2026-08-14 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 72746484
+    corpus 1924311793
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,43 +23,42 @@ these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  78 / 85  31 / 36
-    go-reticulum        06621cc   2026-04-28  70 / 85  23 / 36
-    rsReticulum         07ca721   2026-08-02  67 / 85  21 / 36
-    microReticulum      40fa628   2026-07-20  54 / 85  13 / 36
-    Reticulum-rs        be7a7fc   2026-07-31  53 / 85  10 / 36
-    rns.js              d4602ca   2025-02-10  41 / 85   2 / 36
-    sgiath/reticulum    0c4904e   2026-07-09  34 / 85   2 / 36
+    Reticulum-Go        48f1517   2026-07-25  84 / 92  37 / 42
+    go-reticulum        06621cc   2026-04-28  75 / 92  28 / 42
+    rsReticulum         07ca721   2026-08-02  74 / 92  27 / 42
+    microReticulum      40fa628   2026-07-20  56 / 92  14 / 42
+    Reticulum-rs        be7a7fc   2026-07-31  56 / 92  12 / 42
+    rns.js              d4602ca   2025-02-10  42 / 92   2 / 42
+    sgiath/reticulum    0c4904e   2026-07-09  35 / 92   2 / 42
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 85, not 104: every harness exits 77 for at least five kinds, and
-those 19 vectors are skipped rather than counted against anyone.
+Out of 92, not 114: every harness exits 77 for at least five kinds, and
+those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
     pathrequest     6
-    group           4
-    ifac            4
-    resourceproof   2
+    group           5
+    ifac            5
+    resourceproof   3
 
-One of the 19 is no longer a skip for everyone. Reticulum-Go's
-harness runs the ifac kind and passes all four, so its own run reads
-82 / 89; the row above is the same run restricted to the 85 the other
-six can be compared on. See "The interface access codes, measured
-once" below.
+One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
+runs the ifac kind and passes four of the five, so its own run reads
+88 / 97; the row above is the same run restricted to the 92 the other
+six can be compared on. The fifth is new and it fails, which is finding
+29. See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the two
-delivery proofs made on a link, which are filed under proof. Eleven of
+delivery proofs made on a link, which are filed under proof. Twelve of
 them are the resource contexts.
 
-The corpus count did not move for this run and the fingerprint did. One
-vector was regenerated, test/linkdata/resource-request-exhausted-short,
-because the corpus and not the implementation had the rule wrong; the
-entry after the harness faults says what it was. Not one count of the
-six moved, which is the outcome to expect from a vector that every one
-of them fails either way.
+Ten vectors were added since the last run and the corpus grew from 104
+to 114. Seven of them land in kinds every harness runs, so both
+denominators moved; the paragraph at the end of "How the corpus grew"
+says what each of the seven answered. Three new findings came out of
+them, 28 to 30, and no existing count fell.
 
 Five harness faults have been found and fixed, and no harness changed
 for the run above. They are recorded here because a harness is evidence
@@ -168,9 +167,11 @@ Six of the seven produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The seventh cannot
 load an identity from a private key at all; see finding 7.
 
-All seven agree on both forms of a delivery proof to a destination, and
-all seven agree on both delivery proofs made on a link once the harness
-hands them the key that signs one. Which key that is, they do not
+All seven agree on both forms of a delivery proof to a destination
+where the proof names the packet it proves correctly, and two of them
+verify the signature over the wrong one of the two hashes when it does
+not; see finding 28. All seven agree on both delivery proofs made on a
+link once the harness hands them the key that signs one. Which key that is, they do not
 decide: only Reticulum-Go, go-reticulum and rsReticulum have a link
 proof path at all, and the other four verify no proof on a link
 anywhere. See doc/link.
@@ -269,10 +270,11 @@ wrongly.
 
 How the corpus grew
 
-These four paragraphs are the history of the corpus against the six
+The first four paragraphs are the history of the corpus against the six
 implementations measured before Reticulum-Go. Where they say "all
 six" they mean those six at that time, and the seventh answers some
-of them differently; finding 22 has the current table.
+of them differently; finding 22 has the current table. The last is the
+growth to 114 and is measured against all seven.
 
 Not one passing count moved when the corpus grew from 90 vectors to 94.
 The four added are the four ways a resource plaintext can be too short
@@ -306,6 +308,32 @@ fail both.
 
     linkdata/channel-short         failed by all six, finding 22
     linkdata/request-short         failed by all six, finding 22
+
+Every count gained when it grew from 104 to 114. The ten added are the
+cases the corpus documented and did not carry: a field whose keyword
+had only one of its two values on file, a body msgpack writes as empty
+rather than as absent, a body that runs out, the second token key
+length, and a resource flag bit nothing had set. Seven are of kinds
+every harness runs.
+
+    linkproof/link-id-mismatch     passed by four, failed by three
+    proof/hash-mismatch            failed by two, finding 28
+    linkdata/identify-elsewhere    failed by three
+    linkdata/request-empty-data    failed by four
+    linkdata/response-empty-data   failed by four
+    linkdata/request-truncated     failed by four, finding 30
+    linkdata/resource-advertisement-metadata
+                                   failed by four
+
+    group/aes128                   skipped
+    resourceproof/hash-mismatch    skipped
+    ifac/altered-frame             run by Reticulum-Go alone, finding 29
+
+The seven drew 24 failures between them. Three are new findings, 28 and
+30, and the other 21 are each an implementation failing a vector
+derived from or sent beside one it was already failing. A vector only
+the already-broken fail still earns its place: the base vector cannot
+say which of the two things a decoder got wrong, and the pair can.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -714,13 +742,16 @@ and a verdict. The harness calls all three.
     ifac/passphrase        passed    both, the two hashes in order
     ifac/passphrase-only   passed    a passphrase alone
     ifac/minimum-size      passed    a one-byte code
+    ifac/altered-frame     failed    a code that covers nothing
 
-Four of four, on the first implementation ever asked. The key
-derivation, the salt, the order of the two hashes in the origin, the
-per-byte mask and the two header bytes that are masked while the code
-between them is not: all of it agrees with the reference byte for byte.
-One value in the vector is still followed rather than called, the
-64-byte origin itself, which New builds and keeps no copy of.
+Four of five, on the first implementation ever asked, and every one of
+the four is a frame whose code is correct. The key derivation, the
+salt, the order of the two hashes in the origin, the per-byte mask and
+the two header bytes that are masked while the code between them is
+not: all of it agrees with the reference byte for byte. One value in
+the vector is still followed rather than called, the 64-byte origin
+itself, which New builds and keeps no copy of. The fifth is what
+happens after a code does not match, and is finding 29.
 
 A frame with bit 7 set is not a packet, and an implementation that
 reads one as a packet gets random flags, a random hop count and a
@@ -821,7 +852,18 @@ by a constant of its own rather than by a misread, which is finding 25.
 Finding 19: four of seven read nothing a request or a response carries
 
 Affects Reticulum-rs, microReticulum, rns.js and sgiath/reticulum.
-Vectors test/linkdata/request, request-no-data and response.
+Vectors test/linkdata/request, request-no-data, request-empty-data,
+response and response-empty-data. All four fail all five: whether a
+body is nil or empty is a distinction below the level any of them
+reaches, and the pair added since the last run cost each of them two.
+
+There is a sixth vector of the group, request-truncated, and
+Reticulum-rs passes it. Its request fields are three dashes on every
+request, and three dashes is exactly what that one expects. It is the
+only vector in the corpus where reading nothing is the right answer,
+and it is a reminder that a pass is agreement on an output and not
+evidence of a reader. The other three of this group fail it, and so
+does go-reticulum, which does read the body; that one is finding 30.
 
 Contexts 0x09 and 0x0a are where msgpack becomes part of the wire
 format. Three implementations read them and four do not, and the four
@@ -909,6 +951,12 @@ Reticulum-Go is the only one that reads that byte at all, and it is
 also the one that reads it the way the reference does, against 0xff
 rather than against zero; the corpus had that wrong and the entry above
 on the corpus fault says so.
+
+There are two advertisements since this run, and the second carries
+metadata, which is bit 5 of the flags byte. The three that read an
+advertisement and pass the first pass the second: none of them reads
+the byte as a constant. The four that fail the first fail the second,
+for the reasons in this entry and the next.
 
 microReticulum reads an advertisement correctly and still fails the
 vector, because it decrypts nothing on a link at all; see finding 11.
@@ -1134,6 +1182,84 @@ second is how a decoder reads four bytes that are not there, and this
 one cannot.
 
 
+Finding 28: an explicit delivery proof is verified against the hash it
+carries
+
+Affects Reticulum-Go and go-reticulum. Vector test/proof/hash-mismatch.
+
+An explicit proof is 96 bytes: 32 that name the packet being proved and
+64 of signature. The signature is over the hash the receiver computes
+from that packet, not over the 32 the proof carries, and the two are
+the same in every proof the reference emits. They are not the same in
+this one.
+
+Both implementations report hash_match no, which is the comparison
+done, and then signature_valid no, which the reference does not: it
+verifies over its own hash and gets yes. Both verify over the carried
+hash instead.
+
+Nothing is accepted that should be refused, because the mismatch is
+caught by the other field and both drop the packet. What is lost is the
+distinction: a proof for another packet and a proof with a broken
+signature are the same event to these two, and the second is an attack
+where the first is a stray.
+
+It took a mismatched explicit proof to see it. Both pass
+test/proof/explicit, where the two hashes agree and either order of
+operations gives the same answer.
+
+
+Finding 29: an access code that fails takes the frame with it
+
+Affects Reticulum-Go, the one implementation whose harness runs the
+kind. Vector test/ifac/altered-frame.
+
+Unmask at pkg/ifac/ifac.go rebuilds the packet, recomputes the code
+over it and compares, and returns nil for the packet when the compare
+fails. So the two values the corpus asks for after a failure, the
+packet that came out of the mask and the code it should have produced,
+do not exist to be printed:
+
+    packet             -
+    expected_ifac      -
+    ifac_valid         no
+
+The verdict is right and the frame is dropped, which is what the
+reference does with it. The finding is that unmasking and validating
+are one call: an implementation that wants to log what a rejected frame
+claimed to be, or to tell a wrong key from a corrupted frame, has
+nothing to look at.
+
+Four of the five ifac vectors pass, and all four are frames whose code
+is correct. The fifth is the only one where the two halves of that call
+can be told apart.
+
+
+Finding 30: a msgpack body that runs out is an error rather than a stop
+
+Affects go-reticulum. Vector test/linkdata/request-truncated.
+
+The plaintext is one byte, 0x93, a msgpack array header announcing
+three elements over a body that holds none. The reference reads the
+header, reads no element, and returns three of nothing:
+umsgpack.unpackb raises nothing the caller sees, and the request fields
+are absent rather than wrong. doc/link, section Request and response,
+is written on this.
+
+go-reticulum replaces the whole record with one line:
+
+    error              insufficient data
+
+Everything already decoded goes with it: the header, the link id, the
+token it decrypted and verified. The packet is a valid link data packet
+whose payload happens to say less than it announced, and an
+implementation that answers with one error line cannot report the part
+it read.
+
+The other three that fail this vector fail test/linkdata/request as
+well and do not reach the body at all.
+
+
 What the implementations say about themselves
 
 Four of the seven publish a claim about compatibility with python-rns.
@@ -1184,14 +1310,16 @@ tag RNS_REF_TAG, which defaults to 1.4.0, and asserts against them in
 that tag holds today. It scores highest here of the seven by a margin,
 and it is the only one whose author can already answer the question
 this corpus asks. What it does not have is the rejections: every one of
-its 48 tests is an input that decodes, and every one of its seven
-failures here is an input that does not. Five of the seven are a
-threshold named at the wrong number and two are a rule it applies and
-does not report. That is the half of a wire format a generator writes
-last, because nothing in an implementation asks for it.
+its 48 tests is an input that decodes, and seven of its nine failures
+here are an input that does not. Five of the seven are a threshold
+named at the wrong number and two are a rule it applies and does not
+report. That is the half of a wire format a generator writes last,
+because nothing in an implementation asks for it. The other two
+failures are findings 28 and 29, and both are an input that decodes and
+a verdict about it that the reference reaches differently.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-51 vectors here. Its runner covers HKDF, tokens, packet pack and
+57 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the
