@@ -433,8 +433,9 @@ What puts a case here is that no reference function can be made to
 write the bytes. It is not that the layers above the packet do not
 build the payload: what a link carries is chosen by whoever sends it,
 and a plaintext chosen here and handed to Link.encrypt and Packet.pack
-is the reference's output as much as any other. The vectors built that
-way say so in their source.
+is the reference's output as much as any other. 15 vectors are built
+that way and each says so in its source, which names the chosen
+plaintext before it names the pin.
 
     a header that does not parse, in any kind but announce
 

@@ -96,6 +96,14 @@ UPSTREAM_KEY_SOURCE = "python-rns %s tests/identity.py#fixed_keys (%s)" % (PIN_V
 UPSTREAM_SIG_SOURCE = "python-rns %s tests/identity.py#signed_message (%s)" % (PIN_VERSION, PIN)
 GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN)
 
+# A packet whose plaintext is chosen here. Everything around it is the
+# reference's: Link.encrypt draws the initialisation vector and
+# Packet.pack writes the header, so raw is its output as it is for
+# every other vector. The plaintext is not, and a vector says which of
+# the two it is rather than leaving a reader to find out.
+CHOSEN_SOURCE       = "plaintext chosen by tools/gen, packed and encrypted by " \
+                      "python-rns %s (%s)" % (PIN_VERSION, PIN)
+
 # Constructed here, not upstream. The pair pins the clamping rule: the
 # X25519 scalar is stored as given and clamped only when used, so the
 # two keys differ while their public keys and identity hashes agree.
@@ -2125,10 +2133,20 @@ def gen_linkdata(RNS, w, verify, session):
          "the same plaintext in the response context, where a two-element array is expected"),
     ]
 
+    # The six above whose plaintext was chosen here rather than built by
+    # a layer of the reference. They are sent through the reference all
+    # the same, and the difference is in the source rather than in the
+    # bytes around it. identify-elsewhere is one of them: the signature
+    # in it is the reference's own, over data chosen here.
+    chosen = {"channel-short", "request-short", "request-truncated",
+              "identify-elsewhere", "request-not-an-array",
+              "response-not-an-array"}
+
     for name, packet, purpose in cases:
         blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]
         described = describe_linkdata(request_raw, responder_private, packet.raw, verify)
-        w.vector("linkdata", name, purpose, blobs, described)
+        w.vector("linkdata", name, purpose, blobs, described,
+            source=CHOSEN_SOURCE if name in chosen else GENERATED_SOURCE)
 
     base  = sent[0].raw
     built = derived_from(w, "linkdata", "minimal",
@@ -2881,8 +2899,7 @@ def gen_resource_short(RNS, w, verify, session):
         w.vector("linkdata", name, purpose,
             [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
             described,
-            source="plaintext chosen by tools/gen, packed and encrypted by "
-                   "python-rns %s (%s)" % (PIN_VERSION, PIN))
+            source=CHOSEN_SOURCE)
 
 
 def gen_resource_shape(RNS, w, verify, session, advertisement):
@@ -2952,8 +2969,7 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         w.vector("linkdata", name, purpose,
             [request_raw.hex(), responder_private.hex(), packet.raw.hex()],
             described,
-            source="plaintext chosen by tools/gen, packed and encrypted by "
-                   "python-rns %s (%s)" % (PIN_VERSION, PIN))
+            source=CHOSEN_SOURCE)
 
 
 def gen_resource(RNS, w, verify):

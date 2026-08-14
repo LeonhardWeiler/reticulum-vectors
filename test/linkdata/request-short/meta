@@ -1,3 +1,3 @@
-source             python-rns 1.4.2 (b48b96e6, openssl backend)
+source             plaintext chosen by tools/gen, packed and encrypted by python-rns 1.4.2 (b48b96e6, openssl backend)
 determinism        encode
 purpose            an empty plaintext in the request context, where a msgpack array is expected
