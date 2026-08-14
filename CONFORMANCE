@@ -4,7 +4,7 @@ Run on 2026-08-14 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 1924311793
+    corpus 4003830251
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  84 / 92  37 / 42
-    go-reticulum        06621cc   2026-04-28  75 / 92  28 / 42
-    rsReticulum         07ca721   2026-08-02  74 / 92  27 / 42
-    microReticulum      40fa628   2026-07-20  56 / 92  14 / 42
-    Reticulum-rs        be7a7fc   2026-07-31  56 / 92  12 / 42
-    rns.js              d4602ca   2025-02-10  42 / 92   2 / 42
-    sgiath/reticulum    0c4904e   2026-07-09  35 / 92   2 / 42
+    Reticulum-Go        48f1517   2026-07-25  86 / 94  39 / 44
+    go-reticulum        06621cc   2026-04-28  76 / 94  29 / 44
+    rsReticulum         07ca721   2026-08-02  76 / 94  29 / 44
+    microReticulum      40fa628   2026-07-20  57 / 94  15 / 44
+    Reticulum-rs        be7a7fc   2026-07-31  57 / 94  13 / 44
+    rns.js              d4602ca   2025-02-10  42 / 94   2 / 44
+    sgiath/reticulum    0c4904e   2026-07-09  35 / 94   2 / 44
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 92, not 114: every harness exits 77 for at least five kinds, and
+Out of 94, not 116: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,18 +46,18 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-88 / 97; the row above is the same run restricted to the 92 the other
+90 / 99; the row above is the same run restricted to the 94 the other
 six can be compared on. The fifth is new and it fails, which is finding
 29. See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the two
-delivery proofs made on a link, which are filed under proof. Twelve of
-them are the resource contexts.
+delivery proofs made on a link, which are filed under proof. 13 of them
+are the resource contexts.
 
-Ten vectors were added since the last run and the corpus grew from 104
-to 114. Seven of them land in kinds every harness runs, so both
-denominators moved; the paragraph at the end of "How the corpus grew"
-says what each of the seven answered. Three new findings came out of
+Twelve vectors were added since the last run and the corpus grew from
+104 to 116. Nine of them land in kinds every harness runs, so both
+denominators moved; the last two paragraphs of "How the corpus grew"
+say what each of the nine answered. Three new findings came out of
 them, 28 to 30, and no existing count fell.
 
 Five harness faults have been found and fixed, and no harness changed
@@ -335,6 +335,28 @@ derived from or sent beside one it was already failing. A vector only
 the already-broken fail still earns its place: the base vector cannot
 say which of the two things a decoder got wrong, and the pair can.
 
+Two more took it from 114 to 116, both of them msgpack and both of
+kinds every harness runs. They were written against the corpus rather
+than against an implementation: a coverage build of cmd/dump showed
+three encodings its own reader implements and no vector reached.
+
+    linkdata/resource-advertisement-large
+                                   failed by three
+    linkdata/request-not-an-array  failed by four, finding 30
+
+The first is a resource of 100000 bytes, whose advertisement is the
+only one here that needs uint8, uint32 and bin16. The three that fail
+it are the three that read no advertisement at all, and the four that
+do read one all got the wider encodings right. The second is a request
+body that is not an array, and it costs go-reticulum a second failure
+under the same finding as the body that runs out.
+
+It also handed one implementation a pass that says nothing good about
+it. microReticulum decrypts the large advertisement correctly, and it
+is the only one of the 32 linkdata vectors it decrypts at all beyond
+the two that are not encrypted. Finding 11 says why, and the reason is
+the finding rather than an exception to it.
+
 
 Finding 1: the hop limit is not applied at parse time
 
@@ -596,10 +618,10 @@ derives 64 (src/link.js:289), which is finding 5 in the link path: even
 past the length check, the token would be keyed for AES-128.
 
 
-Finding 11: microReticulum decrypts nothing on a link
+Finding 11: microReticulum decrypts one link packet in 32
 
-Affects microReticulum. All six test/linkdata/ vectors. Same root cause
-as findings 4 and 6.
+Affects microReticulum. 29 of the 32 test/linkdata/ vectors. Same root
+cause as findings 4 and 6.
 
     reference       35bb1f6a74b45436fc2dee15496e76511173bd6eb57d36f8...
     microReticulum  f7ac8a90ade7c050b257ce5767232d0ac08df4de1c912f8b...
@@ -611,10 +633,28 @@ clamps when the scalar is used; microReticulum does not. The two ends
 compute different secrets, the HMAC fails, and nothing decrypts.
 
 Finding 6 recorded this as an edge case that broke ratchets. On a link
-it is not an edge case. Every link key is drawn the same way, so the
-failure is not occasional but total: microReticulum reads the link
-request correctly and verifies the proof correctly, and then cannot
-decrypt a single packet on the link it just established.
+it is not an edge case: every link key is drawn the same way, so the
+rate is the rate. microReticulum reads the link request correctly and
+verifies the proof correctly, and then cannot decrypt a packet on 31
+links out of 32.
+
+The corpus now holds the 32nd. Its link sessions are separate, each
+with its own responder scalar, and the one behind
+test/linkdata/resource-advertisement-large came out already in clamped
+form:
+
+    resource-advertisement        2c...b5   clamps to 28...75
+    resource-advertisement-large  28...65   clamps to itself
+
+microReticulum decrypts the second and fails the first, which is the
+diagnosis rather than a counterexample to it. Two more of its passes on
+this kind are keepalive and resource-part, the two link packets the
+reference does not encrypt. Everything else on a link is the wrong
+secret.
+
+That an implementation can pass one vector of a kind and fail 29 on the
+value of one byte is the argument for generating each session
+separately rather than reusing one link throughout.
 
 
 Finding 12: rsReticulum accepts a proof stripped of its signalling
@@ -857,12 +897,13 @@ response and response-empty-data. All four fail all five: whether a
 body is nil or empty is a distinction below the level any of them
 reaches, and the pair added since the last run cost each of them two.
 
-There is a sixth vector of the group, request-truncated, and
-Reticulum-rs passes it. Its request fields are three dashes on every
-request, and three dashes is exactly what that one expects. It is the
-only vector in the corpus where reading nothing is the right answer,
-and it is a reminder that a pass is agreement on an output and not
-evidence of a reader. The other three of this group fail it, and so
+Two further vectors of the group hold a body that gives less than the
+context wants, request-truncated and request-not-an-array, and
+Reticulum-rs passes both. Its request fields are three dashes on every
+request, and three dashes is exactly what those two expect. They are
+the only vectors in the corpus where reading nothing is the right
+answer, and a reminder that a pass is agreement on an output and not
+evidence of a reader. The other three of this group fail both, and so
 does go-reticulum, which does read the body; that one is finding 30.
 
 Contexts 0x09 and 0x0a are where msgpack becomes part of the wire
@@ -952,11 +993,15 @@ also the one that reads it the way the reference does, against 0xff
 rather than against zero; the corpus had that wrong and the entry above
 on the corpus fault says so.
 
-There are two advertisements since this run, and the second carries
-metadata, which is bit 5 of the flags byte. The three that read an
-advertisement and pass the first pass the second: none of them reads
-the byte as a constant. The four that fail the first fail the second,
-for the reasons in this entry and the next.
+There are three advertisements since this run. The second carries
+metadata, which is bit 5 of the flags byte, and the third is a resource
+of 100000 bytes, whose sizes, part count and hashmap need msgpack
+encodings no other vector reaches. Three of the four that read an
+advertisement pass all three: not one of them reads the flags byte as a
+constant or the integer widths as fixed. The fourth is microReticulum,
+which reads an advertisement correctly and decrypts only one of the
+three; see finding 11. The three that read no advertisement fail all
+three.
 
 microReticulum reads an advertisement correctly and still fails the
 vector, because it decrypts nothing on a link at all; see finding 11.
@@ -1235,9 +1280,11 @@ is correct. The fifth is the only one where the two halves of that call
 can be told apart.
 
 
-Finding 30: a msgpack body that runs out is an error rather than a stop
+Finding 30: a msgpack body that gives less than the context wants is an
+error rather than a stop
 
-Affects go-reticulum. Vector test/linkdata/request-truncated.
+Affects go-reticulum. Vectors test/linkdata/request-truncated and
+test/linkdata/request-not-an-array.
 
 The plaintext is one byte, 0x93, a msgpack array header announcing
 three elements over a body that holds none. The reference reads the
@@ -1256,7 +1303,13 @@ whose payload happens to say less than it announced, and an
 implementation that answers with one error line cannot report the part
 it read.
 
-The other three that fail this vector fail test/linkdata/request as
+The second vector is the other way a body can give less: its plaintext
+is 0x01, an integer where an array header belongs, so the read never
+begins rather than running out. go-reticulum answers the same one line
+for both. The reference answers three dashes for both, and the two are
+different branches in every reader that has them.
+
+The other three that fail these vectors fail test/linkdata/request as
 well and do not reach the body at all.
 
 
@@ -1319,7 +1372,7 @@ failures are findings 28 and 29, and both are an input that decodes and
 a verdict about it that the reference reaches differently.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-57 vectors here. Its runner covers HKDF, tokens, packet pack and
+59 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the
