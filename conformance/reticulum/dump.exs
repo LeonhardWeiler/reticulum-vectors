@@ -47,6 +47,16 @@ defmodule Dump do
     Enum.each(pairs, fn {k, v} -> f(k, Integer.to_string(v)) end)
   end
 
+  # How long a header has to be, following Packet.decode at
+  # lib/reticulum/packet.ex:64. It names no number: the clause matches
+  # addresses::bytes-size(@address_len * (header + 1)) and fails to
+  # match when they are not there, so the threshold moves with the
+  # header type bit. The arithmetic below is that pattern.
+  def header_minimum(raw) do
+    <<_ifac::size(1), header::size(1), _rest::bitstring>> = binary_part(raw, 0, 1)
+    2 + 16 * (header + 1) + 1
+  end
+
   # sgiath/reticulum exposes no entry point that yields the header
   # fields on their own, so they are read from its decoded packet.
   def header(p, raw) do
@@ -214,7 +224,7 @@ defmodule Dump do
         f("signature_valid", if(Identity.validate(announced, signed, sig), do: "yes", else: "no"))
       end
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 
@@ -311,7 +321,7 @@ defmodule Dump do
         end
       end
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 
@@ -373,7 +383,7 @@ defmodule Dump do
           if(Identity.validate(signer, packet_hash, signature), do: "yes", else: "no"))
       end
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 
@@ -396,7 +406,7 @@ defmodule Dump do
       f("mtu", "-")
       f("link_id", hx(link_id(raw)))
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 
@@ -440,7 +450,7 @@ defmodule Dump do
           do: "yes",
           else: if(complete, do: "no", else: "-")))
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 
@@ -585,7 +595,7 @@ defmodule Dump do
         end
       end
     else
-      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", 19}])
+      _ -> invalid("short-header", [{"length", byte_size(raw)}, {"minimum_length", header_minimum(raw)}])
     end
   end
 

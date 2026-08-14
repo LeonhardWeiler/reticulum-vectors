@@ -34,6 +34,26 @@ const (
 	addrLen  = 16
 )
 
+// How long a header has to be, following Packet.Unpack at
+// rns/packet.go:425. It tests no length: it slices at 2+dstLen+1 or at
+// 2+2*dstLen+1 by the header type bit and lets the recover catch what
+// is not there, so the bound below is the offset it indexes and not a
+// constant this harness chose. ReticulumTruncatedHashLength is
+// go-reticulum's own.
+//
+// The 2 the callers guard on is that same rule one byte earlier:
+// Unpack reads Raw[1] for the hops before it reads the header type at
+// all, so a one-byte frame dies at the second byte and 2 is the offset
+// it indexed. It is a constant here because the byte that would move
+// it is the byte that is missing.
+func headerMinimum(raw []byte) int {
+	dstLen := rns.ReticulumTruncatedHashLength / 8
+	if (raw[0]&0b01000000)>>6 == rns.HeaderType2 {
+		return 2 + 2*dstLen + 1
+	}
+	return 2 + dstLen + 1
+}
+
 var out []string
 
 func f(name, value string) { out = append(out, fmt.Sprintf("%-*s %s", W, name, value)) }
@@ -198,7 +218,7 @@ func proof(b [][]byte) {
 	}
 	p := &rns.Packet{Raw: raw}
 	if !p.Unpack() {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 	printHeader(p, raw)
@@ -270,7 +290,7 @@ func announce(b [][]byte) {
 
 	p := &rns.Packet{Raw: raw}
 	if !p.Unpack() {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 
@@ -454,7 +474,7 @@ func encrypted(b [][]byte) {
 	}
 	p := &rns.Packet{Raw: raw}
 	if !p.Unpack() {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 
@@ -606,7 +626,7 @@ func linkrequest(b [][]byte) {
 
 	p, link := validateRequest(raw)
 	if p == nil {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 	if link == nil {
@@ -647,7 +667,7 @@ func linkproof(b [][]byte) {
 	}
 	p := &rns.Packet{Raw: raw}
 	if !p.Unpack() {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 
@@ -719,7 +739,7 @@ func linkdata(b [][]byte) {
 	}
 	p := &rns.Packet{Raw: raw}
 	if !p.Unpack() {
-		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", 19})
+		invalid("short-header", [2]interface{}{"length", len(raw)}, [2]interface{}{"minimum_length", headerMinimum(raw)})
 		return
 	}
 

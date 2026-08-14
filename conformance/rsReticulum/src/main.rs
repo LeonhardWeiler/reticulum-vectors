@@ -15,9 +15,20 @@ use rns_identity::announce::AnnounceData as Announce;
 use rns_identity::destination::Destination;
 use rns_identity::identity::Identity;
 use rns_wire::packet::Packet;
+use rns_wire::constants::{HEADER_MAXSIZE, HEADER_MINSIZE};
 use rns_wire::flags::{DestinationType, HeaderType, PacketType, TransportType};
 
 const W: usize = 18;
+
+// How long a header has to be, following PacketHeader::unpack at
+// crates/rns-wire/src/header.rs:47. It tests HEADER_MINSIZE first and
+// HEADER_MAXSIZE again inside the Header2 arm, so the threshold moves
+// with the header type bit and both numbers below are rsReticulum's
+// own constants.
+fn header_minimum(raw: &[u8]) -> usize {
+    if raw.is_empty() { return HEADER_MINSIZE; }
+    if (raw[0] & 0b0100_0000) >> 6 == 1 { HEADER_MAXSIZE } else { HEADER_MINSIZE }
+}
 
 fn f(out: &mut Vec<String>, name: &str, value: &str) {
     out.push(format!("{:<W$} {}", name, value, W = W));
@@ -154,7 +165,7 @@ fn xport_type_name(t: TransportType) -> &'static str {
 fn announce(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let raw = b[0].as_ref().unwrap();
     if raw.len() < 2 {
-        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 2)]);
+        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", header_minimum(raw))]);
     }
 
     // No hop limit check here: whether from_raw applies one is what the
@@ -162,7 +173,7 @@ fn announce(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
 
     let h = &p.header;
@@ -302,12 +313,12 @@ fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     }
 
     if raw.len() < 2 {
-        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", 2)]);
+        return invalid(out, "short-header", &[("length", raw.len()), ("minimum_length", header_minimum(raw))]);
     }
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
 
     let payload = p.data();
@@ -440,7 +451,7 @@ fn proof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
     print_header(out, &p, raw);
 
@@ -494,7 +505,7 @@ fn linkrequest(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
     let payload = p.data();
 
@@ -539,7 +550,7 @@ fn linkproof(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
     let payload = p.data();
 
@@ -604,7 +615,7 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let p = match Packet::from_raw(raw) {
         Ok(p) => p,
         Err(_) => return invalid(out, "short-header",
-                                 &[("length", raw.len()), ("minimum_length", 19)]),
+                                 &[("length", raw.len()), ("minimum_length", header_minimum(raw))]),
     };
     let payload = p.data().to_vec();
 

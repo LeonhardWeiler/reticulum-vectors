@@ -114,10 +114,15 @@ function announce(blobs) {
         for (const [k, v] of pairs) f(k, String(v));
     };
 
-    if (raw.length < 2) return invalid("short-header", ["length", raw.length], ["minimum_length", 2]);
+    // rns.js names no header length. Packet.fromBytes slices, and a
+    // slice past the end of a Uint8Array is short rather than an
+    // error, so nothing in it refuses a frame for being too short and
+    // there is no number to print. The guard is the harness keeping
+    // itself from indexing, not a rule of the implementation.
+    if (raw.length < 2) return invalid("short-header", ["length", raw.length], ["minimum_length", "-"]);
 
     const p = Packet.fromBytes(raw);
-    if (p === null || p === undefined) return invalid("short-header", ["length", raw.length], ["minimum_length", 19]);
+    if (p === null || p === undefined) return invalid("short-header", ["length", raw.length], ["minimum_length", "-"]);
 
     // No hop limit check here: rns.js has none, and adding one would
     // hide that. The vector at the limit is expected to fail.
@@ -196,9 +201,14 @@ function encrypted(blobs) {
         for (const [k, v] of pairs) f(k, String(v));
     };
 
-    if (raw.length < 2) return invalid("short-header", ["length", raw.length], ["minimum_length", 2]);
+    // rns.js names no header length. Packet.fromBytes slices, and a
+    // slice past the end of a Uint8Array is short rather than an
+    // error, so nothing in it refuses a frame for being too short and
+    // there is no number to print. The guard is the harness keeping
+    // itself from indexing, not a rule of the implementation.
+    if (raw.length < 2) return invalid("short-header", ["length", raw.length], ["minimum_length", "-"]);
     const p = Packet.fromBytes(raw);
-    if (p === null || p === undefined) return invalid("short-header", ["length", raw.length], ["minimum_length", 19]);
+    if (p === null || p === undefined) return invalid("short-header", ["length", raw.length], ["minimum_length", "-"]);
 
     const payload = p.data;
     const min = Identity.KEYSIZE_IN_BYTES / 2 + Fernet.FERNET_OVERHEAD;

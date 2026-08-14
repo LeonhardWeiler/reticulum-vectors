@@ -28,6 +28,18 @@
 static const int W = 18;
 static std::vector<std::string> out;
 
+// How long a header has to be, following Packet::unpack at
+// src/microReticulum/Packet.cpp:422. It throws length_error against
+// HEADER_MINSIZE first and against HEADER_MAXSIZE again inside the
+// header 2 branch, so the threshold moves with the header type bit
+// and both numbers are microReticulum's own.
+static size_t header_minimum(const RNS::Bytes &raw) {
+	if (raw.size() == 0) return RNS::Type::Reticulum::HEADER_MINSIZE;
+	uint8_t flags = raw.data()[0];
+	return ((flags & 0x40) >> 6) == 1 ? RNS::Type::Reticulum::HEADER_MAXSIZE
+	                                  : RNS::Type::Reticulum::HEADER_MINSIZE;
+}
+
 static void f(const char *name, const std::string &value) {
 	char buf[64];
 	snprintf(buf, sizeof buf, "%-*s ", W, name);
@@ -189,10 +201,10 @@ static std::string context_name(unsigned c) {
 
 static void kind_announce(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &raw = b[0];
-	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	unsigned flags = raw.data()[0];
 	unsigned hops = raw.data()[1];
@@ -283,9 +295,9 @@ static void kind_encrypted(std::vector<RNS::Bytes> &b, bool no_ratchet) {
 	f("recipient_private", hexs(priv));
 	f("ratchet_private", no_ratchet ? "-" : hexs(b[1]));
 
-	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	RNS::Bytes payload = p.data();
 	if (payload.size() < 32 + 48) {
@@ -355,9 +367,9 @@ static void kind_linkrequest(std::vector<RNS::Bytes> &b) {
 	const RNS::Bytes &raw = b[0];
 	char buf[32];
 
-	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	RNS::Bytes payload = p.data();
 	// The rule validate_request applies at Link.cpp:298. It is repeated
@@ -396,9 +408,9 @@ static void kind_proof(std::vector<RNS::Bytes> &b) {
 	f("signer_public", hexs(signer_public));
 
 	RNS::Packet proved(proved_raw);
-	if (!proved.unpack()) { invalid("short-header", "length", proved_raw.size(), "minimum_length", 19); return; }
+	if (!proved.unpack()) { invalid("short-header", "length", proved_raw.size(), "minimum_length", header_minimum(proved_raw)); return; }
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 	print_header(p, raw);
 
 	RNS::Bytes packet_hash = proved.get_hash();
@@ -453,9 +465,9 @@ static void kind_linkproof(std::vector<RNS::Bytes> &b) {
 	f("link_request", hexs(request_raw));
 	f("signer_public", hexs(identity_public));
 
-	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	RNS::Bytes payload = p.data();
 	bool signalled = payload.size() == 96 + SIGNALLEN;
@@ -511,9 +523,9 @@ static void kind_linkdata(std::vector<RNS::Bytes> &b) {
 	f("link_request", hexs(request_raw));
 	f("responder_private", hexs(responder_private));
 
-	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", 2); return; }
+	if (raw.size() < 2) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 	RNS::Packet p(raw);
-	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", 19); return; }
+	if (!p.unpack()) { invalid("short-header", "length", raw.size(), "minimum_length", header_minimum(raw)); return; }
 
 	RNS::Packet request(request_raw);
 	request.unpack();
