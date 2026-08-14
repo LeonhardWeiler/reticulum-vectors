@@ -421,6 +421,12 @@ lifted onto another link. Nothing else on a link names either end: the
 keys in the request and the proof are per link, and the identity of
 the initiator is revealed here or not at all.
 
+test/linkdata/identify-elsewhere is the lifted proof. The signature is
+the reference's own, over 16 zero bytes where the link id belongs, and
+it is the one vector where identity_valid is no. A decoder that reads
+the key out of the plaintext and takes the signature on trust reports
+the initiator by name on a link it never identified to.
+
 
 Vector format
 

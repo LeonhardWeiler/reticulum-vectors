@@ -54,6 +54,7 @@ linkdata/channel-eof
 linkdata/channel-short
 linkdata/close
 linkdata/identify
+linkdata/identify-elsewhere
 linkdata/keepalive
 linkdata/minimal
 linkdata/request

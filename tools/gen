@@ -2043,6 +2043,16 @@ def gen_linkdata(RNS, w, verify, session):
             # three fields are the third meaning of the dash.
             RNS.Packet(link, b"\x93", context=RNS.Packet.REQUEST).send()
 
+            # The same proof Link.identify assembles, signed over 16
+            # zero bytes where the link id belongs: what a replay onto
+            # another link carries. The signature is the reference's own
+            # and verifies over the data it was made over, which is not
+            # the data this link derives. RNS/Link.py#signed_data.
+            elsewhere = initiator_identity.get_public_key()
+            RNS.Packet(link,
+                       elsewhere + initiator_identity.sign(bytes(ADDRLEN) + elsewhere),
+                       context=RNS.Packet.LINKIDENTIFY).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2058,6 +2068,8 @@ def gen_linkdata(RNS, w, verify, session):
          "an empty plaintext in the request context, where a msgpack array is expected"),
         ("request-truncated", sent[9],
          "a msgpack array header announcing three elements over a plaintext that holds none"),
+        ("identify-elsewhere", sent[10],
+         "an identify proof signed over another link id, which is what a replay carries"),
     ]
 
     for name, packet, purpose in cases:
