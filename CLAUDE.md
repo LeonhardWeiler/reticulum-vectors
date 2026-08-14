@@ -307,6 +307,12 @@ Plain text. Fixed-width tables. No JSON, no YAML, no test framework.
 A comment says what the code does and why it does it that way now. What
 it did before is in git log.
 
+No comment stands above a function definition, in cmd/dump.c or in
+tools/gen. What such a comment said about the bytes belongs in doc/,
+and what it said about the code goes inside the function, beside the
+line it is about. The explanation at the top of a file is not one of
+these and stays.
+
 ---
 
 # Before Adding Anything
