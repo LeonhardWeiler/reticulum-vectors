@@ -2219,7 +2219,7 @@ def inline_threads(RNS):
         threading.Thread = real
 
 
-def resource_transfer(RNS, tag, data, complete=True):
+def resource_transfer(RNS, tag, data, complete=True, metadata=None):
     """One resource, carried from advertisement to proof.
 
     Every packet is the reference's own. What is replaced is the
@@ -2253,7 +2253,8 @@ def resource_transfer(RNS, tag, data, complete=True):
     try:
         with pinned(RNS, tag + "-resource"), inline_threads(RNS):
             with captured(RNS) as out:
-                resource = RNS.Resource(data, sender, auto_compress=False)
+                resource = RNS.Resource(data, sender, auto_compress=False,
+                                        metadata=metadata)
             advertisement = out[0]
             advertisement.link = receiver
             advertisement.plaintext = receiver.decrypt(advertisement.raw[HEADER1LEN:])
@@ -2833,6 +2834,16 @@ def gen_resource(RNS, w, verify):
     stop_session, _, stopped = resource_transfer(RNS, "resource-cancel",
                                                  b"reticulum" * 200, complete=False)
 
+    # The one advertisement whose flags byte is not 0x01. Metadata is
+    # prepended to the data and announced by bit 5, so a decoder that
+    # prints the byte and a decoder that reads the bits agree on every
+    # other vector of this kind. The map is the same 11 keys either way:
+    # nothing but f says the metadata is there.
+    # RNS/Resource.py#has_metadata.
+    meta_session, _, with_metadata = resource_transfer(
+        RNS, "resource-metadata", b"reticulum" * 200,
+        metadata={"filename": "reticulum.txt"})
+
     cases = [
         (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
          "the msgpack map that opens a transfer"),
@@ -2848,6 +2859,9 @@ def gen_resource(RNS, w, verify):
          "the sender gives up; the payload is the resource hash"),
         (stop_session, stopped[RNS.Packet.RESOURCE_RCL], "resource-cancel-receiver",
          "the receiver gives up, with the same payload and a different context"),
+        (meta_session, with_metadata[RNS.Packet.RESOURCE_ADV],
+         "resource-advertisement-metadata",
+         "an advertisement whose resource carries metadata, which is bit 5 of the flags byte"),
     ]
     # msgpack_read is this program's own reading. The advertisement is
     # the one resource payload the reference will read back, so it is

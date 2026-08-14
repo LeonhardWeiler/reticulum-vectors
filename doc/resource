@@ -112,9 +112,13 @@ The flags byte is six bits, low to high:
 
     RNS/Resource.py#self.f
 
-Only the byte is recorded. No vector varies the bits, and a vector for
-a flag value belongs with an object that sets it rather than in a table
-of permutations; see doc/packet.
+Only the byte is recorded. Two of the six bits have a vector, and each
+comes with an object that sets it rather than from a table of
+permutations; see doc/packet. Bit 0 is set in every transfer here,
+because a resource on a link is encrypted. Bit 5 is set in
+test/linkdata/resource-advertisement-metadata, whose resource was
+constructed with metadata: the map is the same 11 keys and nothing but
+this byte says the metadata is there.
 
 The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries.
 A resource with more parts than that advertises the first segment and
