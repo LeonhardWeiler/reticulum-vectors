@@ -358,7 +358,9 @@ build.
 Beyond that byte there is no length rule, and a body that runs out or
 announces a shape it does not hold is not a rejection. The elements it
 would have yielded are "-", the record is complete, and the reader
-stops reading rather than stopping. A one-byte plaintext 0x93 announces
+stops reading rather than stopping. That is the rule for an array,
+which is what these two contexts carry. A map is read whole or not at
+all; see doc/resource. A one-byte plaintext 0x93 announces
 three elements and holds none: all three fields are "-".
 test/linkdata/request-truncated is that plaintext, packed and encrypted
 by the reference over a payload the layers above it never build.

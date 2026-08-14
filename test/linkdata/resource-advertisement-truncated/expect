@@ -23,9 +23,9 @@ encryption_key     47d35ae63923abc82f81333e4de942f9d019d6a398a288c04046f2fe448ba
 hmac_valid         yes
 plaintext_length   17
 plaintext          8ba174cd0740a164cd0708a16e04a168c4
-transfer_size      1856
-data_size          1800
-resource_parts     4
+transfer_size      -
+data_size          -
+resource_parts     -
 resource_hash      -
 resource_random    -
 original_hash      -

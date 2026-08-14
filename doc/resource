@@ -127,36 +127,38 @@ stops at it and loses the ten keys behind it. The reference does not
 read the map at all until umsgpack has turned it into a dictionary, and
 then asks that dictionary for eleven names.
 
-Two more are neither: one stops before the map is read out and one is
-no map to read.
+Two more are read by neither rule, because they are not read at all. A
+map is whole or it is nothing, which is where it parts company with an
+array body on a link: umsgpack builds the dictionary or it raises, and
+unpack looks its eleven names up in what was built.
 
     resource-advertisement-truncated      cut inside a length prefix;
-                                          the three keys before it read
+                                          eleven dashes
     resource-advertisement-duplicate-key  one name on two pairs;
                                           eleven dashes
 
+    RNS/vendor/umsgpack.py#InsufficientDataException,
+    RNS/vendor/umsgpack.py#DuplicateKeyException
+
 The truncated plaintext is the reference's own advertisement, cut after
 the head byte of the resource hash and before the byte that says how
-long that hash is. The map header still announces eleven pairs, so no
-key here is absent. It is the only vector in the corpus that stops
+long that hash is. It is the only vector in the corpus that stops
 inside a value rather than between two of them, which is where a reader
-that takes a length it has not read yet reads past its buffer. What was
-read before the cut stands, which is the rule for a body that runs out
-everywhere on a link; see doc/link.
+that takes a length it has not read yet reads past its buffer. Three
+keys are whole ahead of the cut and none of the three reads: the map
+they are in was never built.
 
 The other is the same advertisement with the name of its second key
 altered to the name of its first. Eleven pairs, eleven values and ten
-names. Running out leaves a reader with less than it wanted; this
-leaves it with two answers to one question, and the reference takes
-neither: umsgpack raises while unpacking the map, so unpack is handed
-no dictionary at all and no field of the advertisement reads.
+names, all of them whole, and no field reads either. A reader that
+fills its fields as it scans the pairs keeps one of the two values and
+reports ten fields the reference never produced; which of the two it
+keeps is not the point.
 
-    RNS/vendor/umsgpack.py#DuplicateKeyException
-
-A reader that fills its fields as it scans the pairs will keep one of
-the two and report ten fields the reference never produced. Which one
-it keeps is not the point: this vector is the only place the corpus
-says that a decoder must notice at all.
+Both are why the dash in an advertisement is read as one thing and not
+two. It does not say that a field was absent or malformed. It says the
+map holds no answer for that name, and eleven of them say the map was
+never a map.
 
 A uint is written at the width the value needs and a bin at the width
 its length needs, so the widths in an advertisement are decided by the

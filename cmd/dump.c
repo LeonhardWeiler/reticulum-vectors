@@ -1329,14 +1329,15 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 			mp_skip(&m);
 		}
 
-		/* A key that is there twice is no map the reference will
-		 * build: umsgpack raises rather than deciding which of the two
-		 * values the name stands for, and unpack is handed nothing to
-		 * look eleven names up in. Every field is therefore the dash
-		 * that says the map was not read, which is what a plaintext
-		 * that is no map at all prints.
-		 * RNS/vendor/umsgpack.py#DuplicateKeyException. */
-		if (twice)
+		/* A map is whole or it is nothing, which is where this differs
+		 * from an array body: umsgpack builds the dictionary or
+		 * raises, and unpack looks eleven names up in what it built.
+		 * A map that names one key twice and a map the plaintext ran
+		 * out of are both nothing, and every field is the dash that
+		 * says so, which is what a plaintext that is no map at all
+		 * prints. RNS/vendor/umsgpack.py#DuplicateKeyException,
+		 * RNS/vendor/umsgpack.py#InsufficientDataException. */
+		if (twice || m.bad)
 			for (i = 0; i < sizeof order - 1; i++)
 				value[i].bad = 1;
 
