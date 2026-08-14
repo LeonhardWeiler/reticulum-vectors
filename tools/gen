@@ -422,6 +422,21 @@ def msgpack_one(data):
     return value
 
 
+def msgpack_elements(data, count):
+    """count elements of a msgpack array, None where there is no element.
+
+    A body that is not an array holds none of them, and a body that
+    ran out holds the ones it reached. Both print the same dash, and
+    cmd/dump reaches it the same way: mp_array sets bad on a head byte
+    that is not an array, mp_head sets bad past the end, and every
+    field after bad is "-". See doc/link.
+    """
+    value = msgpack_one(data)
+    if not isinstance(value, list):
+        value = []
+    return (value + [None] * count)[:count]
+
+
 # The kinds cmd/dump can rebuild raw for. signature is not among them:
 # its raw carries a 950-byte message that expect records only by its
 # digest, so the vector can be decoded and not rebuilt.
@@ -1959,14 +1974,15 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     if h["context"] in (0x09, 0x0a) and plaintext is not None:
         if len(plaintext) < 1:
             return lines + invalid("short-plaintext", ("minimum_length", 1))
-        parts = msgpack_one(plaintext)
         if h["context"] == 0x09:
+            parts = msgpack_elements(plaintext, 3)
             lines += [
                 field("request_time",      hexf(parts[0])),
                 field("request_path_hash", hexf(parts[1])),
                 field("request_data",      hexf(parts[2])),
             ]
         else:
+            parts = msgpack_elements(plaintext, 2)
             lines += [
                 field("request_id",    hexf(parts[0])),
                 field("response_data", hexf(parts[1])),
@@ -2060,6 +2076,13 @@ def gen_linkdata(RNS, w, verify, session):
                        elsewhere + initiator_identity.sign(bytes(ADDRLEN) + elsewhere),
                        context=RNS.Packet.LINKIDENTIFY).send()
 
+            # A first byte that is no array header at all. doc/link
+            # names two ways a msgpack body can hold less than the
+            # context wants, and this is the second: request-truncated
+            # runs out, this one never begins. Both print three dashes
+            # and they are not the same defect in a reader.
+            RNS.Packet(link, b"\x01", context=RNS.Packet.REQUEST).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2077,6 +2100,8 @@ def gen_linkdata(RNS, w, verify, session):
          "a msgpack array header announcing three elements over a plaintext that holds none"),
         ("identify-elsewhere", sent[10],
          "an identify proof signed over another link id, which is what a replay carries"),
+        ("request-not-an-array", sent[11],
+         "a one-byte plaintext that is no msgpack array header, where a request is expected"),
     ]
 
     for name, packet, purpose in cases:

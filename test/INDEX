@@ -61,6 +61,7 @@ linkdata/minimal
 linkdata/request
 linkdata/request-empty-data
 linkdata/request-no-data
+linkdata/request-not-an-array
 linkdata/request-short
 linkdata/request-truncated
 linkdata/resource-advertisement

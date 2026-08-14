@@ -354,6 +354,13 @@ three elements and holds none: all three fields are "-".
 test/linkdata/request-truncated is that plaintext, packed and encrypted
 by the reference over a payload the layers above it never build.
 
+test/linkdata/request-not-an-array is the other half. Its plaintext is
+0x01, which is a msgpack integer where an array header belongs, so the
+read never begins rather than running out. The three fields are the
+same three dashes, and a reader that treats an unexpected head byte as
+an error rather than as a stop parts company with the reference here
+and not at the vector above.
+
 Bytes after the value are ignored, because the reference ignores them.
 umsgpack.unpackb returns the value and discards the rest, and every
 call site hands it the whole plaintext.
