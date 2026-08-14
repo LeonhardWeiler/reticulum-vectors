@@ -110,10 +110,13 @@ pathrequest/transport
 plain/empty
 plain/payload
 plain/unnamed-context
+proof/altered-signature
+proof/destination-mismatch
 proof/explicit
 proof/hash-mismatch
 proof/implicit
 proof/invalid-length
+proof/link-id-mismatch
 proof/link-initiator
 proof/link-responder
 proof/proved-in-transport

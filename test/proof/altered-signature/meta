@@ -1,0 +1,3 @@
+source             constructed by tools/gen from proof/implicit
+determinism        encode
+purpose            first signature byte altered; the proof is addressed correctly and does not verify

@@ -187,6 +187,30 @@ The signature is over the packet hash, never over the proof packet.
 test/proof/implicit and test/proof/explicit carry the two forms of the
 same proof, so their signatures are identical.
 
+A proof therefore makes two claims. The signature says who accepted the
+packet; the address says which packet, and the reference reads the two
+in different places. On a link the address is the whole of the match:
+the proof goes to the link whose id it carries and to no other. To a
+destination it is what a transport node looks up in its reverse table
+to send the proof back the way the packet came, while the end that sent
+the packet matches an explicit proof by the hash in its payload and
+tries an implicit one against every outstanding receipt in turn.
+
+    RNS/Transport.py#reverse_table, RNS/Packet.py#validate_proof
+
+So a decoder that never computes the address still concludes something,
+by exhaustion, and a transport node that never computes it drops every
+proof it should have relayed. Three derived vectors break one claim
+each, and the two that leave the signature alone are the ones a reader
+is likeliest to pass by accident:
+
+    test/proof/altered-signature      addressed correctly; the
+                                      signature does not verify
+    test/proof/destination-mismatch   the signature verifies; the
+                                      address is one byte off
+    test/proof/link-id-mismatch       the same on a link, where the
+                                      address is the link id
+
 A proof for a packet on a link is the same packet type addressed
 differently and signed by a different key. See doc/link.
 

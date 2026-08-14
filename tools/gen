@@ -874,6 +874,22 @@ def gen_proof(RNS, w, verify):
         explicit[:HEADER1LEN] + bytes([explicit[HEADER1LEN] ^ 0x01]) + explicit[HEADER1LEN+1:],
         "first byte of the named packet hash altered; the signature still verifies")
 
+    implicit = made["implicit"].raw
+
+    # The address is the other half of what a proof claims, and the half
+    # a reader can conclude without: a transport node routes the proof
+    # by it, and the end that sent the packet tries an implicit proof
+    # against every receipt it is waiting on. The signature here is
+    # untouched and verifies over a packet this proof is not addressed
+    # to. RNS/Transport.py#reverse_table, RNS/Packet.py#validate_proof.
+    built("destination-mismatch",
+        implicit[:2] + bytes([implicit[2] ^ 0x01]) + implicit[3:],
+        "first byte of the destination hash altered; the signature still verifies")
+
+    built("altered-signature",
+        implicit[:HEADER1LEN] + bytes([implicit[HEADER1LEN] ^ 0x01]) + implicit[HEADER1LEN+1:],
+        "first signature byte altered; the proof is addressed correctly and does not verify")
+
 
 def describe_proof(proved_raw, signer_public, raw, verify):
     echo = [
@@ -2456,6 +2472,23 @@ def gen_linkpacketproof(RNS, w, verify, session, link, proved):
         w.vector("proof", name, purpose,
             [packet.raw.hex(), signer.hex(), proof.raw.hex()],
             described)
+
+    # A proof on a link is addressed to the link id and not to the hash
+    # it proves, so the field that says whether it arrived where it
+    # belongs is a different one, computed from a different place: the
+    # proved packet's own destination hash rather than its digest. A
+    # decoder that computes one of the two and not the other passes
+    # every proof vector but this one. RNS/Link.py#prove_packet.
+    initiator = derived_from(w, "proof", "link-initiator",
+                        lambda r: [responder_data.raw.hex(),
+                                   link.sig_pub_bytes.hex(), r.hex()],
+                        lambda r: describe_proof(responder_data.raw,
+                                                 link.sig_pub_bytes, r, verify))
+
+    on_link = from_initiator.raw
+    initiator("link-id-mismatch",
+        on_link[:2] + bytes([on_link[2] ^ 0x01]) + on_link[3:],
+        "first byte of the link id altered; the signature still verifies")
 
     # The key each end holds for the other is the key the other signs
     # with, and they are not the same key.

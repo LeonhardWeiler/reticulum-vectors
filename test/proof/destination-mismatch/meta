@@ -1,0 +1,3 @@
+source             constructed by tools/gen from proof/implicit
+determinism        encode
+purpose            first byte of the destination hash altered; the signature still verifies

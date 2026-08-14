@@ -1,0 +1,3 @@
+source             constructed by tools/gen from proof/link-initiator
+determinism        encode
+purpose            first byte of the link id altered; the signature still verifies
