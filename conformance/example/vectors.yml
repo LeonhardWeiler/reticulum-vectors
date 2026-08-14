@@ -5,7 +5,7 @@
 # to track and nothing here can change under you.
 #
 # One thing has to be set before it runs, and it is marked PIN. After
-# that it goes green with 5 passed and 112 skipped, which is
+# that it goes green with 5 passed and 119 skipped, which is
 # test/identity through the example harness: a real result, and the
 # starting point rather than the goal. Then replace the two steps marked
 # REPLACE with your build and your harness, and the number grows as the
