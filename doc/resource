@@ -118,14 +118,26 @@ all of them plaintexts the layers above the packet never build:
     resource-advertisement-extra-key      a twelfth key, second in the
                                           map; the eleven still read
 
-The last is the direction a decoder is likeliest to get wrong, because
-nothing the reference writes today exercises it. The key is two bytes
-where every name in the format is one, and its value is a float64 where
-the format holds only uints and bins, so a reader that expects the
-shape it has seen rather than the shape msgpack declares stops at it
-and loses the ten keys behind it. The reference does not read the map
-at all until umsgpack has turned it into a dictionary, and then asks
-that dictionary for eleven names.
+The last of the four is the direction a decoder is likeliest to get
+wrong, because nothing the reference writes today exercises it. The key
+is two bytes where every name in the format is one, and its value is a
+float64 where the format holds only uints and bins, so a reader that
+expects the shape it has seen rather than the shape msgpack declares
+stops at it and loses the ten keys behind it. The reference does not
+read the map at all until umsgpack has turned it into a dictionary, and
+then asks that dictionary for eleven names.
+
+A fifth vector stops rather than reads:
+
+    resource-advertisement-truncated      cut inside a length prefix;
+                                          the three keys before it read
+
+Its plaintext is the reference's own advertisement, cut after the head
+byte of the resource hash and before the byte that says how long that
+hash is. The map header still announces eleven pairs, so no key here is
+absent. It is the only vector in the corpus that stops inside a value
+rather than between two of them, which is where a reader that takes a
+length it has not read yet reads past its buffer.
 
 A uint is written at the width the value needs and a bin at the width
 its length needs, so the widths in an advertisement are decided by the

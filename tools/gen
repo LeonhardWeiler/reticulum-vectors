@@ -386,24 +386,41 @@ def msgpack_read(data, at=0):
     if at >= len(data):
         return None, at
 
+    def ran_out(need):
+        # A value the body does not hold whole is None as well, and the
+        # read stops at the end rather than past it. Returning the bytes
+        # that are there would report a shorter value than any writer
+        # wrote: a 4-byte resource hash where 32 were announced. cmd/dump
+        # stops the same way, mp_take, and prints the same dash.
+        return at + need > len(data)
+
     kind, at = data[at], at + 1
 
     if kind == 0xc0:                       return None, at
-    if kind == 0xcb:                       return data[at:at + 8], at + 8
     if kind < 0x80:                        return kind, at
+    if kind == 0xcb:
+        return (None, len(data)) if ran_out(8) else (data[at:at + 8], at + 8)
 
     if kind in (0xcc, 0xcd, 0xce):
         size = 1 << (kind - 0xcc)
+        if ran_out(size):
+            return None, len(data)
         return int.from_bytes(data[at:at + size], "big"), at + size
 
     if kind in (0xc4, 0xc5):
         width = kind - 0xc3
+        if ran_out(width):
+            return None, len(data)
         size = int.from_bytes(data[at:at + width], "big")
         at += width
+        if ran_out(size):
+            return None, len(data)
         return data[at:at + size], at + size
 
     if kind & 0xe0 == 0xa0:
         size = kind & 0x1f
+        if ran_out(size):
+            return None, len(data)
         return data[at:at + size].decode("utf-8"), at + size
 
     if kind & 0xf0 == 0x90:
@@ -2995,6 +3012,16 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     extra = umsgpack.packb(dict({"t": adv["t"], "tt": 1.5},
                                 **{k: adv[k] for k in read_order if k != "t"}))
 
+    # The reference's own advertisement, cut where the byte that says
+    # how long the resource hash is would be. Every other truncation in
+    # the corpus stops between two values; this one stops inside a
+    # length prefix, which is where a reader that takes a length before
+    # it has one reads past its buffer. The map header still says
+    # eleven, so no key here is absent: the three before the cut read
+    # and the eight from it on do not.
+    assert advertisement.count(b"\xa1h\xc4\x20") == 1
+    cut = advertisement[:advertisement.index(b"\xa1h\xc4\x20") + 3]
+
     # The reference must read each of these as the map it wrote, which
     # is the whole claim the two vectors make.
     unpack = sys.modules["RNS.Resource"].ResourceAdvertisement.unpack
@@ -3023,6 +3050,8 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
          "an advertisement whose transfer size is a string; the ten keys after it still read"),
         ("resource-advertisement-extra-key", RNS.Packet.RESOURCE_ADV, extra,
          "a twelfth key, named in two bytes and holding a float; the eleven still read"),
+        ("resource-advertisement-truncated", RNS.Packet.RESOURCE_ADV, cut,
+         "an advertisement cut inside a length prefix; the three keys before it read"),
     ]
 
     link = session["link"]
