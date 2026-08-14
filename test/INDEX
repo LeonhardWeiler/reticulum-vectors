@@ -92,12 +92,14 @@ plain/empty
 plain/payload
 plain/unnamed-context
 proof/explicit
+proof/hash-mismatch
 proof/implicit
 proof/invalid-length
 proof/link-initiator
 proof/link-responder
 proof/proved-in-transport
 resourceproof/complete
+resourceproof/hash-mismatch
 resourceproof/invalid-length
 sign/upstream
 signature/altered

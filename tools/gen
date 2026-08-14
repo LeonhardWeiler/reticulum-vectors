@@ -818,6 +818,21 @@ def gen_proof(RNS, w, verify):
         "the proved packet at three hops in header 2; the proof is unchanged and still verifies",
         per="RNS/Transport.py#HEADER_2")
 
+    # An explicit proof names the packet it proves and the signature is
+    # over the hash the reader computes, not over the hash the packet
+    # carries. So the two can disagree while the signature verifies, and
+    # hash_match is the field that says which one was read. A decoder
+    # that prints the carried hash back as packet_hash reports yes for
+    # any 96 bytes at all.
+    explicit = made["explicit"].raw
+    naming = derived_from(w, "proof", "explicit",
+                     lambda r: [proved.raw.hex(), public.hex(), r.hex()],
+                     lambda r: describe_proof(proved.raw, public, r, verify))
+
+    naming("hash-mismatch",
+        explicit[:HEADER1LEN] + bytes([explicit[HEADER1LEN] ^ 0x01]) + explicit[HEADER1LEN+1:],
+        "first byte of the named packet hash altered; the signature still verifies")
+
 
 def describe_proof(proved_raw, signer_public, raw, verify):
     echo = [
@@ -2758,6 +2773,15 @@ def gen_resource(RNS, w, verify):
 
     built("invalid-length", proof.raw[:-1],
         "63-byte payload, one short of the resource hash and its proof")
+
+    # The payload names a resource and hashes its data, and only the
+    # name can be checked against anything the reader holds. A receiver
+    # answering about a resource it was never advertised is the one case
+    # that separates a decoder comparing the two halves from one
+    # printing yes.
+    built("hash-mismatch",
+        proof.raw[:HEADER1LEN] + bytes([proof.raw[HEADER1LEN] ^ 0x01]) + proof.raw[HEADER1LEN+1:],
+        "first byte of the named resource hash altered; the proof is for another resource")
 
 
 def private_to_public(private):
