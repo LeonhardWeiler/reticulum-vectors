@@ -1793,6 +1793,15 @@ def gen_linkproof(RNS, w, verify, session):
     built("altered-signature", raw[:19] + bytes([raw[19] ^ 0x01]) + raw[20:],
         "first signature byte altered")
 
+    # The signature covers the link id the request derives, not the
+    # address field that carries it. So a proof addressed elsewhere
+    # verifies, and link_id_match is the only field that reports it. A
+    # decoder that prints the address field twice, once as
+    # destination_hash and once as link_id, passes every other vector of
+    # this kind.
+    built("link-id-mismatch", raw[:2] + bytes(ADDRLEN) + raw[2+ADDRLEN:],
+        "address field replaced with zeroes; the signature verifies and the proof is for another link")
+
     # Neither accepted length. linkproof and linkrequest each have two,
     # and they are not the same two: a proof carries a signature where a
     # request carries an Ed25519 key. A decoder that checks the request

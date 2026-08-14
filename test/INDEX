@@ -74,6 +74,7 @@ linkdata/rtt
 linkdata/short-payload
 linkproof/altered-signature
 linkproof/invalid-length
+linkproof/link-id-mismatch
 linkproof/signalling
 linkproof/signalling-removed
 linkrequest/in-transport

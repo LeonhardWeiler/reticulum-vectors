@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkproof/signalling
+determinism        encode
+purpose            address field replaced with zeroes; the signature verifies and the proof is for another link
