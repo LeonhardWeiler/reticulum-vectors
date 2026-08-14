@@ -45,6 +45,13 @@ Six rules
    Where the implementation has no such code at all, print "-". A dash
    fails the vector, and that is the honest outcome.
 
+   A number is transcription too. Where the implementation reaches one
+   through a branch, the harness branches; a constant written in its
+   place is a number the implementation does not hold, and it agrees
+   with every vector until one disagrees. Five harnesses printed one
+   header length where their own code names two, and CONFORMANCE
+   records what the correction cost each of them.
+
 3. Exit 77 for a kind you have not implemented.
 
    Those vectors are reported as skipped and named, and are not counted
