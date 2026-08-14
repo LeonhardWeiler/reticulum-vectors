@@ -970,7 +970,7 @@ def gen_ifac(RNS, w, announce_raw_bytes):
 
 DEST_TYPES   = ["single", "group", "plain", "link"]
 PACKET_TYPES = ["data", "announce", "linkrequest", "proof"]
-XPORT_TYPES  = ["broadcast", "transport", "relay", "tunnel"]
+XPORT_TYPES  = ["broadcast", "transport"]
 CONTEXTS     = {0x00: "none",
                 0x01: "resource", 0x02: "resource_adv", 0x03: "resource_req",
                 0x04: "resource_hmu", 0x05: "resource_prf",

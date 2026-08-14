@@ -68,7 +68,6 @@ One byte at offset 0.
 
     header type        0  header 1        1  header 2
     transport type     0  broadcast       1  transport
-                       2  relay           3  tunnel
     destination type   0  single          1  group
                        2  plain           3  link
     packet type        0  data            1  announce
@@ -76,6 +75,15 @@ One byte at offset 0.
 
 The header type bit encodes header 1 as zero. Vectors print the
 human-facing numbering, so bit 6 clear appears as header_type 1.
+
+The transport type is one bit and holds two of the four values
+RNS/Transport.py#types defines. RELAY and TUNNEL do not survive a pack:
+get_packed_flags shifts the value left by four, so 2 lands on the
+context flag and 3 on the context flag and the transport bit together,
+and unpack reads the bit back as broadcast or transport either way.
+There is no vector for them because there are no bytes to record.
+
+    RNS/Transport.py#RELAY, RNS/Transport.py#TUNNEL
 
 The context flag has no fixed meaning. Its interpretation depends on
 the packet type; for announces it signals the presence of a ratchet.

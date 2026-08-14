@@ -453,7 +453,7 @@ static void dump_sign(struct blob *b)
 
 static const char *dest_types[]   = { "single", "group", "plain", "link" };
 static const char *packet_types[] = { "data", "announce", "linkrequest", "proof" };
-static const char *xport_types[]  = { "broadcast", "transport", "relay", "tunnel" };
+static const char *xport_types[]  = { "broadcast", "transport" };
 
 /* A rejection is the rule that was broken and its two numbers, named at
  * the line that decided. A parser fills one and returns 0; its caller

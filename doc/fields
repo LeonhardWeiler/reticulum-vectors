@@ -60,7 +60,7 @@ doc/packet.
     flags              hex      the flags byte, one byte
     header_type        decimal  1 or 2, the human-facing numbering
     context_flag       keyword  set, unset
-    transport_type     keyword  broadcast, transport, relay, tunnel
+    transport_type     keyword  broadcast, transport
     destination_type   keyword  single, group, plain, link
     packet_type        keyword  data, announce, linkrequest, proof
     hops               decimal  the hop count, below 128
