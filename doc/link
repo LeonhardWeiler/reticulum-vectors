@@ -211,6 +211,15 @@ Destination type link, address field the link id.
     16      -     ciphertext, a multiple of 16 bytes
     -32     32    HMAC-SHA256
 
+The address field is outside the token. The HMAC covers the
+initialisation vector and the ciphertext and nothing in the header, and
+the key derivation takes the link id from the link request rather than
+from the packet, so a packet whose address field is some other link id
+decrypts under this link's keys exactly as it would with the right one.
+Only the address field says the packet is not for this link.
+test/linkdata/link-id-mismatch is that packet: the token opens, the
+plaintext is correct and link_id_match is no.
+
 There is no ephemeral public key. Both ends already hold the shared
 secret, so the payload is a bare token, 48 bytes of overhead rather
 than 80. A payload shorter than that is not a token and is rejected as

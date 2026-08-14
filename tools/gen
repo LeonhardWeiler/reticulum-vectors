@@ -2138,6 +2138,13 @@ def gen_linkdata(RNS, w, verify, session):
     built("short-payload", base[:HEADER1LEN + TOKEN_OVERHEAD - 1],
         "47-byte payload, one short of an empty token, in a context that says there is one")
 
+    # The address field is outside the token, so replacing it leaves a
+    # packet that still decrypts under this link's keys and belongs to
+    # another link. test/linkproof/link-id-mismatch is the same cut on
+    # the packet that establishes one; this is the traffic that follows.
+    built("link-id-mismatch", base[:2] + bytes(ADDRLEN) + base[2 + ADDRLEN:],
+        "address field replaced with zeroes; the token opens and the packet is for another link")
+
     gen_request(RNS, w, verify, session, link, request_raw, responder_private)
     return link, sent[0]
 

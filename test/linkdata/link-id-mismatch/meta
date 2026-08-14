@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkdata/minimal
+determinism        encode
+purpose            address field replaced with zeroes; the token opens and the packet is for another link
