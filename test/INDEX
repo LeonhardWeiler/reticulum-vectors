@@ -57,6 +57,7 @@ linkdata/channel-short
 linkdata/close
 linkdata/identify
 linkdata/identify-elsewhere
+linkdata/identify-short
 linkdata/keepalive
 linkdata/link-id-mismatch
 linkdata/minimal

@@ -1505,7 +1505,17 @@ static void dump_linkdata(struct blob *b)
 	/* An identify proof names the initiator, which nothing else on a
 	 * link does. Its signature covers the link id, so it cannot be
 	 * replayed onto another link. RNS/Link.py#signed_data. */
-	if (h.context == 0xfb && t.ptlen == KEYSIZE + SIGLEN) {
+	if (t.opened && h.context == 0xfb) {
+		/* The length is a rule and not a bound. Both fields are read
+		 * at fixed offsets, so a plaintext of any other length names
+		 * nobody and the reference tests for the one number rather
+		 * than for enough bytes. RNS/Link.py#LINKIDENTIFY. */
+		if (t.ptlen != KEYSIZE + SIGLEN) {
+			field("invalid", "identify-length");
+			field("required_length", "%d", KEYSIZE + SIGLEN);
+			return;
+		}
+
 		truncated_hash(t.plain, KEYSIZE, identity_hash, ADDRLEN);
 		memcpy(signed_data, link_id, ADDRLEN);
 		memcpy(signed_data + ADDRLEN, t.plain, KEYSIZE);

@@ -443,6 +443,14 @@ lifted onto another link. Nothing else on a link names either end: the
 keys in the request and the proof are per link, and the identity of
 the initiator is revealed here or not at all.
 
+The 128 bytes are a rule and not a bound. Both fields are read at fixed
+offsets, so a plaintext of any other length names nobody, and the
+reference tests the whole against the one number rather than for enough
+bytes. A plaintext of any other length is rejected as identify-length
+with a required length of 128, after the token and the plaintext have
+been printed. test/linkdata/identify-short carries 127 bytes: the key is
+where a reader would look for it and the signature is one byte short.
+
 test/linkdata/identify-elsewhere is the lifted proof. The signature is
 the reference's own, over 16 zero bytes where the link id belongs, and
 it is the one vector where identity_valid is no. A decoder that reads

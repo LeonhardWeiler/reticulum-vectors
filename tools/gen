@@ -452,22 +452,27 @@ ENCODABLE = ("identity", "keyset", "destination", "announce", "plain",
              "pathrequest", "encrypted", "group", "linkrequest", "linkproof",
              "linkdata", "proof", "resourceproof", "ifac")
 
+# The rules a packet breaks only after every one of its bytes has been
+# printed. They are what determinism reads.
+AFTER_PLAINTEXT = ("short-plaintext", "identify-length")
+
 
 def determinism(kind, expect):
     """encode when expect holds every byte of raw.
 
     That is so exactly when the kind has an encoder and the object
-    decoded. short-plaintext is therefore the one rejection that stays
-    in the encode class: it stops after the packet decoded whole, so
-    the token is printed and the vector rebuilds. Every other rejection
-    stopped at bytes it then did not print. CLAUDE.md says why the
-    class is derived here rather than declared per vector.
+    decoded. Two rejections therefore stay in the encode class, and
+    both are rules about a plaintext the token already printed:
+    short-plaintext and identify-length stop after the packet decoded
+    whole, so the vector rebuilds. Every other rejection stopped at
+    bytes it then did not print. CLAUDE.md says why the class is
+    derived here rather than declared per vector.
     """
     if kind not in ENCODABLE:
         return "decode"
     for l in expect:
         if l.startswith("invalid "):
-            return "encode" if l.split()[1] == "short-plaintext" else "decode"
+            return "encode" if l.split()[1] in AFTER_PLAINTEXT else "decode"
     return "encode"
 
 
@@ -2015,7 +2020,16 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
     # An identify proof names the initiator, which nothing else on a
     # link does. Its signature covers the link id, so it cannot be
     # replayed onto another link. RNS/Link.py#signed_data.
-    if h["context"] == 0xfb and plaintext is not None and len(plaintext) == KEYSIZE + SIGLEN:
+    #
+    # The length is a rule and not a bound: the reference reads the key
+    # and the signature at fixed offsets and tests the whole against one
+    # number, so a plaintext of any other length names nobody. The
+    # number is repeated here rather than the length, which the token
+    # already printed. RNS/Link.py#LINKIDENTIFY.
+    if h["context"] == 0xfb and plaintext is not None:
+        if len(plaintext) != KEYSIZE + SIGLEN:
+            return lines + invalid("identify-length",
+                                   ("required_length", KEYSIZE + SIGLEN))
         identity_public = plaintext[:KEYSIZE]
         signature       = plaintext[KEYSIZE:]
         signed_data     = link_id + identity_public
@@ -2110,6 +2124,16 @@ def gen_linkdata(RNS, w, verify, session):
             # of them. RNS/Link.py#packed_response.
             RNS.Packet(link, b"\x01", context=RNS.Packet.RESPONSE).send()
 
+            # An identify proof one byte short of the length the
+            # reference tests for. Everything in it is the reference's
+            # own and the key is where a reader would look for it; the
+            # signature is not all there, and the length is the only
+            # thing that says so. RNS/Link.py#LINKIDENTIFY.
+            short = initiator_identity.get_public_key()
+            RNS.Packet(link,
+                       (short + initiator_identity.sign(link.link_id + short))[:-1],
+                       context=RNS.Packet.LINKIDENTIFY).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2131,16 +2155,18 @@ def gen_linkdata(RNS, w, verify, session):
          "a one-byte plaintext that is no msgpack array header, where a request is expected"),
         ("response-not-an-array", sent[12],
          "the same plaintext in the response context, where a two-element array is expected"),
+        ("identify-short", sent[13],
+         "an identify proof of 127 bytes, one short of the length the reference requires"),
     ]
 
-    # The six above whose plaintext was chosen here rather than built by
-    # a layer of the reference. They are sent through the reference all
-    # the same, and the difference is in the source rather than in the
-    # bytes around it. identify-elsewhere is one of them: the signature
-    # in it is the reference's own, over data chosen here.
+    # The seven above whose plaintext was chosen here rather than built
+    # by a layer of the reference. They are sent through the reference
+    # all the same, and the difference is in the source rather than in
+    # the bytes around it. identify-elsewhere is one of them: the
+    # signature in it is the reference's own, over data chosen here.
     chosen = {"channel-short", "request-short", "request-truncated",
               "identify-elsewhere", "request-not-an-array",
-              "response-not-an-array"}
+              "response-not-an-array", "identify-short"}
 
     for name, packet, purpose in cases:
         blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]
