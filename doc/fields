@@ -223,7 +223,8 @@ test/linkdata/request-empty-data the bin of length zero, c4 00. The
 same pair exists for the response.
 
 All five are "-" when the msgpack body could not be read that far, the
-third meaning of the dash. No vector carries that either; see doc/link.
+third meaning of the dash. test/linkdata/request-truncated carries it;
+see doc/link.
 
 
 Resource

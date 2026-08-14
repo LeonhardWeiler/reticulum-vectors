@@ -365,6 +365,12 @@ def msgpack_read(data, at=0):
 
         RNS/vendor/umsgpack.py#_pack2
     """
+    # A body that runs out is not an error here. The reader stops and
+    # every element it did not reach is None, which prints as the same
+    # dash a nil prints as; cmd/dump stops the same way. See doc/link.
+    if at >= len(data):
+        return None, at
+
     kind, at = data[at], at + 1
 
     if kind == 0xc0:                       return None, at
@@ -1949,7 +1955,7 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
         parts = msgpack_one(plaintext)
         if h["context"] == 0x09:
             lines += [
-                field("request_time",      parts[0].hex()),
+                field("request_time",      hexf(parts[0])),
                 field("request_path_hash", hexf(parts[1])),
                 field("request_data",      hexf(parts[2])),
             ]
@@ -2031,6 +2037,12 @@ def gen_linkdata(RNS, w, verify, session):
                        context=RNS.Packet.CHANNEL).send()
             RNS.Packet(link, b"", context=RNS.Packet.REQUEST).send()
 
+            # An array header announcing three elements and holding
+            # none. Past the first byte msgpack bounds the read itself,
+            # so this is not a rejection: the reader stops and the
+            # three fields are the third meaning of the dash.
+            RNS.Packet(link, b"\x93", context=RNS.Packet.REQUEST).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2044,6 +2056,8 @@ def gen_linkdata(RNS, w, verify, session):
          "five bytes of plaintext in the channel context, one short of an envelope header"),
         ("request-short", sent[8],
          "an empty plaintext in the request context, where a msgpack array is expected"),
+        ("request-truncated", sent[9],
+         "a msgpack array header announcing three elements over a plaintext that holds none"),
     ]
 
     for name, packet, purpose in cases:

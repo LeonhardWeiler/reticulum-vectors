@@ -60,6 +60,7 @@ linkdata/request
 linkdata/request-empty-data
 linkdata/request-no-data
 linkdata/request-short
+linkdata/request-truncated
 linkdata/resource-advertisement
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver
