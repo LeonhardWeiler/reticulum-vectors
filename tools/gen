@@ -2935,12 +2935,13 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     update a two-element array, and neither is read by position. unpack
     names the eleven keys in an order pack does not write them in, so
     the order of the map is no rule of the format and neither is its
-    size: a key that is not there takes its own field and no other.
+    size: a key that is not there takes its own field and no other, and
+    a key that is there and has no field takes nothing at all.
 
         RNS/Resource.py#unpack, RNS/Resource.py#dictionary
 
     No sender builds any of these. Only the plaintext is chosen here,
-    and the three that are msgpack at all are written by the
+    and the four that are msgpack at all are written by the
     reference's own umsgpack out of the values of an advertisement it
     wrote.
     """
@@ -2952,15 +2953,27 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     reordered = umsgpack.packb({k: adv[k] for k in read_order})
     no_hash   = umsgpack.packb({k: adv[k] for k in read_order if k != "h"})
 
-    # The reference must read the reordered map as the one it wrote,
-    # which is the whole claim the vector makes.
+    # A twelfth key, in the map rather than after it, so that a reader
+    # which stops at the key it has no name for loses ten of the eleven
+    # and not none of them. The name is two bytes and the value a
+    # float64, neither of which an advertisement holds anywhere else:
+    # the reference steps over both by reading the map into a
+    # dictionary and asking it for eleven names.
+    extra = umsgpack.packb(dict({"t": adv["t"], "tt": 1.5},
+                                **{k: adv[k] for k in read_order if k != "t"}))
+
+    # The reference must read each of these as the map it wrote, which
+    # is the whole claim the two vectors make.
     unpack = sys.modules["RNS.Resource"].ResourceAdvertisement.unpack
-    theirs, ours = unpack(reordered), unpack(advertisement)
+    ours   = unpack(advertisement)
+
+    def fields(a):
+        return (a.t, a.d, a.n, a.h, a.r, a.o, a.i, a.l, a.q, a.f, a.m)
+
     assert len(reordered) == len(advertisement) and reordered != advertisement
-    assert (theirs.t, theirs.d, theirs.n, theirs.h, theirs.r, theirs.o,
-            theirs.i, theirs.l, theirs.q, theirs.f, theirs.m) == \
-           (ours.t, ours.d, ours.n, ours.h, ours.r, ours.o,
-            ours.i, ours.l, ours.q, ours.f, ours.m)
+    assert fields(unpack(reordered)) == fields(ours)
+    assert len(extra) > len(advertisement)
+    assert fields(unpack(extra)) == fields(ours)
 
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
@@ -2975,6 +2988,8 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-not-a-number", RNS.Packet.RESOURCE_ADV,
          umsgpack.packb(dict({k: adv[k] for k in read_order}, t="1856")),
          "an advertisement whose transfer size is a string; the ten keys after it still read"),
+        ("resource-advertisement-extra-key", RNS.Packet.RESOURCE_ADV, extra,
+         "a twelfth key, named in two bytes and holding a float; the eleven still read"),
     ]
 
     link = session["link"]

@@ -1164,23 +1164,12 @@ static size_t mp_map(struct mp *m)
 	return h & 0x0f;
 }
 
-static char mp_key(struct mp *m)
+static void mp_skip_head(struct mp *m, unsigned h)
 {
-	const uint8_t *p;
-
-	if (mp_head(m) != 0xa1)
-		m->bad = 1;
-	p = mp_take(m, 1);
-	return p != NULL ? (char)*p : '\0';
-}
-
-static void mp_skip(struct mp *m)
-{
-	unsigned h = mp_head(m);
-
-	/* Every type the reference puts in a map value, so that the value
-	 * of a key this reader does not want can be stepped over to reach
-	 * the next key. Anything else is not msgpack the reference wrote. */
+	/* Every type the reference puts in a map, as a key or as a value,
+	 * so that a pair this reader does not want can be stepped over to
+	 * reach the next one. Anything else is not msgpack the reference
+	 * wrote. */
 	if (h < 0x80 || h == 0xc0)       return;
 	if (h == 0xcc) { mp_take(m, 1); return; }
 	if (h == 0xcd) { mp_take(m, 2); return; }
@@ -1190,6 +1179,30 @@ static void mp_skip(struct mp *m)
 	if (h == 0xc5) { mp_take(m, (size_t)mp_be(mp_take(m, 2), 2)); return; }
 	if ((h & 0xe0) == 0xa0) { mp_take(m, h & 0x1f); return; }
 	m->bad = 1;
+}
+
+static void mp_skip(struct mp *m)
+{
+	mp_skip_head(m, mp_head(m));
+}
+
+static char mp_key(struct mp *m)
+{
+	unsigned       h = mp_head(m);
+	const uint8_t *p;
+
+	/* The reference looks each of the eleven names up in the map it
+	 * unpacked, so a key it has no name for is stepped over with its
+	 * value and the keys after it still read.
+	 * RNS/Resource.py#unpack. Only a one-byte string can be one of the
+	 * eleven; every other key is skipped here and reported as none,
+	 * which is what the caller does with a name it does not know. */
+	if (h != 0xa1) {
+		mp_skip_head(m, h);
+		return '\0';
+	}
+	p = mp_take(m, 1);
+	return p != NULL ? (char)*p : '\0';
 }
 
 static uint64_t mp_uint(struct mp *m)
@@ -1290,9 +1303,11 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 		 * printed in the corpus's own order afterwards. A key that is
 		 * not there leaves its stream bad and prints "-", which is
 		 * what a value the reader never reached prints everywhere
-		 * else. A key that is there twice is read at the first of
-		 * them, as a dict built by insertion would not be; no
-		 * reference output holds one. */
+		 * else. A twelfth key is the same rule read the other way: it
+		 * has no field here and takes nothing from the eleven that
+		 * do. A key that is there twice is read at the first of them,
+		 * as a dict built by insertion would not be; no reference
+		 * output holds one. */
 		struct mp value[sizeof order - 1];
 		size_t pairs = mp_map(&m);
 
