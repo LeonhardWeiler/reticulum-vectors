@@ -325,11 +325,19 @@ Ask, in order:
 
     Does upstream already provide this?
     Would an independent implementation fail without it?
+    Can the reference be made to produce the bytes?
     Can a file replace a program?
     Can a shell script replace a binary?
     Is the determinism class honest?
 
 If the first answer is yes, stop.
+
+The third has been asked and answered for six cases, and doc/packet,
+section "What has no vector", holds the six with the reason each one
+cannot be produced. Read it before proposing a vector for any of them.
+A seventh was on that list until it was written down and turned out to
+be a truncation like any other, which is the argument for writing the
+list rather than carrying it in someone's head.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:

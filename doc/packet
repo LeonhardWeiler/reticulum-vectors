@@ -422,6 +422,65 @@ only threshold in the format that is not a length of something.
 See doc/fields for every name that can appear in a rejection.
 
 
+What has no vector
+
+Six things a decoder must handle have no vector here, and none of them
+is an oversight. A vector records what the reference produced, so a
+case the reference cannot be made to produce has no bytes to record.
+Passing the corpus says nothing about any of the six.
+
+    a header that does not parse, in any kind but announce
+
+        Packet.unpack is one function and the header does not vary
+        with the kind around it, so the four announce rejections above
+        are the rule and not a sample of it. Repeating them per kind
+        would be a table of permutations. RNS/Packet.py#unpack.
+
+    a token of 48 bytes, with an iv and an hmac and nothing between
+
+        The reference's reader accepts it and its writer cannot make
+        it: Token.encrypt pads through PKCS7.pad, which turns an empty
+        plaintext into a full block of 16, so the shortest token it
+        writes is 64 bytes. verify_hmac refuses at 32 and the corpus
+        refuses at 48, and the 16 bytes between them belong to no
+        vector. RNS/Cryptography/Token.py#encrypt, RNS/Cryptography/
+        PKCS7.py#pad.
+
+    a context byte the reference defines and no object sets
+
+        0xfd is LINKPROOF and nothing sets it; see doc/link. Others
+        are defined and unused, and a context with no name prints as
+        two hex digits. test/plain/unnamed-context is the vector for
+        that behaviour rather than for any one of the values.
+
+    a transport type of relay or tunnel
+
+        One bit holds two of the four values RNS/Transport.py#types
+        defines. See the Flags section above.
+
+    a resource payload whose msgpack shape is wrong
+
+        ResourceAdvertisement.pack writes the same 11 keys every time
+        and a hashmap update is always a two-element array, so a map
+        of another size or an array of another length is not something
+        the reference emits. A decoder still needs the check, because
+        a peer that is not the reference can send one.
+        RNS/Resource.py#dictionary.
+
+    a link packet with no key agreement
+
+        test/encrypted/low-order-ephemeral carries the case for a
+        packet to a destination, where the ephemeral key is in the
+        packet and can be any point. On a link the key comes from the
+        link request, and Link.__init__ draws it with
+        X25519PrivateKey.generate, so no link request the reference
+        writes carries a point that yields no secret.
+        RNS/Link.py#X25519PrivateKey.
+
+Building any of the six means composing bytes the reference did not
+write, which is the one thing raw does not hold. See CLAUDE.md.
+
+
 Vector format: proof
 
 kind: proof, determinism: encode
