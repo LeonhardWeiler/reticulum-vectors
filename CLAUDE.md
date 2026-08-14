@@ -270,12 +270,16 @@ transcribed and absent; this is that rule turned on the generator.
 Vectors drive the dependency, not the other way around. Only what a
 vector requires is written or vendored. README lists which is which.
 
-AES is decryption only and 256-bit only, because every token in the
-corpus is one the reference produced from a 64-byte derived key. Only
-MODE_AES256_CBC is in ENABLED_MODES at this pin
-(RNS/Link.py#ENABLED_MODES) and signalling_bytes raises on any other,
-so no link the reference establishes uses AES-128. It waits for a
-vector that needs it, and none does.
+AES is decryption only. It is both key lengths since test/group/aes128,
+and that vector is what bought the second one: the rule is that the
+vector comes first and the code follows it, not that the code is kept
+small.
+
+Nothing on a link reaches AES-128. Only MODE_AES256_CBC is in
+ENABLED_MODES at this pin (RNS/Link.py#ENABLED_MODES) and
+signalling_bytes raises on any other. The one door to the mode is a
+group key a human configured at 32 bytes, because every other token key
+in the corpus is 64 bytes the reference derived.
 
 ---
 

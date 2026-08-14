@@ -8,7 +8,7 @@
  * fixed set.
 */
 
-#include "aes256.h"
+#include "aes.h"
 #include "hmac.h"
 #include "sha256.h"
 #include "tweetnacl.h"
@@ -706,9 +706,14 @@ struct token {
 };
 
 static void token_open(const uint8_t *p, size_t len,
-                       const uint8_t *derived, struct token *t)
+                       const uint8_t *key, size_t keylen, struct token *t)
 {
 	uint8_t expected[MACLEN], signed_part[MAXBLOB];
+	/* The key splits in half whatever its length: signing first, then
+	 * the cipher key, whose length is what selects AES-128 or AES-256.
+	 * The hmac is 32 bytes either way, so the overhead does not move.
+	 * RNS/Cryptography/Token.py#_signing_key. */
+	size_t half = keylen / 2;
 
 	t->iv         = p;
 	t->ciphertext = p + IVLEN;
@@ -717,19 +722,19 @@ static void token_open(const uint8_t *p, size_t len,
 	t->ptlen      = 0;
 	t->opened     = 0;
 	t->mac_ok     = 0;
-	t->keyed      = derived != NULL;
+	t->keyed      = key != NULL;
 
 	if (!t->keyed)
 		return;
 
 	memcpy(signed_part, t->iv, IVLEN);
 	memcpy(signed_part + IVLEN, t->ciphertext, t->ctlen);
-	hmac_sha256(derived, MACLEN, signed_part, IVLEN + t->ctlen, expected);
+	hmac_sha256(key, half, signed_part, IVLEN + t->ctlen, expected);
 	t->mac_ok = memcmp(t->mac, expected, MACLEN) == 0;
 
 	if (t->mac_ok && t->ctlen > 0 && t->ctlen % 16 == 0 &&
-	    aes256_cbc_decrypt(derived + MACLEN, t->iv, t->ciphertext, t->ctlen,
-	                       t->plain) == 0 &&
+	    aes_cbc_decrypt(key + half, half, t->iv, t->ciphertext, t->ctlen,
+	                    t->plain) == 0 &&
 	    pkcs7_unpad(t->plain, t->ctlen, &t->ptlen) == 0)
 		t->opened = 1;
 }
@@ -820,7 +825,7 @@ static void dump_encrypted(struct blob *b)
 		hkdf_sha256(shared, KEYHALF, identity_hash, ADDRLEN, NULL, 0,
 		            derived, DERIVEDLEN);
 	token_open(h.payload + KEYHALF, h.payload_len - KEYHALF,
-	           agreed ? derived : NULL, &t);
+	           agreed ? derived : NULL, DERIVEDLEN, &t);
 
 	print_header(&h);
 	field_hex("ephemeral_public", ephemeral, KEYHALF);
@@ -838,9 +843,16 @@ static void dump_group(struct blob *b)
 {
 	struct header h;
 	struct token t;
+	size_t half;
 
-	if (b[0].len != DERIVEDLEN)
-		fatal("group: group key is %zu bytes, expected %d", b[0].len, DERIVEDLEN);
+	/* The one key in the corpus a human configures rather than a
+	 * derivation produces, and the only place either token key length
+	 * can turn up. Token takes 64 or 32 and nothing else, and the
+	 * length is what selects the cipher. RNS/Destination.py#GROUP. */
+	if (b[0].len != DERIVEDLEN && b[0].len != DERIVEDLEN / 2)
+		fatal("group: group key is %zu bytes, expected %d or %d",
+		      b[0].len, DERIVEDLEN, DERIVEDLEN / 2);
+	half = b[0].len / 2;
 
 	field_blob("group_key", &b[0]);
 
@@ -853,12 +865,12 @@ static void dump_group(struct blob *b)
 		return;
 	}
 
-	token_open(h.payload, h.payload_len, b[0].data, &t);
+	token_open(h.payload, h.payload_len, b[0].data, b[0].len, &t);
 
 	print_header(&h);
 	print_token(&t);
-	field_hex("signing_key", b[0].data, MACLEN);
-	field_hex("encryption_key", b[0].data + MACLEN, MACLEN);
+	field_hex("signing_key", b[0].data, half);
+	field_hex("encryption_key", b[0].data + half, half);
 	print_plaintext(&t);
 }
 
@@ -1391,7 +1403,7 @@ static void dump_linkdata(struct blob *b)
 	if (agreed)
 		hkdf_sha256(shared, KEYHALF, link_id, ADDRLEN, NULL, 0,
 		            derived, DERIVEDLEN);
-	token_open(h.payload, h.payload_len, agreed ? derived : NULL, &t);
+	token_open(h.payload, h.payload_len, agreed ? derived : NULL, DERIVEDLEN, &t);
 
 	print_token(&t);
 	print_keys(agreed ? shared : NULL, derived);

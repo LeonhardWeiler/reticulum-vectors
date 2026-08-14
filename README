@@ -119,7 +119,7 @@ A user needs test/, doc/ and cmd/. The other two are the larger half of the repo
 
 doc/fields is the index of every name an expect file can carry, what it holds and which kinds carry it. The vectors are the authority on which names exist.
 
-dump only needs a C compiler. SHA-256, HMAC-SHA256, HKDF and AES-256-CBC decryption are written out in cmd/; tweetnacl supplies Ed25519 signing and verification, SHA-512 and X25519 and is vendored unmodified, see cmd/VENDOR.
+dump only needs a C compiler. SHA-256, HMAC-SHA256, HKDF and AES-CBC decryption are written out in cmd/; tweetnacl supplies Ed25519 signing and verification, SHA-512 and X25519 and is vendored unmodified, see cmd/VENDOR.
 
 
 Where raw and expect come from

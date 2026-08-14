@@ -44,6 +44,13 @@ CHECKOUT = os.path.join(os.path.dirname(ROOT), "upstream")
 
 FIELD_WIDTH = 18
 
+# A group key at the length that selects AES-128. Configuration rather
+# than output: create_keys writes 64 bytes and there is no reference
+# function that writes 32, so this is what a human would have typed.
+# SHA-256("reticulum-vectors group aes128"), so that the 32 bytes are
+# reproducible rather than picked.
+GROUP_AES128_KEY = "c427c00cb42b03bdf9f178627fc1af868200ccb856ca9bb4f25074552ccc1f3c"
+
 # Adopted verbatim from the upstream test suite. Not re-derived.
 #
 #     tests/identity.py#fixed_keys
@@ -2395,7 +2402,7 @@ def check_hkdf(RNS):
 
 
 def token_open(payload, key):
-    """iv || ciphertext || hmac, opened with a 64-byte key.
+    """iv || ciphertext || hmac, opened with a 64-byte or 32-byte key.
 
     A packet to a destination, a packet to a group and a packet on a
     link differ only in where the key came from, which is the whole of
@@ -2415,7 +2422,11 @@ def token_open(payload, key):
     if key is None:
         return t
 
-    signing_key, encryption_key = key[:32], key[32:]
+    # The key splits in half whatever its length, and the length of the
+    # second half is what selects AES-128 or AES-256. The hmac is 32
+    # bytes either way. RNS/Cryptography/Token.py#_signing_key.
+    half = len(key) // 2
+    signing_key, encryption_key = key[:half], key[half:]
     t["mac_ok"] = _hmac.compare_digest(
         t["mac"], _hmac.new(signing_key, t["iv"] + t["ciphertext"],
                             hashlib.sha256).digest())
@@ -2532,11 +2543,12 @@ def describe_group(raw, group_key):
                               ("payload_length", len(payload)),
                               ("minimum_length", TOKEN_OVERHEAD))
 
-    t = token_open(payload, group_key)
+    t    = token_open(payload, group_key)
+    half = len(group_key) // 2
 
     return lines + token_parts(t) + [
-        field("signing_key",    group_key[:32].hex()),
-        field("encryption_key", group_key[32:].hex()),
+        field("signing_key",    group_key[:half].hex()),
+        field("encryption_key", group_key[half:].hex()),
     ] + token_plaintext(t)
 
 
@@ -2574,6 +2586,32 @@ def gen_group(RNS, w):
         "nine bytes under a group key, no ephemeral key and no derivation",
         [group_key.hex(), packet.raw.hex()],
         describe_group(packet.raw, group_key))
+
+    # The other key length Token accepts, and the only way to reach it.
+    # A 32-byte key halves both parts: AES-128 and a 16-byte hmac key.
+    # Identity encryption derives 64 bytes and create_keys writes 64, so
+    # a group key typed at half that is the one door to the mode.
+    # RNS/Cryptography/Token.py#_signing_key.
+    short_key = bytes.fromhex(GROUP_AES128_KEY)
+    assert len(short_key) == KEYSIZE // 2
+
+    with pinned(RNS, "group-aes128"):
+        aes128 = RNS.Destination(identity, RNS.Destination.OUT,
+                                 RNS.Destination.GROUP,
+                                 "rns_unit_tests", "group")
+        aes128.load_private_key(short_key)
+
+        short_packet = RNS.Packet(aes128, plaintext)
+        short_packet.pack()
+
+    from RNS.Cryptography.AES import AES_128_CBC
+    assert aes128.prv.mode == AES_128_CBC
+    assert aes128.decrypt(short_packet.ciphertext) == plaintext
+
+    w.vector("group", "aes128",
+        "a 32-byte group key, the one configuration that selects AES-128 and a 16-byte hmac key",
+        [short_key.hex(), short_packet.raw.hex()],
+        describe_group(short_packet.raw, short_key))
 
     built = derived_from(w, "group", "minimal",
                     lambda r: [group_key.hex(), r.hex()],

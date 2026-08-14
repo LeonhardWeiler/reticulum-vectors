@@ -27,6 +27,7 @@ encrypted/low-order-ephemeral
 encrypted/minimal
 encrypted/ratchet
 encrypted/short-payload
+group/aes128
 group/altered-hmac
 group/minimal
 group/short-payload

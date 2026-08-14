@@ -46,7 +46,7 @@ the line of raw named in the kind's own document. These are all of them.
     signer_public      hex      linkproof, proof: the signer's public key, 64 bytes, or 32 for a proof on a link
     proved_packet      hex      proof: the packet being proved
     private_key        hex      keyset, sign: the 64-byte identity private key
-    group_key          hex      group: the 64-byte shared symmetric key
+    group_key          hex      group: the shared symmetric key, 64 bytes or 32
     netname            hex, -   ifac: the network name the key comes from
     netkey             hex, -   ifac: the passphrase it comes from
 
@@ -167,7 +167,7 @@ and for a group packet it is not derived at all.
     ciphertext         hex      a multiple of 16 bytes
     hmac               hex      32 bytes, over iv || ciphertext
     shared_key         hex, -   the X25519 output, 32 bytes; group packets have none and carry no such field
-    signing_key        hex, -   first half of the 64 derived bytes, or of group_key, which is not derived
+    signing_key        hex, -   first half of the 64 derived bytes, or of group_key, which is not derived and may be 32
     encryption_key     hex, -   second half
     hmac_valid         keyword, - yes, no
     plaintext_length   decimal, - bytes, or - if nothing was decrypted

@@ -3,7 +3,7 @@ CFLAGS       = -std=c99 -Wall -Wextra -pedantic -O2 \
                -Wstrict-prototypes -Wmissing-prototypes
 VENDORCFLAGS = -std=c99 -O2
 
-OBJ = cmd/dump.o cmd/sha256.o cmd/hmac.o cmd/aes256.o cmd/tweetnacl.o
+OBJ = cmd/dump.o cmd/sha256.o cmd/hmac.o cmd/aes.o cmd/tweetnacl.o
 
 cmd/dump: $(OBJ)
 	$(CC) -o $@ $(OBJ)
@@ -12,7 +12,7 @@ cmd/dump: $(OBJ)
 .c.o:
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(OBJ): cmd/sha256.h cmd/hmac.h cmd/aes256.h cmd/tweetnacl.h
+$(OBJ): cmd/sha256.h cmd/hmac.h cmd/aes.h cmd/tweetnacl.h
 
 cmd/tweetnacl.o: cmd/tweetnacl.c
 	$(CC) $(VENDORCFLAGS) -c -o $@ cmd/tweetnacl.c

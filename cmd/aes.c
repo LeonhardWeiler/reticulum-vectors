@@ -1,17 +1,18 @@
-/* AES-256 in CBC mode, decryption only, FIPS 197.
+/* AES in CBC mode, decryption only, FIPS 197.
  *
- * Reticulum derives a 64-byte token key and splits it into a 32-byte
- * HMAC key and a 32-byte cipher key, so every token in this corpus is
- * AES-256.
+ * Two key lengths, because Token takes two. A derived 64-byte token key
+ * splits into a 32-byte HMAC key and a 32-byte cipher key and selects
+ * AES-256; a configured 32-byte key splits into halves of 16 and
+ * selects AES-128. RNS/Cryptography/Token.py#_signing_key.
 */
 
-#include "aes256.h"
+#include "aes.h"
 
 #include <string.h>
 
 #define Nb 4			/* columns in the state */
-#define Nk 8			/* 256-bit key, in 32-bit words */
-#define Nr 14			/* rounds */
+#define MAXNk 8			/* 256-bit key, in 32-bit words */
+#define MAXNr 14		/* rounds, at MAXNk */
 
 static const uint8_t sbox[256] = {
 	0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
@@ -74,30 +75,34 @@ static uint8_t mul(uint8_t x, uint8_t y)
 	return r;
 }
 
-static void expand_key(const uint8_t key[32], uint8_t rk[(Nr + 1) * 16])
+static void expand_key(const uint8_t *key, unsigned nk, unsigned nr,
+                       uint8_t rk[(MAXNr + 1) * 16])
 {
 	unsigned i, j;
 	uint8_t t[4];
 
-	memcpy(rk, key, Nk * 4);
+	memcpy(rk, key, nk * 4);
 
-	for (i = Nk; i < Nb * (Nr + 1); i++) {
+	for (i = nk; i < Nb * (nr + 1); i++) {
 		for (j = 0; j < 4; j++)
 			t[j] = rk[(i - 1) * 4 + j];
 
-		if (i % Nk == 0) {
+		if (i % nk == 0) {
 			uint8_t tmp = t[0];
-			t[0] = sbox[t[1]] ^ rcon[i / Nk];
+			t[0] = sbox[t[1]] ^ rcon[i / nk];
 			t[1] = sbox[t[2]];
 			t[2] = sbox[t[3]];
 			t[3] = sbox[tmp];
-		} else if (i % Nk == 4) {
+		} else if (nk > 6 && i % nk == 4) {
+			/* The extra SubWord exists at Nk 8 only. Written out
+			 * because i % 4 == 4 is never true and the branch
+			 * would otherwise look like it applies to both. */
 			for (j = 0; j < 4; j++)
 				t[j] = sbox[t[j]];
 		}
 
 		for (j = 0; j < 4; j++)
-			rk[i * 4 + j] = rk[(i - Nk) * 4 + j] ^ t[j];
+			rk[i * 4 + j] = rk[(i - nk) * 4 + j] ^ t[j];
 	}
 }
 
@@ -144,13 +149,13 @@ static void inv_mix_columns(uint8_t *s)
 	}
 }
 
-static void decrypt_block(const uint8_t *rk, uint8_t *s)
+static void decrypt_block(const uint8_t *rk, unsigned nr, uint8_t *s)
 {
 	unsigned round;
 
-	add_round_key(s, rk, Nr);
+	add_round_key(s, rk, nr);
 
-	for (round = Nr - 1; round > 0; round--) {
+	for (round = nr - 1; round > 0; round--) {
 		inv_shift_rows(s);
 		inv_sub_bytes(s);
 		add_round_key(s, rk, round);
@@ -162,24 +167,30 @@ static void decrypt_block(const uint8_t *rk, uint8_t *s)
 	add_round_key(s, rk, 0);
 }
 
-int aes256_cbc_decrypt(const uint8_t key[32], const uint8_t iv[16],
-                       const uint8_t *in, size_t len, uint8_t *out)
+int aes_cbc_decrypt(const uint8_t *key, size_t keylen, const uint8_t iv[16],
+                    const uint8_t *in, size_t len, uint8_t *out)
 {
-	uint8_t rk[(Nr + 1) * 16];
+	uint8_t rk[(MAXNr + 1) * 16];
 	uint8_t chain[16], block[16];
+	unsigned nk, nr;
 	size_t off;
 
 	if (len == 0 || len % 16 != 0)
 		return -1;
+	if (keylen != 16 && keylen != 32)
+		return -1;
 
-	expand_key(key, rk);
+	nk = (unsigned)keylen / 4;
+	nr = nk + 6;
+
+	expand_key(key, nk, nr, rk);
 	memcpy(chain, iv, 16);
 
 	for (off = 0; off < len; off += 16) {
 		unsigned i;
 
 		memcpy(block, in + off, 16);
-		decrypt_block(rk, block);
+		decrypt_block(rk, nr, block);
 		for (i = 0; i < 16; i++)
 			out[off + i] = block[i] ^ chain[i];
 		memcpy(chain, in + off, 16);

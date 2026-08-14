@@ -128,7 +128,8 @@ A 64-byte key selects AES-256-CBC. Token also accepts a 32-byte key,
 which selects AES-128-CBC and halves both parts. Identity encryption
 never produces one and neither does Token.generate_key, so the only way
 to reach that mode is to configure a group destination with a 32-byte
-key. No vector here covers it.
+key. test/group/aes128 is that destination, and the only vector in the
+corpus that is not AES-256.
 
     RNS/Cryptography/Token.py#_signing_key
 
@@ -230,11 +231,17 @@ HKDF, because there is nothing to derive from. The key is configuration
 shared out of band, and the two halves of the token are the first and
 second halves of it as configured.
 
-    signing_key    = group_key[0:32]
-    encryption_key = group_key[32:64]
+    signing_key    = group_key[0:n]
+    encryption_key = group_key[n:2n]
 
 That is the whole of what makes this type different: the same three
 fields, keyed by a value that went through no function.
+
+n is half the key, and the key is 32 bytes or 64. This is the one place
+either length turns up, because it is the one key a human configures:
+test/group/aes128 against every other vector of the kind. See the
+section above on the two key lengths. The hmac is 32 bytes at both, so
+the token overhead does not move and no length rule changes.
 
 An outbound group destination still needs an identity, and its hash is
 derived exactly as a single destination's is. The identity plays no
