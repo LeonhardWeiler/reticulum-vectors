@@ -64,6 +64,7 @@ linkdata/request-no-data
 linkdata/request-short
 linkdata/request-truncated
 linkdata/resource-advertisement
+linkdata/resource-advertisement-large
 linkdata/resource-advertisement-metadata
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver

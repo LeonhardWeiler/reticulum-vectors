@@ -2844,6 +2844,21 @@ def gen_resource(RNS, w, verify):
         RNS, "resource-metadata", b"reticulum" * 200,
         metadata={"filename": "reticulum.txt"})
 
+    # Every msgpack width the format can reach, in one advertisement.
+    # 100000 bytes is 216 parts, so the part count is a uint8 where
+    # every other advertisement has a fixint; the two sizes pass 65536
+    # and become uint32; and the hashmap is HASHMAP_MAX_LEN entries,
+    # 296 bytes, which is a bin16 where every other byte string in the
+    # corpus is a bin8. A decoder with no branch for those three widths
+    # passes every other vector here and fails the first resource of
+    # any size. RNS/Resource.py#HASHMAP_MAX_LEN.
+    #
+    # The transfer is not carried to the end: only the advertisement is
+    # wanted, and 216 parts through the driver buy nothing else.
+    large_session, _, large = resource_transfer(
+        RNS, "resource-large", bytes(range(256)) * 390 + bytes(160),
+        complete=False)
+
     cases = [
         (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
          "the msgpack map that opens a transfer"),
@@ -2862,6 +2877,9 @@ def gen_resource(RNS, w, verify):
         (meta_session, with_metadata[RNS.Packet.RESOURCE_ADV],
          "resource-advertisement-metadata",
          "an advertisement whose resource carries metadata, which is bit 5 of the flags byte"),
+        (large_session, large[RNS.Packet.RESOURCE_ADV],
+         "resource-advertisement-large",
+         "100000 bytes: the sizes as msgpack uint32, the part count as uint8, and a full hashmap as bin16"),
     ]
     # msgpack_read is this program's own reading. The advertisement is
     # the one resource payload the reference will read back, so it is

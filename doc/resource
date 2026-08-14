@@ -94,6 +94,23 @@ it, but a map is not a sequence: a reader that goes by position rather
 than by key agrees with this reference and with nothing that is
 entitled to reorder them.
 
+A uint is written at the width the value needs and a bin at the width
+its length needs, so the widths in an advertisement are decided by the
+size of the resource. Every one the format can reach is in
+test/linkdata/resource-advertisement-large, a resource of 100000
+bytes:
+
+    t, d      uint32, 0xce, above 65535
+    n         uint8,  0xcc, 216 parts
+    m         bin16,  0xc5, a hashmap of 296 bytes
+
+Every other advertisement here holds those as a fixint, a uint16 and a
+bin8. A decoder that reads the width it saw last, or that implements
+one branch per key, passes them and fails on the first resource that
+is not small.
+
+    RNS/vendor/umsgpack.py#_pack2
+
 The resource hash is over the data and the random hash together, so two
 transfers of identical data are two resources:
 
@@ -120,9 +137,13 @@ test/linkdata/resource-advertisement-metadata, whose resource was
 constructed with metadata: the map is the same 11 keys and nothing but
 this byte says the metadata is there.
 
-The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries.
-A resource with more parts than that advertises the first segment and
-sends the rest later, which is what 0x04 is for.
+The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries,
+which is 74 at this MTU. A resource with more parts than that
+advertises the first segment and sends the rest later, which is what
+0x04 is for. test/linkdata/resource-advertisement-large is such an
+advertisement: it declares 216 parts and carries 74 hashes, and the
+count and the length of the hashmap are the only two places that say
+so.
 
 
 Part request, 0x03
