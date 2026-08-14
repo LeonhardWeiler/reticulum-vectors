@@ -362,11 +362,17 @@ packet: random flags, a random hop count, and a destination hash that
 matches nothing.
 
 Every ifac vector carries test/announce/minimal inside such a frame,
-and they differ only in the configuration that keys it.
-test/ifac/minimum-size is the same packet with a one-byte access code,
-which is IFAC_MIN_SIZE: the size changes where the packet starts and
-how much of the frame is masked, and nothing in the frame announces
-either.
+and the four the reference produced differ only in the configuration
+that keys it. test/ifac/minimum-size is the same packet with a one-byte
+access code, which is IFAC_MIN_SIZE: the size changes where the packet
+starts and how much of the frame is masked, and nothing in the frame
+announces either.
+
+The fifth, test/ifac/altered-frame, has one bit of the last frame byte
+flipped. The mask is a keystream and the access code is not altered, so
+the same bit is flipped in the packet that comes out and the code
+covers a packet that is no longer there. It is the only vector where
+ifac_valid is no.
 
 
 Vector format

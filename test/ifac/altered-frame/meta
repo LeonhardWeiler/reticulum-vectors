@@ -1,0 +1,3 @@
+source             constructed by tools/gen from ifac/announce
+determinism        encode
+purpose            last byte of the frame altered; the code no longer covers what comes out

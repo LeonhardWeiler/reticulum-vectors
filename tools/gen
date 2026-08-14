@@ -962,25 +962,48 @@ def gen_ifac(RNS, w, announce_raw_bytes):
         assert masked[0] & 0x80 == 0x80
         assert len(masked) == len(announce_raw_bytes) + size
 
-        ifac = masked[2:2+size]
-        expected_ifac = identity.sign(announce_raw_bytes)[-size:]
-        assert ifac == expected_ifac
+        assert masked[2:2+size] == identity.sign(announce_raw_bytes)[-size:]
 
-        w.vector("ifac", name, purpose,
-            [hexf(netname or b""), hexf(netkey or b""),
-             "%02x" % size, masked.hex()],
-            [
+        def blobs(frame, netname=netname, netkey=netkey, size=size):
+            return [hexf(netname or b""), hexf(netkey or b""),
+                    "%02x" % size, frame.hex()]
+
+        def describe(packet, frame, origin=origin, key=key,
+                     identity=identity, netname=netname, netkey=netkey, size=size):
+            ifac = frame[2:2+size]
+            expected_ifac = identity.sign(packet)[-size:]
+            return [
                 field("netname",       hexf(netname or b"")),
                 field("netkey",        hexf(netkey or b"")),
                 field("ifac_origin",   origin.hex()),
                 field("ifac_key",      key.hex()),
                 field("ifac_size",     "%d" % size),
-                field("frame_length",  "%d" % len(masked)),
+                field("frame_length",  "%d" % len(frame)),
                 field("ifac",          ifac.hex()),
-                field("packet",        announce_raw_bytes.hex()),
+                field("packet",        packet.hex()),
                 field("expected_ifac", expected_ifac.hex()),
-                field("ifac_valid",    "yes"),
-            ])
+                field("ifac_valid",    "yes" if ifac == expected_ifac else "no"),
+            ]
+
+        w.vector("ifac", name, purpose, blobs(masked),
+                 describe(announce_raw_bytes, masked))
+
+        if name != "announce":
+            continue
+
+        # The mask is a keystream keyed by the access code, so a bit
+        # flipped in the last byte of the frame is the same bit flipped
+        # in the last byte of the packet that comes back out, and the
+        # code that should have covered it is unchanged. One
+        # configuration carries this: what the vector tests is the
+        # comparison at the end, which is the same four times.
+        altered_packet = announce_raw_bytes[:-1] + bytes([announce_raw_bytes[-1] ^ 0x01])
+        altered_frame  = masked[:-1] + bytes([masked[-1] ^ 0x01])
+
+        one = derived_from(w, "ifac", name, blobs,
+                           lambda f, p=altered_packet: describe(p, f))
+        one("altered-frame",  altered_frame,
+            "last byte of the frame altered; the code no longer covers what comes out")
 
 
 DEST_TYPES   = ["single", "group", "plain", "link"]
