@@ -4,7 +4,7 @@ Run on 2026-08-14 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 4003830251
+    corpus 2363261268
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result   of which link
     ---------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  86 / 94  39 / 44
-    go-reticulum        06621cc   2026-04-28  76 / 94  29 / 44
-    rsReticulum         07ca721   2026-08-02  76 / 94  29 / 44
-    microReticulum      40fa628   2026-07-20  57 / 94  15 / 44
-    Reticulum-rs        be7a7fc   2026-07-31  57 / 94  13 / 44
-    rns.js              d4602ca   2025-02-10  42 / 94   2 / 44
-    sgiath/reticulum    0c4904e   2026-07-09  35 / 94   2 / 44
+    Reticulum-Go        48f1517   2026-07-25  87 / 95  39 / 44
+    go-reticulum        06621cc   2026-04-28  77 / 95  29 / 44
+    rsReticulum         07ca721   2026-08-02  76 / 95  29 / 44
+    Reticulum-rs        be7a7fc   2026-07-31  58 / 95  13 / 44
+    microReticulum      40fa628   2026-07-20  57 / 95  15 / 44
+    rns.js              d4602ca   2025-02-10  41 / 95   2 / 44
+    sgiath/reticulum    0c4904e   2026-07-09  36 / 95   2 / 44
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 94, not 116: every harness exits 77 for at least five kinds, and
+Out of 95, not 117: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,28 +46,39 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-90 / 99; the row above is the same run restricted to the 94 the other
-six can be compared on. The fifth is new and it fails, which is finding
-29. See "The interface access codes, measured once" below.
+91 / 100; the row above is the same run restricted to the 95 the other
+six can be compared on. The fifth fails, which is finding 29. See "The
+interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the two
 delivery proofs made on a link, which are filed under proof. 13 of them
 are the resource contexts.
 
-Twelve vectors were added since the last run and the corpus grew from
-104 to 116. Nine of them land in kinds every harness runs, so both
-denominators moved; the last two paragraphs of "How the corpus grew"
-say what each of the nine answered. Three new findings came out of
-them, 28 to 30, and no existing count fell.
+One vector was added since the last run and the corpus grew from 116 to
+117. It is announce/short-header-2, a header 2 one byte short of its
+own length, and it is of a kind every harness runs, so both
+denominators moved. Six of the seven pass it. No new finding came out
+of it: what it found is a defect in five of the seven harnesses, which
+is the sixth entry below, and three implementations failing an older
+vector once their harness stopped hiding it.
 
-Five harness faults have been found and fixed, and no harness changed
-for the run above. They are recorded here because a harness is evidence
-and a change to one changes what the numbers mean. The counts beside
-each are the rows before and after that fix, not the rows above:
+Six harness faults have been found and fixed. They are recorded here
+because a harness is evidence and a change to one changes what the
+numbers mean. The counts beside each fix are the rows before and after
+it, against the corpus it was measured on and not the rows above. Five
+of them predate the run above and changed no harness in it:
 
     go-reticulum      60 -> 62      microReticulum    47 -> 49
     rsReticulum       57 -> 58      rns.js            37 -> 39
     Reticulum-rs      48 -> 49      sgiath/reticulum  32 -> 33
+
+The sixth changed five harnesses for the run above:
+
+    go-reticulum      76 -> 77      rns.js            42 -> 41
+    rsReticulum       76 -> 76      sgiath/reticulum  35 -> 36
+    microReticulum    57 -> 57
+
+What found each of them, in the order they were found:
 
     destination/empty-aspect       All six computed the right
                                    destination hash and printed the
@@ -119,11 +130,27 @@ each are the rows before and after that fix, not the rows above:
                                    23 names the six failures one by one.
                                    No count moved.
 
+    announce/short-header-2        Five harnesses printed 19 as the
+                                   length a header needs, and 2 below
+                                   it, where the code they transcribe
+                                   branches on the header type bit or
+                                   names no length at all. A header 2
+                                   one byte short is the first vector
+                                   the constant is wrong for, and five
+                                   harnesses said so at once. Each now
+                                   derives the threshold the way its
+                                   implementation derives it. Three of
+                                   them lose announce/no-header for it:
+                                   two name 19 at one byte where the
+                                   corpus says 2, and the third names
+                                   no length anywhere. That is finding
+                                   18, and it was true before the fix.
+
 The first three were named in the run before last and left standing.
 That was the wrong call twice over: a footnote saying the evidence is
 wrong is not evidence, and the fourth was invisible for as long as the
 third hid it. A harness fault is fixed and its effect on the numbers is
-written down, which is what the five entries above are.
+written down, which is what the six entries above are.
 
 The fifth is worth reading twice. Six harnesses, six languages, six
 authors, and every one of them made the same assumption in the same
@@ -131,6 +158,14 @@ place: that a packet on a link carries at least a token. A vector found
 it in six programs at once because it was the first one to ask. What
 the implementations behind them do is finding 23, and it is a milder
 sentence.
+
+The sixth is the same shape one run later, and it is the first fix that
+costs a row rather than paying one: rns.js falls from 42 to 41, and two
+others gain the new vector and lose an old one for a net of nothing.
+That is the fix working. A harness that prints a constant agrees with
+every vector until one disagrees, and what the correction bought is
+three implementations failing announce/no-header in the open instead of
+passing it on a number their code does not name.
 
 
 One corpus fault, found by a seventh implementation
@@ -273,8 +308,8 @@ How the corpus grew
 The first four paragraphs are the history of the corpus against the six
 implementations measured before Reticulum-Go. Where they say "all
 six" they mean those six at that time, and the seventh answers some
-of them differently; finding 22 has the current table. The last is the
-growth to 114 and is measured against all seven.
+of them differently; finding 22 has the current table. Everything from
+the growth to 114 onwards is measured against all seven.
 
 Not one passing count moved when the corpus grew from 90 vectors to 94.
 The four added are the four ways a resource plaintext can be too short
@@ -356,6 +391,23 @@ it. microReticulum decrypts the large advertisement correctly, and it
 is the only one of the 32 linkdata vectors it decrypts at all beyond
 the two that are not encrypted. Finding 11 says why, and the reason is
 the finding rather than an exception to it.
+
+One took it from 116 to 117, of a kind every harness runs, and it was
+written against the corpus as well: doc/packet named three thresholds
+for a short header and test/ carried two of them.
+
+    announce/short-header-2        failed by one, finding 18
+
+It is 34 bytes where a header 2 needs 35, and it is the only one of the
+three that is not a constant anywhere: it is 19 plus the transport id
+that the header type bit selects. Six of the seven answer it correctly
+and the seventh names no header length at all.
+
+What it cost is five harnesses, and that is the entry above rather than
+a finding. It is the only vector so far whose worth is what it proved
+about the evidence rather than about an implementation, and the three
+implementations it uncovered had been passing announce/no-header on a
+number their own code does not name.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -866,27 +918,47 @@ is why the backend is part of the pin. See doc/identity, section
 Canonical signatures.
 
 
-Finding 18: two implementations name the wrong numbers for a short header
+Finding 18: four implementations name the wrong numbers for a short header
 
-Affects rns.js and sgiath/reticulum. Vectors test/announce/short-header
-and test/announce/no-header.
+Affects rns.js, rsReticulum, microReticulum and sgiath/reticulum.
+Vectors test/announce/short-header, test/announce/short-header-2 and
+test/announce/no-header.
 
-18 bytes is one short of a header 1 header, and nothing about the
-packet can be read, not even the context byte. rns.js reports
-short-payload with a payload length of 0 against a minimum of 148: it
-reads a header out of bytes that do not hold one and then measures what
-is left. The rejection names the wrong rule, which is the reason the
-corpus records the numbers behind a rejection rather than a single
-word.
+18 bytes is one short of a header 1 header and 34 one short of a header
+2 header, and nothing about either packet can be read, not even the
+context byte. rns.js reports short-payload with a payload length of 0
+against a minimum of 148 for both: it reads a header out of bytes that
+do not hold one and then measures what is left. The rejection names the
+wrong rule, which is the reason the corpus records the numbers behind a
+rejection rather than a single word. Nothing in it refuses a frame for
+being short at any point: a slice past the end of a Uint8Array is short
+rather than an error, so its harness prints "-" where the other six
+print a number.
 
 One byte is the other threshold, and it is the only one that is not a
 header length: how long a header has to be follows from the header type
-bit, which is in the byte that is missing. sgiath/reticulum answers 19,
-the header 1 length, for a packet of one byte. It is the same defect at
-the other end of the same rule, and its harness makes the distinction
-its implementation does not: it guards on two bytes and then reports
-19. The other five of the six answer 2. The seventh answers 3,
-by a constant of its own rather than by a misread, which is finding 25.
+bit, which is in the byte that is missing. rsReticulum, microReticulum
+and sgiath/reticulum answer 19, the header 1 length, for a packet of
+one byte:
+
+    rsReticulum       header.rs:48      raw.len() < HEADER_MINSIZE
+    microReticulum    Packet.cpp:426    size() < HEADER_MINSIZE
+    sgiath/reticulum  packet.ex:64      a pattern that cannot match
+
+It is the same defect at the other end of the same rule. All three
+branch correctly once two bytes are there, which is why all three pass
+short-header and short-header-2 and only no-header separates them from
+the reference: none of them tells "too short to say which header this
+is" from "too short for a header 1".
+
+Two of the seven answer 2 and pass, and neither holds the number:
+
+    go-reticulum      packet.go:433     p.Raw[1] before any test
+    Reticulum-rs      serde.rs:48       a second read_byte that fails
+
+Both die on the second byte before the header type is reached, so 2 is
+the offset each of them indexed. The seventh answers 3, by a constant
+of its own rather than by a misread, which is finding 25.
 
 
 Finding 19: four of seven read nothing a request or a response carries
@@ -1175,8 +1247,8 @@ Nothing is lost to it. A two-byte frame carries a header type and
 nothing the type selects, so both the reference and Reticulum-Go drop
 it; they name different numbers for why. This is finding 18 with the
 threshold one too high instead of 17 too high, and it is the
-only vector of the eleven rejection vectors where Reticulum-Go names a
-number the reference does not.
+only vector of the twelve that name a minimum length where Reticulum-Go
+names a number the reference does not.
 
 
 Finding 26: a hashmap update is bounded by the hash and not by the
