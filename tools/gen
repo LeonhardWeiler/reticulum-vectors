@@ -431,11 +431,24 @@ def msgpack_read(data, at=0):
         return out, at
 
     if kind & 0xf0 == 0x80:
-        out = {}
+        out   = {}
+        twice = False
         for _ in range(kind & 0x0f):
             key, at = msgpack_read(data, at)
+            # A key that repeats is not a map the reference will build.
+            # umsgpack raises rather than choosing between the two
+            # values, so there is no dictionary for unpack to name
+            # eleven keys in and no field of the map reads. Assigning
+            # here would silently keep the second.
+            # RNS/vendor/umsgpack.py#DuplicateKeyException.
+            #
+            # A body that ran out yields None for every pair it did not
+            # reach, and those are not keys read twice. Running out is
+            # the other rule and it leaves what was read standing; see
+            # doc/link.
+            twice = twice or (key is not None and key in out)
             out[key], at = msgpack_read(data, at)
-        return out, at
+        return (None if twice else out), at
 
     raise ValueError("msgpack: %02x is not a type this reads" % kind)
 
@@ -3022,6 +3035,19 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert advertisement.count(b"\xa1h\xc4\x20") == 1
     cut = advertisement[:advertisement.index(b"\xa1h\xc4\x20") + 3]
 
+    # The same advertisement with the name of its second key altered to
+    # the name of its first. Eleven pairs still, eleven values still,
+    # and ten names: umsgpack refuses the whole map rather than deciding
+    # which of the two "t" values is the transfer size, so nothing in it
+    # reads. RNS/vendor/umsgpack.py#DuplicateKeyException.
+    assert advertisement.count(b"\xa1d") == 1
+    twice = advertisement.replace(b"\xa1d", b"\xa1t", 1)
+    try:
+        umsgpack.unpackb(twice)
+        raise AssertionError("umsgpack accepted a duplicate key")
+    except umsgpack.DuplicateKeyException:
+        pass
+
     # The reference must read each of these as the map it wrote, which
     # is the whole claim the two vectors make.
     unpack = sys.modules["RNS.Resource"].ResourceAdvertisement.unpack
@@ -3052,6 +3078,8 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
          "a twelfth key, named in two bytes and holding a float; the eleven still read"),
         ("resource-advertisement-truncated", RNS.Packet.RESOURCE_ADV, cut,
          "an advertisement cut inside a length prefix; the three keys before it read"),
+        ("resource-advertisement-duplicate-key", RNS.Packet.RESOURCE_ADV, twice,
+         "an advertisement naming one key twice, which is no map at all; eleven dashes"),
     ]
 
     link = session["link"]

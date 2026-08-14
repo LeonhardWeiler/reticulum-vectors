@@ -68,6 +68,7 @@ linkdata/request-not-an-array
 linkdata/request-short
 linkdata/request-truncated
 linkdata/resource-advertisement
+linkdata/resource-advertisement-duplicate-key
 linkdata/resource-advertisement-extra-key
 linkdata/resource-advertisement-large
 linkdata/resource-advertisement-metadata

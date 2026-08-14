@@ -1305,11 +1305,10 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 		 * what a value the reader never reached prints everywhere
 		 * else. A twelfth key is the same rule read the other way: it
 		 * has no field here and takes nothing from the eleven that
-		 * do. A key that is there twice is read at the first of them,
-		 * as a dict built by insertion would not be; no reference
-		 * output holds one. */
+		 * do. */
 		struct mp value[sizeof order - 1];
 		size_t pairs = mp_map(&m);
+		int    twice = 0;
 
 		for (i = 0; i < sizeof order - 1; i++) {
 			value[i].p    = NULL;
@@ -1321,12 +1320,25 @@ static void print_resource(unsigned context, const uint8_t *p, size_t len)
 			char        key = mp_key(&m);
 			const char *at  = key != '\0' ? strchr(order, key) : NULL;
 
-			if (at != NULL && value[at - order].bad) {
+			if (at != NULL) {
+				if (!value[at - order].bad)
+					twice = 1;
 				value[at - order]     = m;
 				value[at - order].bad = 0;
 			}
 			mp_skip(&m);
 		}
+
+		/* A key that is there twice is no map the reference will
+		 * build: umsgpack raises rather than deciding which of the two
+		 * values the name stands for, and unpack is handed nothing to
+		 * look eleven names up in. Every field is therefore the dash
+		 * that says the map was not read, which is what a plaintext
+		 * that is no map at all prints.
+		 * RNS/vendor/umsgpack.py#DuplicateKeyException. */
+		if (twice)
+			for (i = 0; i < sizeof order - 1; i++)
+				value[i].bad = 1;
 
 		for (i = 0; order[i] != '\0'; i++) {
 			struct mp *v = &value[i];
