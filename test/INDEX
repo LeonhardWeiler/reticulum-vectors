@@ -11,6 +11,7 @@ announce/path-response
 announce/ratchet
 announce/ratchet-and-app-data
 announce/short-header
+announce/short-header-2
 announce/short-payload
 destination/app-name-only
 destination/empty-aspect

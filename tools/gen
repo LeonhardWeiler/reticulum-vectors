@@ -1279,6 +1279,19 @@ def gen_announce(RNS, w, tmpdir, verify):
     built("hop-limit", base[:1] + bytes([MAX_HOPS]) + base[2:],
         "hop count at the limit, which the reference implementation rejects")
 
+    # The third threshold, and the one a constant cannot express. A
+    # header 2 is 35 bytes where a header 1 is 19, and which applies is
+    # bit 6 of the flags byte. A decoder that takes 19 for granted reads
+    # 34 bytes as a whole packet and takes the transport id for a
+    # destination hash. The two vectors above name 2 and 19 and neither
+    # can catch that.
+    relayed = derived_from(w, "announce", "in-transport",
+                      lambda raw: [raw.hex()],
+                      lambda raw: describe_announce(raw, verify))
+
+    relayed("short-header-2", transport_insert(base, 1, transport_id)[:34],
+        "34 bytes, one short of a header 2 header")
+
     # The other side of the same boundary. Without it a decoder with no
     # hop limit and a decoder whose limit is off by one both fail
     # hop-limit and are indistinguishable; every implementation measured

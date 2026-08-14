@@ -399,6 +399,10 @@ numbers behind it. Each rule has a vector:
     length             18
     minimum_length     19
 
+    invalid            short-header       test/announce/short-header-2
+    length             34
+    minimum_length     35
+
     invalid            hop-limit          test/announce/hop-limit
     hops               128
     hop_limit          128
@@ -407,9 +411,12 @@ numbers behind it. Each rule has a vector:
     payload_length     147
     minimum_length     148
 
-short-header has two thresholds and both are on file. The second is the
-length of a header, which follows from the header type; the first is
-the two bytes it takes to read the header type at all, and it is the
+short-header has three thresholds and all three are on file. Two of
+them are the length of a header, 19 for a header 1 and 35 for a header
+2, and which applies follows from bit 6 rather than from a constant. A
+decoder that takes 19 for granted reads 34 bytes of a header 2 as a
+whole packet and takes the transport id for a destination hash. The
+third is the two bytes it takes to read that bit at all, and it is the
 only threshold in the format that is not a length of something.
 
 See doc/fields for every name that can appear in a rejection.
