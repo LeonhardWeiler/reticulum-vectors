@@ -11,6 +11,7 @@ use reticulum::destination::{DestinationAnnounce, DestinationName};
 use reticulum::hash::AddressHash;
 use reticulum::identity::{DecryptIdentity, Identity, PrivateIdentity};
 use reticulum::buffer::InputBuffer;
+use reticulum::crypt::fernet::{Fernet, Token as FernetToken};
 use reticulum::packet::Packet;
 use sha2::{Digest, Sha256};
 
@@ -373,6 +374,15 @@ fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let mut buf = [0u8; 1024];
     let plaintext = id.decrypt(OsRng, tok, &derived, &mut buf).ok().map(|p| p.to_vec());
 
+    // Fernet::verify is the hmac on its own. decrypt reports one error
+    // for an hmac that does not match and for padding it will not
+    // strip, so a token whose hmac is right and whose padding is not
+    // needs the two asked separately, as the reference asks them at
+    // RNS/Cryptography/Token.py#decrypt.
+    let hmac_ok = Fernet::new_from_slices(&bytes[..half], &bytes[half..], OsRng)
+        .verify(FernetToken::from(tok))
+        .is_ok();
+
     print_header(out, raw);
     f(out, "ephemeral_public", &hexs(ephemeral));
     f(out, "iv", &hexs(iv));
@@ -386,7 +396,7 @@ fn encrypted(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "shared_key", &hexs(shared.as_bytes()));
     f(out, "signing_key", &hexs(&bytes[..half]));
     f(out, "encryption_key", &hexs(&bytes[half..]));
-    f(out, "hmac_valid", if plaintext.is_some() { "yes" } else { "no" });
+    f(out, "hmac_valid", if hmac_ok { "yes" } else { "no" });
     match plaintext {
         None => {
             f(out, "plaintext_length", "-");
@@ -661,6 +671,10 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     let id = PrivateIdentity::new_from_name("conformance");
     let mut buf = [0u8; 1024];
     let plaintext = id.decrypt(OsRng, payload, &derived, &mut buf).ok().map(|p| p.to_vec());
+    let hmac_ok = token
+        && Fernet::new_from_slices(&bytes[..half], &bytes[half..], OsRng)
+            .verify(FernetToken::from(payload))
+            .is_ok();
 
     f(out, "iv", &hexs(iv));
     f(out, "ciphertext", &hexs(ct));
@@ -668,7 +682,7 @@ fn linkdata(out: &mut Vec<String>, b: &[Option<Vec<u8>>]) {
     f(out, "shared_key", &hexs(shared.as_bytes()));
     f(out, "signing_key", &hexs(&bytes[..half]));
     f(out, "encryption_key", &hexs(&bytes[half..]));
-    f(out, "hmac_valid", if plaintext.is_some() { "yes" } else { "no" });
+    f(out, "hmac_valid", if hmac_ok { "yes" } else { "no" });
     match &plaintext {
         None => {
             f(out, "plaintext_length", "-");
