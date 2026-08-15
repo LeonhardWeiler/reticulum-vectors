@@ -106,7 +106,7 @@ reference reads the two identically.
 
 What follows from reading by key is that a key which is not there costs
 its own field and nothing else, and that a key which is there and is
-none of the eleven costs nothing at all. Four vectors carry the cases,
+none of the eleven costs nothing at all. Five vectors carry the cases,
 all of them plaintexts the layers above the packet never build:
 
     resource-advertisement-no-hash        h is absent; the other ten
@@ -117,15 +117,37 @@ all of them plaintexts the layers above the packet never build:
                                           eleven dashes
     resource-advertisement-extra-key      a twelfth key, second in the
                                           map; the eleven still read
+    resource-advertisement-foreign-types  five pairs of no field, of
+                                          every type; the eleven read
 
-The last of the four is the direction a decoder is likeliest to get
-wrong, because nothing the reference writes today exercises it. The key
-is two bytes where every name in the format is one, and its value is a
-float64 where the format holds only uints and bins, so a reader that
-expects the shape it has seen rather than the shape msgpack declares
-stops at it and loses the ten keys behind it. The reference does not
-read the map at all until umsgpack has turned it into a dictionary, and
-then asks that dictionary for eleven names.
+The last two are the direction a decoder is likeliest to get wrong,
+because nothing the reference writes today exercises it. The twelfth
+key is two bytes where every name in the format is one, and its value
+is a float64 where the format holds only uints and bins, so a reader
+that expects the shape it has seen rather than the shape msgpack
+declares stops at it and loses the ten keys behind it. The reference
+does not read the map at all until umsgpack has turned it into a
+dictionary, and then asks that dictionary for eleven names.
+
+The fifth vector is that read to its end. Its five foreign pairs hold
+between them every type umsgpack can write into a packet and this
+format does not otherwise use: both signs of fixint, the four signed
+widths, uint64, both booleans, a string too long for fixstr, an array
+and a map at both of the widths a packet can reach, and one pair named
+by a number rather than by a string. Each is stepped over by its head
+byte alone, because a value with no field here is measured and not
+read. Three types are outside it: str32, bin32 and the 32-bit
+containers need more bytes or elements than a packet holds, float32 is
+written only for a caller that forces single precision, and the ext
+types only for a handler someone registered.
+
+    RNS/vendor/umsgpack.py#_pack_float
+
+That vector is also where the map's own header stops being a fixmap.
+16 pairs is where the count leaves the head byte, and eleven keys with
+five pairs beside them is the first map16 an advertisement reaches. A
+reader that takes the pair count from the low four bits of the head
+byte finds five pairs where there are 16, and loses the eleven.
 
 Two more are read by neither rule, because they are not read at all. A
 map is whole or it is nothing, which is where it parts company with an

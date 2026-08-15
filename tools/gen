@@ -407,24 +407,31 @@ def msgpack_read(data, at=0):
 
     if kind == 0xc0:                       return None, at
     if kind < 0x80:                        return kind, at
+    if kind >= 0xe0:                       return kind - 0x100, at
+    if kind in (0xc2, 0xc3):               return kind == 0xc3, at
     if kind == 0xcb:
         return (SHORT, len(data)) if ran_out(8) else (data[at:at + 8], at + 8)
 
-    if kind in (0xcc, 0xcd, 0xce):
-        size = 1 << (kind - 0xcc)
+    if kind in (0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3):
+        signed = kind >= 0xd0
+        size   = 1 << (kind - (0xd0 if signed else 0xcc))
         if ran_out(size):
             return SHORT, len(data)
-        return int.from_bytes(data[at:at + size], "big"), at + size
+        return int.from_bytes(data[at:at + size], "big", signed=signed), at + size
 
-    if kind in (0xc4, 0xc5):
-        width = kind - 0xc3
+    if kind in (0xc4, 0xc5, 0xd9, 0xda):
+        # A string and a binary differ in what the bytes mean and not in
+        # how their length is written. RNS/vendor/umsgpack.py#_pack_string.
+        text  = kind in (0xd9, 0xda)
+        width = kind - (0xd8 if text else 0xc3)
         if ran_out(width):
             return SHORT, len(data)
         size = int.from_bytes(data[at:at + width], "big")
         at += width
         if ran_out(size):
             return SHORT, len(data)
-        return data[at:at + size], at + size
+        body = data[at:at + size]
+        return (body.decode("utf-8") if text else body), at + size
 
     if kind & 0xe0 == 0xa0:
         size = kind & 0x1f
@@ -432,17 +439,25 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return data[at:at + size].decode("utf-8"), at + size
 
-    if kind & 0xf0 == 0x90:
-        # An element the body does not hold is the dash a nil prints
-        # as, and the elements before it stand. That is the read this
-        # format's array bodies are described by; see doc/link.
-        out = []
-        for _ in range(kind & 0x0f):
-            value, at = msgpack_read(data, at)
-            out.append(None if value is SHORT else value)
-        return out, at
+    if kind & 0xf0 in (0x80, 0x90) or kind in (0xdc, 0xde):
+        # A container announces how many elements follow, in the head
+        # byte or in the two bytes after it. A map counts pairs.
+        count = kind & 0x0f
+        if kind in (0xdc, 0xde):
+            if ran_out(2):
+                return SHORT, len(data)
+            count, at = int.from_bytes(data[at:at + 2], "big"), at + 2
 
-    if kind & 0xf0 == 0x80:
+        if kind & 0xf0 == 0x90 or kind == 0xdc:
+            # An element the body does not hold is the dash a nil prints
+            # as, and the elements before it stand. That is the read this
+            # format's array bodies are described by; see doc/link.
+            out = []
+            for _ in range(count):
+                value, at = msgpack_read(data, at)
+                out.append(None if value is SHORT else value)
+            return out, at
+
         # A map is whole or it is nothing, which is the one place this
         # reader is not the array above. umsgpack builds the dictionary
         # or raises, and RNS/Resource.py#unpack looks eleven names up in
@@ -453,7 +468,7 @@ def msgpack_read(data, at=0):
         #     RNS/vendor/umsgpack.py#InsufficientDataException
         out   = {}
         whole = True
-        for _ in range(kind & 0x0f):
+        for _ in range(count):
             key, at   = msgpack_read(data, at)
             value, at = msgpack_read(data, at)
             whole = whole and key is not SHORT and value is not SHORT \
@@ -3036,6 +3051,24 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     extra = umsgpack.packb(dict({"t": adv["t"], "tt": 1.5},
                                 **{k: adv[k] for k in read_order if k != "t"}))
 
+    # The same rule as extra, read to its end. A reader that steps over
+    # a pair it has no name for must be able to step over any value
+    # umsgpack can write, and one that cannot loses the eleven to a
+    # twelfth pair it was never asked about. Every type below is one
+    # byte of header the reader must recognise before it knows how far
+    # to move: both signs of fixint, the four int widths, uint64, both
+    # booleans, a string too long for fixstr, and the two container
+    # widths, whose elements are counted rather than measured. A key is
+    # a value too, so one of these pairs is named by a number.
+    foreign_map = {k: adv[k] for k in read_order}
+    foreign_map["aa"] = -1
+    foreign_map["bb"] = [-33, -129, -32769, -2147483649, 4294967296,
+                         True, False, "x" * 32]
+    foreign_map["cc"] = list(range(16))
+    foreign_map["dd"] = {str(i): i for i in range(16)}
+    foreign_map[7]    = {"n": [1, 2]}
+    foreign = umsgpack.packb(foreign_map)
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3071,6 +3104,15 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert fields(unpack(reordered)) == fields(ours)
     assert len(extra) > len(advertisement)
     assert fields(unpack(extra)) == fields(ours)
+    assert fields(unpack(foreign)) == fields(ours)
+    assert umsgpack.unpackb(foreign) == foreign_map
+
+    # The header byte of each value the five pairs hold, so that a value
+    # edited above stops covering a width here rather than silently.
+    heads = {umsgpack.packb(v)[0] for v in foreign_map["bb"]} | \
+            {umsgpack.packb(foreign_map[k])[0] for k in ("aa", "bb", "cc", "dd", 7)}
+    assert heads == {0xff, 0xd0, 0xd1, 0xd2, 0xd3, 0xcf, 0xc3, 0xc2,
+                     0xd9, 0x98, 0xdc, 0xde, 0x81}
 
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
@@ -3091,6 +3133,12 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
          "an advertisement cut inside a length prefix; the three keys before it read"),
         ("resource-advertisement-duplicate-key", RNS.Packet.RESOURCE_ADV, twice,
          "an advertisement naming one key twice, which is no map at all; eleven dashes"),
+        # Last, because the packets below are sent under a pinned random
+        # stream and a case inserted above moves every initialisation
+        # vector after it.
+        ("resource-advertisement-foreign-types", RNS.Packet.RESOURCE_ADV, foreign,
+         "five pairs with no field here, holding every msgpack type a reader "
+         "must step over; the eleven still read"),
     ]
 
     link = session["link"]
