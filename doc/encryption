@@ -25,14 +25,18 @@ Payload
     -32     32    HMAC-SHA256
 
 Everything from offset 32 onward is a token in the sense below. The
-minimum payload is therefore 32 + 48 = 80 bytes, and the ciphertext is
-never empty: PKCS7 adds a full block to a plaintext that is already
-block aligned, and adds a whole block to an empty one.
+minimum payload is therefore 32 + 48 = 80 bytes, which is an ephemeral
+key and a token whose ciphertext is empty. Nothing the reference sends
+is that short, because PKCS7 adds a full block to a plaintext that is
+already block aligned and a whole block to an empty one, so 80 is a
+bound of the layout rather than a length anything writes.
 
     RNS/Identity.py#encrypt
 
 A shorter payload is rejected as short-payload with 80 beside it;
-test/encrypted/short-payload is one byte under. A group packet carries
+test/encrypted/short-payload is one byte under. test/encrypted/empty-token
+is the payload at exactly 80, and it is 80 by having no ciphertext at
+all; see "Padding the writer does not write". A group packet carries
 no ephemeral key, so its threshold is the token overhead alone;
 test/group/short-payload is one byte under that.
 
@@ -163,16 +167,37 @@ yields the whole final block, and the padding bytes themselves are
 never compared against the length. A decoder that adds either check
 refuses tokens the reference opens.
 
-The reference cannot be asked to produce a token with a padding length
-of zero, because pad writes 1 to 16 and adds a whole block to a
-plaintext that is already aligned. It can be asked to open one, and
-test/group/zero-padding is that token: written by the reference's own
-Token.encrypt with pad replaced by the identity for the one call, and
-opened by the reference unchanged. It is filed under group because
-there the key is configuration rather than a negotiated secret, so
-producing such a token needs nothing but membership.
+The bound is read from a byte the ciphertext has to hold, so a token
+with no ciphertext at all reaches it with nothing to read: unpad
+indexes the last byte of an empty block and the packet is dropped
+there, one step past the hmac it passed.
 
-    RNS/Cryptography/PKCS7.py#pad
+    RNS/Cryptography/PKCS7.py#unpad
+
+
+Padding the writer does not write
+
+pad writes 1 to 16 bytes and reaches neither end of what unpad accepts,
+so two tokens in the corpus were written with pad replaced by the
+identity for the one call that packed them. The plaintext handed to
+Token.encrypt is then the padded block itself, and every other byte is
+the reference's: its key, its initialisation vector, its cipher, its
+hmac. Both name the replacement in their own meta, and the verdict each
+records is the reference reading back what it wrote.
+
+    test/group/zero-padding          length 0, which removes nothing
+    test/encrypted/empty-token       a token of 48 bytes, no ciphertext
+
+They are the two ends of what unpad accepts, and the reference opens
+one of them: zero removes nothing and yields the whole block, and an
+empty ciphertext has no byte to read the length from.
+
+A decoder that pads its own way meets both in the read direction only,
+which is where they belong: the corpus rebuilds their raw from the iv,
+the ciphertext and the hmac in expect and never from the plaintext, so
+no encoder here pads anything.
+
+    RNS/Cryptography/PKCS7.py#pad, RNS/Cryptography/Token.py#encrypt
 
 
 Vector format

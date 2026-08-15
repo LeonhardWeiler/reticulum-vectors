@@ -244,14 +244,20 @@ functions. The one that was, the interface key of test/ifac, is derived
 in expect from the two configured strings raw carries, so `dump`
 derives it again and `check` diffs the two.
 
-One case sits between the two and is written down rather than argued
-away: test/group/zero-padding needs a padding length of nought, which
-`PKCS7.unpad` accepts and `PKCS7.pad` never writes, so `pad` is
-replaced by the identity for that one call. raw is still the
-reference's own `Token.encrypt` output. The rule is not "gen replaces
-nothing" — `pinned()` replaces the clock, three key classes and both
-randomness sources — but that each replacement is named where a reader
-of the corpus will meet it. That one is named in the vector's meta.
+Two cases sit between the two and are written down rather than argued
+away. Each needs a padding `PKCS7.unpad` accepts and `PKCS7.pad` never
+writes, so `pad` is replaced by the identity for the one call that
+packs them: a length of nought, and a token with no ciphertext at all.
+raw is still the reference's own `Token.encrypt` output, and
+doc/encryption names both. The rule is not "gen replaces nothing" —
+`pinned()` replaces the clock, three key classes and both randomness
+sources — but that each replacement is named where a reader of the
+corpus will meet it. Those two are named in their own meta.
+
+The second of them is why a reason on the list below is read again
+rather than counted on: it was on it, as a token the reference could
+not be asked for, and the replacement that had already been made for
+the first was what took it off.
 
 `expect` is a different matter. It is what the reference says about
 its own bytes wherever RNS exposes the field, and gen's reading of raw
@@ -332,20 +338,23 @@ Ask, in order:
 
 If the first answer is yes, stop.
 
-The third has been asked and answered for five cases, and doc/packet,
-section "What has no vector", holds the five with the reason each one
+The third has been asked and answered for four cases, and doc/packet,
+section "What has no vector", holds the four with the reason each one
 cannot be produced. Read it before proposing a vector for any of them.
 
-Two have left that list since it was written, and both left the same
-way: the reason was read again and did not hold. One turned out to be a
-truncation like any other. The other, a resource payload of the wrong
-msgpack shape, was excluded because the layers above the packet do not
-build such a payload, which is not the question the third asks: what a
-link carries is chosen by the sender, and four vectors already handed a
-chosen plaintext to Link.encrypt. It now has five vectors and it found
-a defect in cmd/dump. That is the argument for writing the list rather
-than carrying it in someone's head, and for reading a reason rather
-than counting on it.
+Three have left that list since it was written, and all three left the
+same way: the reason was read again and did not hold. One turned out to
+be a truncation like any other. The second, a resource payload of the
+wrong msgpack shape, was excluded because the layers above the packet
+do not build such a payload, which is not the question the third asks:
+what a link carries is chosen by the sender, and four vectors already
+handed a chosen plaintext to Link.encrypt. It now has six vectors, and
+it has found a defect in cmd/dump twice. The third, a token of 48
+bytes, was excluded because `PKCS7.pad` writes no such token, by which
+time test/group/zero-padding had been on file for ten days with `pad`
+replaced by the identity. That is the argument for writing the list
+rather than carrying it in someone's head, and for reading a reason
+rather than counting on it.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:

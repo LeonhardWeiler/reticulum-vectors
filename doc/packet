@@ -448,10 +448,10 @@ See doc/fields for every name that can appear in a rejection.
 
 What has no vector
 
-Five things a decoder must handle have no vector here, and none of them
+Four things a decoder must handle have no vector here, and none of them
 is an oversight. A vector records what the reference produced, so a
 case the reference cannot be made to produce has no bytes to record.
-Passing the corpus says nothing about any of the five.
+Passing the corpus says nothing about any of the four.
 
 What puts a case here is that no reference function can be made to
 write the bytes. It is not that the layers above the packet do not
@@ -461,22 +461,18 @@ is the reference's output as much as any other. 15 vectors are built
 that way and each says so in its source, which names the chosen
 plaintext before it names the pin.
 
+Nor is it that one function on the way writes something else. A
+function can be replaced for the call that writes a vector, and two
+tokens are, so what remains is whether every other byte is still the
+reference's. See doc/encryption, section "Padding the writer does not
+write".
+
     a header that does not parse, in any kind but announce
 
         Packet.unpack is one function and the header does not vary
         with the kind around it, so the four announce rejections above
         are the rule and not a sample of it. Repeating them per kind
         would be a table of permutations. RNS/Packet.py#unpack.
-
-    a token of 48 bytes, with an iv and an hmac and nothing between
-
-        The reference's reader accepts it and its writer cannot make
-        it: Token.encrypt pads through PKCS7.pad, which turns an empty
-        plaintext into a full block of 16, so the shortest token it
-        writes is 64 bytes. verify_hmac refuses at 32 and the corpus
-        refuses at 48, and the 16 bytes between them belong to no
-        vector. RNS/Cryptography/Token.py#encrypt, RNS/Cryptography/
-        PKCS7.py#pad.
 
     a context byte the reference defines and no object sets
 
@@ -500,7 +496,7 @@ plaintext before it names the pin.
         writes carries a point that yields no secret.
         RNS/Link.py#X25519PrivateKey.
 
-Building any of the six means composing bytes the reference did not
+Building any of the four means composing bytes the reference did not
 write, which is the one thing raw does not hold. See CLAUDE.md.
 
 

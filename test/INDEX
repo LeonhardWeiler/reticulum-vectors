@@ -24,6 +24,7 @@ destination/utf8-precomposed
 encrypted/altered-hmac
 encrypted/block-aligned
 encrypted/empty
+encrypted/empty-token
 encrypted/low-order-ephemeral
 encrypted/minimal
 encrypted/ratchet
