@@ -99,7 +99,7 @@ GENERATED_SOURCE    = "python-rns %s (%s)" % (PIN_VERSION, PIN)
 # A token whose padding the reference's writer does not write. pad is
 # replaced by the identity for the one call, so the plaintext handed to
 # Token.encrypt is the padded block itself and raw is still the
-# reference's output. Both vectors say so in their own meta, which is
+# reference's output. Four vectors say so in their own meta, which is
 # the rule CLAUDE.md states for a replacement a reader will meet.
 UNPADDED_SOURCE     = GENERATED_SOURCE + \
                       ", RNS/Cryptography/PKCS7.py#pad stubbed to the identity"
@@ -3393,6 +3393,10 @@ def gen_encrypted(RNS, w):
     for name, chosen, read_back, purpose in [
         ("empty-token", b"", None,
          "a token of 48 bytes: an iv and an hmac with nothing between them"),
+        ("long-padding", b"reticulum______" + bytes([17]), None,
+         "a padding length of 17, one past the block size the reference bounds it by"),
+        ("loose-padding", b"reticulum____" + bytes([0xaa, 0xbb, 3]), b"reticulum____",
+         "three bytes of padding, two of which say something else; the reference removes three"),
     ]:
         _, _, padded = encrypted_raw(RNS, key_index, aspects, chosen, False,
                                      "encrypted-" + name, unpadded=True)

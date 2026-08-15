@@ -462,7 +462,7 @@ that way and each says so in its source, which names the chosen
 plaintext before it names the pin.
 
 Nor is it that one function on the way writes something else. A
-function can be replaced for the call that writes a vector, and two
+function can be replaced for the call that writes a vector, and four
 tokens are, so what remains is whether every other byte is still the
 reference's. See doc/encryption, section "Padding the writer does not
 write".

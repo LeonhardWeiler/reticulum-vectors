@@ -244,15 +244,16 @@ functions. The one that was, the interface key of test/ifac, is derived
 in expect from the two configured strings raw carries, so `dump`
 derives it again and `check` diffs the two.
 
-Two cases sit between the two and are written down rather than argued
-away. Each needs a padding `PKCS7.unpad` accepts and `PKCS7.pad` never
-writes, so `pad` is replaced by the identity for the one call that
-packs them: a length of nought, and a token with no ciphertext at all.
-raw is still the reference's own `Token.encrypt` output, and
-doc/encryption names both. The rule is not "gen replaces nothing" —
-`pinned()` replaces the clock, three key classes and both randomness
-sources — but that each replacement is named where a reader of the
-corpus will meet it. Those two are named in their own meta.
+Four cases sit between the two and are written down rather than argued
+away. Each needs a padding `PKCS7.pad` never writes, so `pad` is
+replaced by the identity for the one call that packs them: a length of
+nought, a token with no ciphertext at all, a length past the block
+size, and padding bytes that disagree with the length. raw is still the
+reference's own `Token.encrypt` output, and doc/encryption lists the
+four. The rule is not "gen replaces nothing" — `pinned()` replaces the
+clock, three key classes and both randomness sources — but that each
+replacement is named where a reader of the corpus will meet it. Those
+four are named in their own meta.
 
 The second of them is why a reason on the list below is read again
 rather than counted on: it was on it, as a token the reference could

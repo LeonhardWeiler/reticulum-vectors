@@ -25,6 +25,8 @@ encrypted/altered-hmac
 encrypted/block-aligned
 encrypted/empty
 encrypted/empty-token
+encrypted/long-padding
+encrypted/loose-padding
 encrypted/low-order-ephemeral
 encrypted/minimal
 encrypted/ratchet

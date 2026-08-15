@@ -178,24 +178,37 @@ there, one step past the hmac it passed.
 Padding the writer does not write
 
 pad writes 1 to 16 bytes and reaches neither end of what unpad accepts,
-so two tokens in the corpus were written with pad replaced by the
+so four tokens in the corpus were written with pad replaced by the
 identity for the one call that packed them. The plaintext handed to
 Token.encrypt is then the padded block itself, and every other byte is
 the reference's: its key, its initialisation vector, its cipher, its
-hmac. Both name the replacement in their own meta, and the verdict each
-records is the reference reading back what it wrote.
+hmac. Each of the four names the replacement in its own meta, and the
+verdict each records is the reference reading back what it wrote.
 
     test/group/zero-padding          length 0, which removes nothing
     test/encrypted/empty-token       a token of 48 bytes, no ciphertext
+    test/encrypted/long-padding      length 17, one past the bound
+    test/encrypted/loose-padding     length 3, on bytes that disagree
 
-They are the two ends of what unpad accepts, and the reference opens
-one of them: zero removes nothing and yields the whole block, and an
-empty ciphertext has no byte to read the length from.
+The first two are the two ends of what unpad accepts, and the reference
+opens one of them: zero removes nothing and yields the whole block, and
+an empty ciphertext has no byte to read the length from. The third is
+the one length unpad refuses, and it is refused for being 17 and not
+for what the other 15 bytes hold. The fourth is the check unpad does
+not make: three bytes are removed on the word of the last of them,
+while the two above it say 0xaa and 0xbb.
 
-A decoder that pads its own way meets both in the read direction only,
-which is where they belong: the corpus rebuilds their raw from the iv,
-the ciphertext and the hmac in expect and never from the plaintext, so
-no encoder here pads anything.
+A padding length above the block size and a padding length no writer
+wrote are the two halves of the same disagreement, and an
+implementation is free to be stricter than the reference only in the
+direction that drops packets nobody sends. loose-padding is the one
+that costs: a receiver checking the padding bytes drops a packet the
+reference delivers 13 bytes of.
+
+A decoder that pads its own way meets all four in the read direction
+only, which is where every one of them belongs: the corpus rebuilds
+their raw from the iv, the ciphertext and the hmac in expect and never
+from the plaintext, so no encoder here pads anything.
 
     RNS/Cryptography/PKCS7.py#pad, RNS/Cryptography/Token.py#encrypt
 
