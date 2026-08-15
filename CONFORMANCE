@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-14 against the corpus test/ holds at that date, through
+Run on 2026-08-16 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3892146571
+    corpus 3615495460
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -21,21 +21,21 @@ from expect for every vector of the encode class, and no harness
 implements that direction, so nothing below says anything about what
 these implementations write.
 
-    implementation      commit    date        result   of which link
-    ---------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  98 / 109  48 / 56
-    rsReticulum         07ca721   2026-08-02  86 / 109  37 / 56
-    go-reticulum        06621cc   2026-04-28  83 / 109  33 / 56
-    Reticulum-rs        be7a7fc   2026-07-31  66 / 109  19 / 56
-    microReticulum      40fa628   2026-07-20  60 / 109  16 / 56
-    rns.js              d4602ca   2025-02-10  44 / 109   3 / 56
-    sgiath/reticulum    0c4904e   2026-07-09  39 / 109   3 / 56
+    implementation      commit    date        result    of which link
+    ----------------------------------------------------------------
+    Reticulum-Go        48f1517   2026-07-25  100 / 113  48 / 57
+    rsReticulum         07ca721   2026-08-02   87 / 113  38 / 57
+    go-reticulum        06621cc   2026-04-28   85 / 113  34 / 57
+    Reticulum-rs        be7a7fc   2026-07-31   67 / 113  19 / 57
+    microReticulum      40fa628   2026-07-20   61 / 113  16 / 57
+    rns.js              d4602ca   2025-02-10   44 / 113   3 / 57
+    sgiath/reticulum    0c4904e   2026-07-09   39 / 113   3 / 57
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 109, not 131: every harness exits 77 for at least five kinds, and
+Out of 113, not 135: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,29 +46,45 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-102 / 114; the row above is the same run restricted to the 109 the
+104 / 118; the row above is the same run restricted to the 113 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the three
-delivery proofs made on a link, which are filed under proof. 21 of them
+delivery proofs made on a link, which are filed under proof. 22 of them
 are the resource contexts.
 
-Seven vectors were added since the last run and the corpus grew from
-124 to 131. Four are link data packets and three are delivery proofs,
-so both denominators moved and the link column moved with them. Two new
-findings came out of them, 34 and 35, no existing count fell, and every
-row gained between three and six. The last paragraphs of "How the
-corpus grew" say what each answered.
+Four vectors were added since the last run and the corpus grew from 131
+to 135. Three are packets to a destination and one is a link data
+packet, so both denominators moved and the link column moved by one.
+Six new findings came out of them, 36 to 41, no existing count fell,
+and the rows moved by nothing at all to two. A seventh harness fault
+came out of them as well and is recorded below; it is worth one of
+those rows. The last paragraphs of "How the corpus grew" say what each
+answered.
 
-They were found the way the five before them were: a coverage build of
-cmd/dump against the corpus, reading the branches its own decoder
-implements and no vector reached. Two of the seven found a defect in
-cmd/dump rather than in any implementation, and a third found one in
-the corpus by being measured: those are the third and fourth corpus
-faults and are recorded below.
+Three of the four turn on the padding inside a token, which no vector
+had reached before: pad writes 1 to 16 bytes and the reference's own
+reader accepts a length of nought and refuses one of 17, so both ends
+of what it accepts lay outside what it writes. One of the three ends a
+run in a core dump, and it is the first vector in the corpus that does.
+See doc/encryption, section "Padding the writer does not write".
 
-Six harness faults have been found and fixed. They are recorded here
+They were found the way the twelve before them were: a coverage build
+of cmd/dump against the corpus, reading the branches its own decoder
+implements and no vector reached. Three of the four are one such
+branch, the one that decides whether a token opens after its hmac has
+already passed, and it had never been taken. The fourth found a defect
+in cmd/dump rather than in any implementation, which is the fifth
+corpus fault and is recorded below.
+
+One of the three had a second finder. doc/packet listed a token of 48
+bytes as a case the reference could not be asked for, and it could, by
+the replacement a vector already on file had made for its own bytes.
+Reading that reason again is what took it off the list, which is the
+third reason to leave it and still none added.
+
+Seven harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
 numbers mean. The counts beside each fix are the rows before and after
 it, against the corpus it was measured on and not the rows above. Five
@@ -78,11 +94,15 @@ of them predate the run above and changed no harness in it:
     rsReticulum       57 -> 58      rns.js            37 -> 39
     Reticulum-rs      48 -> 49      sgiath/reticulum  32 -> 33
 
-The sixth changed five harnesses for the run above:
+The sixth changed five harnesses for the run before the one above:
 
     go-reticulum      76 -> 77      rns.js            42 -> 41
     rsReticulum       76 -> 76      sgiath/reticulum  35 -> 36
     microReticulum    57 -> 57
+
+The seventh changed one harness for the run above:
+
+    Reticulum-rs      66 -> 67
 
 What found each of them, in the order they were found:
 
@@ -151,6 +171,20 @@ What found each of them, in the order they were found:
                                    corpus says 2, and the third names
                                    no length anywhere. That is finding
                                    18, and it was true before the fix.
+
+    encrypted/long-padding         Reticulum-rs printed hmac_valid from
+                                   whether a plaintext came back, and
+                                   the implementation exports
+                                   Fernet::verify, which is the hmac on
+                                   its own. Three vectors ask for the
+                                   two verdicts separately for the
+                                   first time and the harness had only
+                                   one to give. It calls verify beside
+                                   decrypt now, as the Reticulum-Go
+                                   harness already did. Reticulum-rs
+                                   gains one; the other two vectors it
+                                   still fails, on findings 39 and 41,
+                                   and they are its own.
 
 The first three were named in the run before last and left standing.
 That was the wrong call twice over: a footnote saying the evidence is
@@ -304,6 +338,35 @@ conformance run is for, and this is the second time it has been the
 corpus that was wrong.
 
 
+The fifth corpus fault, in the same reader as the second and the third
+
+Both of those were cmd/dump reading an advertisement in a way the
+reference does not, and this is the third. umsgpack unpacks a map
+before RNS/Resource.py#unpack looks a name up in it, so a value with no
+field here is a value the reader must measure and step over, whatever
+its type. cmd/dump knew eight of them, which is every type an
+advertisement the reference writes holds, and gave up on any other: a
+negative number, a boolean, a signed width, a string too long for
+fixstr, an array or a map, and the whole map went to dashes.
+
+    test/linkdata/resource-advertisement-foreign-types
+        five pairs of no field here, holding every type umsgpack can
+        write into a packet, and the eleven behind them
+
+The map header itself was the second half of it. Eleven keys with five
+pairs beside them is 16 pairs, which is where msgpack moves the count
+out of the head byte, and cmd/dump read the low four bits of a map16 as
+a pair count of five.
+
+Both are now read as the reference reads them, and tools/gen grew the
+same widths, because its own reading of raw had exactly the same eight
+types in it. That is the second reader written twice agreeing twice on
+the same mistake, and doc/resource had not said this one either way.
+
+Two of the three implementations that read an advertisement pass the
+vector; the third is finding 39.
+
+
 Six of the seven produce the adopted signature from the private key and
 the message, bit for bit, through their own signer. The seventh cannot
 load an identity from a private key at all; see finding 7.
@@ -403,11 +466,11 @@ signalled.
 
 Reticulum-Go is a second. It establishes the link, derives the same
 keys, decrypts every packet on it, and reads more of what those packets
-carry than any of the six. Five of its six link failures are thresholds
+carry than any of the six. Six of its nine link failures are thresholds
 on a payload too short to be what its context byte said it was:
 findings 22, 23, 26 and 27. Not one of those is a packet it reads
-wrongly. The sixth is, and it is the only one in the corpus: finding
-32.
+wrongly. The other three are, and all three are a msgpack value it
+reads or refuses differently: findings 32, 35 and 39.
 
 
 How the corpus grew
@@ -495,7 +558,7 @@ under the same finding as the body that runs out.
 
 It also handed one implementation a pass that says nothing good about
 it. microReticulum decrypts the large advertisement correctly, and it
-is the only one of the 39 linkdata vectors it decrypts at all beyond
+is the only one of the 44 linkdata vectors it decrypts at all beyond
 the two that are not encrypted. Finding 11 says why, and the reason is
 the finding rather than an exception to it.
 
@@ -583,6 +646,46 @@ are the ones with a finding behind them, and the extra key is the one
 the three readers all got right. That is the second time a vector
 written to find a defect found it in cmd/dump instead, and the third
 and fourth entries above say what each of them was.
+
+Four took it from 131 to 135. Three are packets to a destination and
+one is a link data packet, and all four are of kinds every harness
+runs.
+
+    encrypted/empty-token          failed by six, findings 36, 37
+                                   and 41
+    encrypted/long-padding         failed by five, findings 36 and 38
+    encrypted/loose-padding        failed by five, findings 36 and 39
+    linkdata/resource-advertisement-foreign-types
+                                   failed by five, finding 40
+
+The three tokens are the first vectors here to ask an implementation
+for two verdicts about the same packet: that the hmac is right and that
+the token behind it does not open. Nobody had had to answer that
+before, because pad writes no padding either bound refuses, and it is
+the first place where a decrypt call that returns a plaintext or an
+error is not enough. Two implementations answer with one verdict for
+both and print the wrong one, which is finding 36; a third answered
+that way because its harness did, and that is the seventh harness
+fault. Two more fail all three for the reasons they already fail every
+encrypted vector, findings 5 and 7.
+
+Three of them are stricter than the reference in the same two places
+and for the same reason, and one says so in a comment about padding
+oracles. That is finding 39, and it is the only finding in the corpus
+where the implementations are defensible and the reference is not: the
+reference's own unpad removes three bytes on the word of one of them.
+
+The fourth is the advertisement and it costs Reticulum-Go a failure
+where it had been the strongest of the seven. The two that pass it use
+a msgpack library and step over a value they have no field for, which
+is what the format requires and what cmd/dump had to be taught. See the
+fifth corpus fault above.
+
+One of the three tokens ends its run in a core dump, and that is
+finding 37. It is the first vector in the corpus to crash an
+implementation rather than to disagree with one, and what it takes is
+48 bytes: an iv, an hmac, and no ciphertext for the padding length to
+be read from.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -690,7 +793,8 @@ ratchet keys are not clamped when generated.
 
 Finding 5: rns.js derives half the key material
 
-Affects rns.js. All five test/encrypted/ vectors.
+Affects rns.js. Eight of the ten test/encrypted/ vectors: every one
+that reaches a key at all.
 
     src/identity.js:237     Cryptography.hkdf(32, sharedKey, this.hash)
     RNS/Identity.py#DERIVED_KEY_LENGTH
@@ -743,9 +847,10 @@ the defect is invisible until a ratchet is used.
 
 Finding 7: sgiath/reticulum cannot load an identity from a private key
 
-Affects sgiath/reticulum. 14 of its failures: every
-test/keyset/, every test/encrypted/, and test/sign/. The 14th is
-encrypted/low-order-ephemeral, which the previous run charged to
+Affects sgiath/reticulum. 17 of its failures: every
+test/keyset/, every test/encrypted/ but the one rejection it refuses on
+a length, and test/sign/. One of the 17 is
+encrypted/low-order-ephemeral, which an earlier run charged to
 finding 16; the implementation refuses that point correctly and fails
 the vector here instead.
 
@@ -1743,6 +1848,226 @@ so its pass says nothing about it; finding 11 is the same shape one
 kind over.
 
 
+Finding 36: a valid hmac is reported as invalid when the token behind it
+does not open
+
+Affects go-reticulum and rsReticulum. Vectors
+test/encrypted/empty-token, test/encrypted/long-padding and
+test/encrypted/loose-padding.
+
+The reference reaches two verdicts about a token and reaches them in
+order. verify_hmac decides the first, and only then is the ciphertext
+decrypted and unpadded:
+
+    RNS/Cryptography/Token.py#decrypt
+        if self.verify_hmac(token):
+            ...
+            return PKCS7.unpad(...)
+
+Every token vector before these three answered both the same way, so
+one verdict stood in for two. These three separate them: the hmac is
+right and the padding behind it is not something unpad returns a
+plaintext for. All three implementations print
+
+    hmac_valid         no
+
+where the corpus holds yes, and none of the three is wrong about the
+bytes. What each of them has is one call:
+
+    go-reticulum        token.go:145  Decrypt, and verifyHMAC beside
+                        it, unexported
+    rsReticulum         rns-crypto/src/token.rs  encrypt and decrypt
+                        are the whole public surface, and
+                        encryption.rs:21 says why: "Errors are
+                        deliberately opaque - padding and HMAC failures
+                        are indistinguishable to callers so timing side
+                        channels cannot leak which check failed"
+
+rsReticulum's comment is the finding stated by its author, and it is a
+defensible design: a caller that can tell a padding failure from an
+hmac failure is a padding oracle. It is also why its harness has
+nothing to print but the one verdict it got.
+
+Two implementations are the counter-example, and both are a harness
+away from these. Reticulum-Go exports cryptography.ValidateHMAC and its
+harness has always called it beside Decrypt; Reticulum-rs exports
+Fernet::verify and its harness did not, which is the seventh harness
+fault above.
+
+What is open here is what the corpus should ask of the other two. A
+harness may transcribe an unexported check, as the table under "What a
+result covers" records for other fields, and neither of these two
+harnesses does for this one. Until that is decided the vectors count
+against the implementations, and the reason they fail is written here
+rather than in the count.
+
+
+Finding 37: a token with no ciphertext ends the run in a core dump
+
+Affects microReticulum. Vector test/encrypted/empty-token.
+
+A token of 48 bytes is an iv and an hmac with nothing between them. The
+hmac verifies, the ciphertext is empty, and the padding length is read
+from the last byte of a block that is not there:
+
+    Cryptography/PKCS7.h:67
+        size_t padlen = (size_t)data.data()[data.size()-1];
+
+With size() zero that is data()[-1]. The reference does the same thing
+in Python and raises IndexError, which Identity.decrypt catches and
+turns into a dropped packet:
+
+    RNS/Cryptography/PKCS7.py#unpad
+        n = data[-1]
+
+microReticulum reads outside the buffer instead. The harness exits 139
+and cmd/check reports the vector as a failure with the signal beside
+it. It is the only vector in the corpus that ends a run rather than
+disagreeing with one, and the packet that does it is 80 bytes on the
+wire, needs no key material the sender does not already have, and is
+refused by nothing before the read.
+
+
+Finding 38: a padding length above the block size is applied rather than
+refused
+
+Affects microReticulum. Vector test/encrypted/long-padding.
+
+unpad applies one bound and one only, and both the reference and
+microReticulum name it:
+
+    Cryptography/PKCS7.h:69
+        if (padlen > bs) { throw ... }
+
+The throw is there and the packet still comes back as a plaintext of
+length zero rather than as no plaintext:
+
+    plaintext_length   0        where the corpus holds -
+
+Identity::decrypt returns Bytes and has no second channel, so the
+exception is caught somewhere behind it and an empty buffer is what
+reaches the caller. An empty buffer is also what a token of an empty
+plaintext yields, and test/encrypted/empty is that token, so the two
+cases are one value. The implementation passes that vector and fails
+this one on the same return.
+
+The distance between them is what the corpus is measuring: a receiver
+that cannot tell "the packet carried nothing" from "the packet did not
+open" delivers the first when it was handed the second.
+
+
+Finding 39: three implementations check padding the reference does not
+
+Affects Reticulum-Go, rsReticulum and Reticulum-rs. Vector
+test/encrypted/loose-padding, and test/group/zero-padding for as long as
+it is a skip.
+
+PKCS7.unpad in the reference reads the last byte, refuses it above 16,
+and removes that many bytes without looking at any of them:
+
+    RNS/Cryptography/PKCS7.py#unpad
+        n = data[-1]
+        if n > bs: raise
+        else: return data[:l-n]
+
+All three validate the padding in full, and all three refuse a length
+of zero as well. Two wrote the check and the third inherited it:
+
+    Reticulum-Go  pkcs7.go:37   if padding > aes.BlockSize || padding == 0
+                  pkcs7.go:45   bad |= plaintext[i] ^ byte(padding)
+    rsReticulum   pkcs7.rs:42   if pad_byte == 0 || pad_byte as usize > BLOCK_SIZE
+                  pkcs7.rs:51   if b != pad_byte { InconsistentPadding }
+    Reticulum-rs  fernet.rs:207 decrypt_padded_b2b_mut::<Pkcs7>, from
+                  the aes crate, which validates every padding byte
+
+The vector is a block whose last byte says three and whose two bytes
+above it say 0xaa and 0xbb. The reference removes three and delivers
+the 13 in front of them; all three deliver nothing.
+
+This is the one finding here where the implementations have the better
+of the argument. Unvalidated padding is a padding oracle in the general
+case, two of the three authors wrote the check on purpose, and the
+third got it from a library that had already decided. It is still a
+divergence, and it is one a sender can reach: a packet python-rns
+delivers is a packet these three drop.
+
+The second half of it is not measured at all. All three would refuse
+test/group/zero-padding, which is a padding length of nought the
+reference accepts and removes nothing for, and group is a kind all
+seven harnesses skip. The vector that would show it exists and no run
+reads it.
+
+
+Finding 40: a msgpack value with no field costs the whole map
+
+Affects Reticulum-Go. Vector
+test/linkdata/resource-advertisement-foreign-types.
+
+The reference hands the plaintext to umsgpack, which builds a
+dictionary out of whatever types it holds, and looks eleven names up in
+what was built. A twelfth pair is never asked about, and what its value
+is made of does not come up:
+
+    RNS/Resource.py#unpack
+        adv.t = dictionary["t"]
+
+Reticulum-Go reads the map itself and stops at a value it has no width
+for. The vector holds five such pairs, between them every type umsgpack
+can write into a packet that this format does not otherwise use: both
+signs of fixint, the four signed widths, uint64, both booleans, a
+string too long for fixstr, an array and a map at both of the widths a
+packet can reach. The eleven fields the advertisement does carry all
+print as dashes behind them.
+
+    transfer_size      -        where the corpus holds 1856
+
+rsReticulum and go-reticulum both pass it, and both read the map
+through a msgpack library rather than by hand. That is the whole
+difference: a library steps over what it does not need, and eleven
+names still resolve.
+
+cmd/dump had the same defect and the same shape of it, which is the
+fifth corpus fault above. It is worth saying twice that two decoders
+written independently made it: measuring a value is not the same as
+reading it, and only a format with no extension point lets a reader
+confuse the two.
+
+
+Finding 41: a token of 48 bytes is refused at its length before its hmac
+is read
+
+Affects Reticulum-rs. Vector test/encrypted/empty-token.
+
+The reference bounds a token twice, and the two bounds are 16 bytes
+apart. verify_hmac refuses at 32, because below that there is no hmac
+to compare, and everything above it is verified before anything else is
+decided:
+
+    RNS/Cryptography/Token.py#verify_hmac
+        if len(token) <= 32: raise
+
+Reticulum-rs bounds it once, at the point where a ciphertext of at
+least one block would begin:
+
+    fernet.rs:161   if token_data.len() <= FERNET_OVERHEAD_SIZE
+                    that is 48
+
+A token of exactly 48 bytes is an iv and an hmac with nothing between
+them, and the hmac over it is right. Reticulum-rs never computes it and
+prints
+
+    hmac_valid         no
+
+where the corpus holds yes. The packet is dropped either way and the
+two implementations drop it for different reasons, which is the whole
+of what this vector separates. The reference drops it one step later,
+inside unpad, and that step is finding 37 in a language with no bounds
+check.
+
+Reticulum-Go is the only implementation that answers this vector
+correctly, and it does it by having the two bounds the reference has.
+
+
 What the implementations say about themselves
 
 Four of the seven publish a claim about compatibility with python-rns.
@@ -1793,16 +2118,16 @@ tag RNS_REF_TAG, which defaults to 1.4.0, and asserts against them in
 that tag holds today. It scores highest here of the seven by a margin,
 and it is the only one whose author can already answer the question
 this corpus asks. What it does not have is the rejections: every one of
-its 48 tests is an input that decodes, and seven of its nine failures
-here are an input that does not. Five of the seven are a threshold
-named at the wrong number and two are a rule it applies and does not
-report. That is the half of a wire format a generator writes last,
-because nothing in an implementation asks for it. The other two
-failures are findings 28 and 29, and both are an input that decodes and
-a verdict about it that the reference reaches differently.
+its 48 tests is an input that decodes, and eight of its 13 failures
+here are an input that does not. Six of the eight are a threshold named
+at the wrong number and two are a rule it applies and does not report.
+That is the half of a wire format a generator writes last, because
+nothing in an implementation asks for it. The other five are findings
+28, 29, 32, 35 and 39, and every one of them is an input that decodes
+and a verdict about it that the reference reaches differently.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-59 vectors here. Its runner covers HKDF, tokens, packet pack and
+74 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the

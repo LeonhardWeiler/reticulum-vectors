@@ -70,7 +70,7 @@ Six rules
    code, and it runs:
 
        DUMP=conformance/example/dump.py ENCODE=no cmd/check
-       5 passed, 0 failed, corpus <fingerprint>, 119 skipped: announce ...
+       5 passed, 0 failed, corpus <fingerprint>, 130 skipped: announce ...
 
    It calls no implementation. Everything else about it is the shape to copy.
 
@@ -133,7 +133,7 @@ and is worth telling apart in a build log, because a harness that exits
 Copied into your repository as .github/workflows/vectors.yml, one line
 in it is marked PIN and has to be set: the corpus commit to measure
 against. It has no default, and the step says so and stops rather than
-guessing. With it set the workflow reports 5 passed, 119 skipped, which
+guessing. With it set the workflow reports 5 passed, 130 skipped, which
 is test/identity through the example harness. Two further steps are
 marked REPLACE, your build and your harness; nothing else has to
 change, and nothing in it points back here except the clone.
