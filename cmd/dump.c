@@ -1207,6 +1207,7 @@ static void mp_skip_head(struct mp *m, unsigned h)
 	 * RNS/vendor/umsgpack.py#_pack_ext. */
 	if (h >= 0xd4 && h <= 0xd8) { mp_take(m, 1 + ((size_t)1 << (h - 0xd4))); return; }
 	if (h == 0xc7) { mp_take(m, 1 + (size_t)mp_be(mp_take(m, 1), 1)); return; }
+	if (h == 0xc8) { mp_take(m, 1 + (size_t)mp_be(mp_take(m, 2), 2)); return; }
 
 	/* A container is stepped over element by element, and a map counts
 	 * twice because its pairs are two elements each. The recursion goes

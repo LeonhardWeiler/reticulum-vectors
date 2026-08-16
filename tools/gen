@@ -463,10 +463,11 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return FOREIGN, at + size
 
-    if kind == 0xc7:
-        # The width the length is written in, which is one byte here
-        # and where every other ext width differs from this one.
-        width = 1
+    if kind in (0xc7, 0xc8):
+        # The width the length itself is written in, which is the only
+        # thing that separates these two, and the type byte that
+        # follows it is outside the length either way.
+        width = kind - 0xc6
         if ran_out(width):
             return SHORT, len(data)
         size = int.from_bytes(data[at:at + width], "big")
@@ -3158,6 +3159,14 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     wide_str = umsgpack.packb(dict({k: adv[k] for k in read_order},
                                    ee="s" * 256))
 
+    # ext16, the third and last of the class. Its length counts the body
+    # and not the type byte, so a reader that measures 256 bytes from
+    # the length stops one byte short of the pair after it, where the
+    # two above stop exactly on it. That is the ext rule and the
+    # two-byte length in one value. RNS/vendor/umsgpack.py#_pack_ext.
+    wide_ext = umsgpack.packb(dict({k: adv[k] for k in read_order},
+                                   ee=umsgpack.Ext(9, b"\xee" * 256)))
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3221,6 +3230,10 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert wide_str.count(b"\xa2ee\xda\x01\x00") == 1
     assert len(wide_str) == len(wide_bin)
 
+    assert fields(unpack(wide_ext)) == fields(ours)
+    assert wide_ext.count(b"\xa2ee\xc8\x01\x00\x09") == 1
+    assert len(wide_ext) == len(wide_bin) + 1
+
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
          "the same advertisement with its keys in the order unpack reads them"),
@@ -3259,6 +3272,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-str16", RNS.Packet.RESOURCE_ADV, wide_str,
          "the same 256 bytes as a string, which is the same measurement under "
          "another head byte; the eleven still read"),
+        ("resource-advertisement-ext16", RNS.Packet.RESOURCE_ADV, wide_ext,
+         "the same 256 bytes as an ext, whose type byte is outside the length "
+         "the two bytes carry; the eleven still read"),
     ]
 
     link = session["link"]

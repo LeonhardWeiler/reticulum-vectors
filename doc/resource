@@ -127,8 +127,9 @@ all of them plaintexts the layers above the packet never build:
                                           256 bytes
     resource-advertisement-str16          the same 256 bytes, as a
                                           string
+    resource-advertisement-ext16          the same 256 bytes, as an ext
 
-The last six are the direction a decoder is likeliest to get wrong,
+The last seven are the direction a decoder is likeliest to get wrong,
 because nothing the reference writes today exercises it. The twelfth
 key is two bytes where every name in the format is one, and its value
 is a float64 where the format holds only uints and bins, so a reader
@@ -183,6 +184,12 @@ they reach, and the two vectors are the same length, so a decoder that
 holds one head byte and not the other passes the eighth and fails this.
 
     RNS/vendor/umsgpack.py#_pack_string
+
+The tenth is ext16, which closes the class and puts the ext rule and
+the two-byte length in one value. Its two bytes count the body and not
+the type byte, so a reader that takes 256 from them and moves 256 stops
+one byte short of the pair after it, where the eighth and ninth stop
+exactly on it. It is one byte longer than either.
 
 Five types are outside all of them: str32, bin32, ext32 and the two
 32-bit containers each need more bytes or elements than a packet holds.
