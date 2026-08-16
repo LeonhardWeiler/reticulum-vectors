@@ -383,6 +383,14 @@ def hexf(b):
 # carry, and the distinction is what lets a map tell the two apart.
 SHORT = object()
 
+# A value of an ext type, which carries a type byte the format assigns
+# no meaning to and a body this reader never looks inside. It is not
+# SHORT: the body holds it whole. It is not a number and not a byte
+# string either, so a key of the eleven that held one would print the
+# same dash a key of the wrong type prints, which is what the reference
+# does with an Ext where it wanted an int.
+FOREIGN = object()
+
 
 def msgpack_read(data, at=0):
     """One value of the msgpack subset the reference puts on a link.
@@ -440,6 +448,26 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         body = data[at:at + size]
         return (body.decode("utf-8") if text else body), at + size
+
+    if kind in (0xd4, 0xd5, 0xd6, 0xd7, 0xd8):
+        # A fixext body is a power of two wide and the type byte is not
+        # counted in it. RNS/vendor/umsgpack.py#_unpack_ext.
+        size = 1 + (1 << (kind - 0xd4))
+        if ran_out(size):
+            return SHORT, len(data)
+        return FOREIGN, at + size
+
+    if kind == 0xc7:
+        # The width the length is written in, which is one byte here
+        # and where every other ext width differs from this one.
+        width = 1
+        if ran_out(width):
+            return SHORT, len(data)
+        size = int.from_bytes(data[at:at + width], "big")
+        at += width
+        if ran_out(1 + size):
+            return SHORT, len(data)
+        return FOREIGN, at + 1 + size
 
     if kind & 0xe0 == 0xa0:
         size = kind & 0x1f
@@ -3078,6 +3106,25 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     foreign_map[7]    = {"n": [1, 2]}
     foreign = umsgpack.packb(foreign_map)
 
+    # The one class of value foreign leaves out, and the reason it was
+    # left out does not hold: umsgpack writes an ext for any Ext the
+    # caller packs, with no handler registered here or in the reference.
+    # An ext body is measured like a bin body and then has a type byte
+    # in front of it, which is the one byte that separates the two, and
+    # a reader that measures it as a bin steps a byte short and lands
+    # inside the pair after it. The five fixext widths write no length
+    # at all; ext8 writes one where fixext writes nothing, and 3 bytes
+    # is the shortest body no fixext width holds.
+    # RNS/vendor/umsgpack.py#_pack_ext.
+    ext_map = {k: adv[k] for k in read_order}
+    ext_map["aa"] = umsgpack.Ext(1, b"\x01")
+    ext_map["bb"] = umsgpack.Ext(2, b"\x02" * 2)
+    ext_map["cc"] = umsgpack.Ext(4, b"\x04" * 4)
+    ext_map["dd"] = umsgpack.Ext(8, b"\x08" * 8)
+    ext_map["ee"] = umsgpack.Ext(16, b"\x10" * 16)
+    ext_map["ff"] = umsgpack.Ext(3, b"\x03" * 3)
+    ext_types = umsgpack.packb(ext_map)
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3115,6 +3162,7 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert fields(unpack(extra)) == fields(ours)
     assert fields(unpack(foreign)) == fields(ours)
     assert umsgpack.unpackb(foreign) == foreign_map
+    assert fields(unpack(ext_types)) == fields(ours)
 
     # The header byte of each value the five pairs hold, so that a value
     # edited above stops covering a width here rather than silently.
@@ -3122,6 +3170,12 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
             {umsgpack.packb(foreign_map[k])[0] for k in ("aa", "bb", "cc", "dd", 7)}
     assert heads == {0xff, 0xd0, 0xd1, 0xd2, 0xd3, 0xcf, 0xc3, 0xc2,
                      0xd9, 0x98, 0xdc, 0xde, 0x81}
+
+    # The same, for the six ext pairs. Their bodies are the widths and
+    # not the type bytes: an Ext of another type writes the same head.
+    assert {umsgpack.packb(ext_map[k])[0]
+            for k in ("aa", "bb", "cc", "dd", "ee", "ff")} \
+        == {0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xc7}
 
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
@@ -3142,12 +3196,16 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
          "an advertisement cut inside a length prefix; the three keys before it read"),
         ("resource-advertisement-duplicate-key", RNS.Packet.RESOURCE_ADV, twice,
          "an advertisement naming one key twice, which is no map at all; eleven dashes"),
-        # Last, because the packets below are sent under a pinned random
-        # stream and a case inserted above moves every initialisation
-        # vector after it.
+        # From here down the order is the order the cases were written
+        # in, and a new one is appended rather than placed: the packets
+        # are sent under a pinned random stream, so a case inserted
+        # above moves every initialisation vector after it.
         ("resource-advertisement-foreign-types", RNS.Packet.RESOURCE_ADV, foreign,
          "five pairs with no field here, holding every msgpack type a reader "
          "must step over; the eleven still read"),
+        ("resource-advertisement-ext-types", RNS.Packet.RESOURCE_ADV, ext_types,
+         "six pairs holding the ext widths a packet can reach, each a type "
+         "byte wider than the bin width it resembles; the eleven still read"),
     ]
 
     link = session["link"]

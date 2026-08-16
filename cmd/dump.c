@@ -1182,11 +1182,10 @@ static void mp_skip_head(struct mp *m, unsigned h)
 	 * reader has no field for must still leave the eleven readable.
 	 * RNS/vendor/umsgpack.py#_unpack.
 	 *
-	 * Four widths are absent because no packet holds one: str32, bin32
-	 * and the two 32-bit container headers each need more than 65535
-	 * bytes or elements. So is float32, which umsgpack writes only for
-	 * a caller that forces single precision, and so are the ext types,
-	 * which it writes only for a handler someone registered.
+	 * Five widths are absent because no packet holds one: str32, bin32,
+	 * ext32 and the two 32-bit container headers each need more than
+	 * 65535 bytes or elements. So is float32, which umsgpack writes
+	 * only for a caller that forces single precision.
 	 * RNS/vendor/umsgpack.py#_pack_float. */
 	if (h < 0x80 || h >= 0xe0)                 return;	/* fixint */
 	if (h == 0xc0 || h == 0xc2 || h == 0xc3)   return;	/* nil, bool */
@@ -1197,6 +1196,17 @@ static void mp_skip_head(struct mp *m, unsigned h)
 	if (h == 0xcf || h == 0xd3 || h == 0xcb) { mp_take(m, 8); return; }
 	if (h == 0xc4 || h == 0xd9) { mp_take(m, (size_t)mp_be(mp_take(m, 1), 1)); return; }
 	if (h == 0xc5 || h == 0xda) { mp_take(m, (size_t)mp_be(mp_take(m, 2), 2)); return; }
+
+	/* An ext value is a bin value with a type byte in front of its
+	 * body, and umsgpack writes one for any Ext a caller packs. The
+	 * five fixext widths write their length in the head byte, as a
+	 * power of two and not as the low bits, so they are the one width
+	 * class here that is neither counted nor read. The type byte is
+	 * outside the length either way, which is the byte a reader that
+	 * measures an ext as a bin is short by.
+	 * RNS/vendor/umsgpack.py#_pack_ext. */
+	if (h >= 0xd4 && h <= 0xd8) { mp_take(m, 1 + ((size_t)1 << (h - 0xd4))); return; }
+	if (h == 0xc7) { mp_take(m, 1 + (size_t)mp_be(mp_take(m, 1), 1)); return; }
 
 	/* A container is stepped over element by element, and a map counts
 	 * twice because its pairs are two elements each. The recursion goes
