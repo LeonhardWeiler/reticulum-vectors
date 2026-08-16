@@ -217,6 +217,19 @@ from the plaintext, so no encoder here pads anything.
 
     RNS/Cryptography/PKCS7.py#pad, RNS/Cryptography/Token.py#encrypt
 
+A fifth token is not on that list and cannot join it. Replacing pad
+reaches as far as the cipher and no further: Token.encrypt hands the
+block to AES-CBC, which takes a multiple of 16 bytes or nothing. Both
+backends refuse, the pinned one with a ValueError and the internal one
+with an assertion, so unlike the curve there is no split to record.
+
+    RNS/Cryptography/AES.py#AES_256_CBC
+
+So a ciphertext of 15, 17 or 33 bytes has no vector. A reader that
+decrypts one is outside what the corpus measures, and the four above
+say nothing about it: their bound is the padding length, and this one
+is the cipher's.
+
 
 Vector format
 
