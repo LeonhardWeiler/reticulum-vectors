@@ -106,8 +106,8 @@ reference reads the two identically.
 
 What follows from reading by key is that a key which is not there costs
 its own field and nothing else, and that a key which is there and is
-none of the eleven costs nothing at all. Six vectors carry the cases,
-all of them plaintexts the layers above the packet never build:
+none of the eleven costs nothing at all. The vectors below carry the
+cases, all of them plaintexts the layers above the packet never build:
 
     resource-advertisement-no-hash        h is absent; the other ten
                                           fields all read
@@ -128,9 +128,12 @@ all of them plaintexts the layers above the packet never build:
     resource-advertisement-str16          the same 256 bytes, as a
                                           string
     resource-advertisement-ext16          the same 256 bytes, as an ext
+    resource-advertisement-bin32          a length of 65536 with no
+                                          body behind it
 
-The last seven are the direction a decoder is likeliest to get wrong,
-because nothing the reference writes today exercises it. The twelfth
+Every vector from the twelfth key down is the direction a decoder is
+likeliest to get wrong, because nothing the reference writes today
+exercises it. The twelfth
 key is two bytes where every name in the format is one, and its value
 is a float64 where the format holds only uints and bins, so a reader
 that expects the shape it has seen rather than the shape msgpack
@@ -191,8 +194,20 @@ the type byte, so a reader that takes 256 from them and moves 256 stops
 one byte short of the pair after it, where the eighth and ninth stop
 exactly on it. It is one byte longer than either.
 
-Five types are outside all of them: str32, bin32, ext32 and the two
-32-bit containers each need more bytes or elements than a packet holds.
+The eleventh opens the four-byte class, which packb reaches only above
+65535 bytes or elements. No packet holds a value that long, so what a
+packet holds of one is its header, and the vector is packb's own output
+for 65536 bytes with every byte of the body cut off. The length is
+whole and says 65536; nought bytes follow it. The map is cut, so
+nothing in it reads and every field is a dash.
+
+That is the same eleven dashes a reader which has never met the head
+byte prints, and the vector separates neither of those readers from the
+other. What it separates is both of them from the reader that adds
+65536 to a pointer before it compares the number to what is left.
+resource-advertisement-truncated stops one byte earlier than this one,
+before a length rather than after one, and the two bugs are not the
+same bug.
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven

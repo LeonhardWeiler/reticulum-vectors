@@ -1182,9 +1182,14 @@ static void mp_skip_head(struct mp *m, unsigned h)
 	 * reader has no field for must still leave the eleven readable.
 	 * RNS/vendor/umsgpack.py#_unpack.
 	 *
-	 * Five widths are absent because no packet holds one: str32, bin32,
-	 * ext32 and the two 32-bit container headers each need more than
-	 * 65535 bytes or elements. Nothing else is: a float of four bytes
+	 * Five widths are absent because no packet holds a value of one:
+	 * str32, bin32, ext32 and the two 32-bit container headers each need
+	 * more than 65535 bytes or elements. A packet does hold a header,
+	 * cut off from the body it announces, and the vectors for that fall
+	 * through to bad below. Reading the four bytes and then running out
+	 * of body sets bad too, so no vector separates the two and no branch
+	 * for them is written here. Nothing else is absent: a float of four
+	 * bytes
 	 * is written for a caller that asks packb for single precision, and
 	 * asking is not replacing. RNS/vendor/umsgpack.py#_pack_float. */
 	if (h < 0x80 || h >= 0xe0)                 return;	/* fixint */

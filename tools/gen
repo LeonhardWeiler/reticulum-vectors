@@ -441,11 +441,14 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return int.from_bytes(data[at:at + size], "big", signed=signed), at + size
 
-    if kind in (0xc4, 0xc5, 0xd9, 0xda):
+    if kind in (0xc4, 0xc5, 0xc6, 0xd9, 0xda):
         # A string and a binary differ in what the bytes mean and not in
         # how their length is written. RNS/vendor/umsgpack.py#_pack_string.
+        # The widths double rather than step: 0xc6 writes its length in
+        # four bytes and not in three, and a packet holds those four
+        # bytes and none of the 65536 they can announce.
         text  = kind in (0xd9, 0xda)
-        width = kind - (0xd8 if text else 0xc3)
+        width = 1 << (kind - (0xd9 if text else 0xc4))
         if ran_out(width):
             return SHORT, len(data)
         size = int.from_bytes(data[at:at + width], "big")
@@ -3167,6 +3170,37 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     wide_ext = umsgpack.packb(dict({k: adv[k] for k in read_order},
                                    ee=umsgpack.Ext(9, b"\xee" * 256)))
 
+    # The 32-bit width class, which packb reaches only above 65535 bytes
+    # or elements. No packet holds a value that long, so a header is what
+    # a packet holds of one: packb writes the whole value and the vector
+    # keeps every byte up to the last of the length and none of the body.
+    # resource-advertisement-truncated stops one byte earlier than this,
+    # before a length rather than after one, and the difference is the
+    # bug each of the two reaches. Here the length is whole and says
+    # 65536 where nought bytes follow, which is where a reader that adds
+    # a length to a pointer before it compares the length to what is left
+    # reads past its buffer. The map is cut, so no key in it reads and
+    # every field is a dash, which is what a reader that has never met
+    # the head byte prints too. The vector separates neither of those
+    # from the other; it separates both from the reader that runs off the
+    # end. RNS/vendor/umsgpack.py#_pack2.
+    def cut_after(value, header):
+        packed = umsgpack.packb(dict({k: adv[k] for k in read_order},
+                                     ee=value))
+        assert packed.count(header) == 1
+        cut = packed[:packed.index(header) + len(header)]
+        # The pair is the twelfth and last, so the body is all the cut
+        # drops, and what is left is eleven whole pairs and a header.
+        assert msgpack_one(cut) is None
+        try:
+            umsgpack.unpackb(cut)
+            raise AssertionError("umsgpack read a value that is not there")
+        except umsgpack.InsufficientDataException:
+            pass
+        return cut
+
+    huge_bin = cut_after(b"\xbb" * 65536, b"\xa2ee\xc6\x00\x01\x00\x00")
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3275,6 +3309,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-ext16", RNS.Packet.RESOURCE_ADV, wide_ext,
          "the same 256 bytes as an ext, whose type byte is outside the length "
          "the two bytes carry; the eleven still read"),
+        ("resource-advertisement-bin32", RNS.Packet.RESOURCE_ADV, huge_bin,
+         "a pair of no field whose four-byte length announces 65536 bytes and "
+         "is followed by none of them; eleven dashes"),
     ]
 
     link = session["link"]
