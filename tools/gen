@@ -3140,6 +3140,16 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     single = umsgpack.packb(dict({k: adv[k] for k in read_order}, ee=1.5),
                             force_float_precision="single")
 
+    # The two-byte length class, which packb reaches only for a value of
+    # more than 255 bytes. One such value and the eleven keys is 388
+    # bytes of plaintext where a packet holds 431, so each width in the
+    # class needs a packet of its own and none of them fits beside the
+    # pairs above. bin16 is the first: a large resource writes one for
+    # its own hashmap, but that one is read as a field, and reading a
+    # value and measuring it are different code with different bugs.
+    wide_bin = umsgpack.packb(dict({k: adv[k] for k in read_order},
+                                   ee=b"\xbb" * 256))
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3196,6 +3206,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert single.count(b"\xa2ee\xca") == 1
     assert umsgpack.packb(1.5).startswith(b"\xcb")
 
+    assert fields(unpack(wide_bin)) == fields(ours)
+    assert wide_bin.count(b"\xa2ee\xc5\x01\x00") == 1
+
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
          "the same advertisement with its keys in the order unpack reads them"),
@@ -3228,6 +3241,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-float32", RNS.Packet.RESOURCE_ADV, single,
          "a pair holding a float32, the width packb writes only for a caller "
          "that forces single precision; the eleven still read"),
+        ("resource-advertisement-bin16", RNS.Packet.RESOURCE_ADV, wide_bin,
+         "a pair of no field holding 256 bytes, so that its length leaves the "
+         "head byte and takes two of its own; the eleven still read"),
     ]
 
     link = session["link"]

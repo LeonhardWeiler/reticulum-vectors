@@ -123,8 +123,10 @@ all of them plaintexts the layers above the packet never build:
                                           ext widths; the eleven read
     resource-advertisement-float32        one pair of no field, holding
                                           a float of four bytes
+    resource-advertisement-bin16          one pair of no field, holding
+                                          256 bytes
 
-The last four are the direction a decoder is likeliest to get wrong,
+The last five are the direction a decoder is likeliest to get wrong,
 because nothing the reference writes today exercises it. The twelfth
 key is two bytes where every name in the format is one, and its value
 is a float64 where the format holds only uints and bins, so a reader
@@ -164,7 +166,16 @@ met it in a pair like this one.
 
     RNS/vendor/umsgpack.py#_pack_float
 
-Five types are outside all three: str32, bin32, ext32 and the two
+The eighth is the first of the two-byte length class, which packb
+reaches only for a value of more than 255 bytes. One such value beside
+the eleven keys is 388 bytes where a packet holds 431, so a width in
+this class fits in no vector that already carries another and each has
+a packet to itself. A large resource writes a bin16 for its own
+hashmap, which is the same head byte read as a field rather than
+stepped over; the two are different code and a decoder can hold one and
+not the other.
+
+Five types are outside all of them: str32, bin32, ext32 and the two
 32-bit containers each need more bytes or elements than a packet holds.
 
 The fifth vector is also where the map's own header stops being a
