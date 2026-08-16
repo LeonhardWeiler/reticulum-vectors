@@ -3150,6 +3150,14 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     wide_bin = umsgpack.packb(dict({k: adv[k] for k in read_order},
                                    ee=b"\xbb" * 256))
 
+    # str16, the second of the class. A string and a binary differ in
+    # what the bytes mean and not in how far they reach, so this is the
+    # same measurement as wide_bin under another head byte, and a
+    # decoder that holds one head byte and not the other passes that
+    # vector and fails this one. RNS/vendor/umsgpack.py#_pack_string.
+    wide_str = umsgpack.packb(dict({k: adv[k] for k in read_order},
+                                   ee="s" * 256))
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3209,6 +3217,10 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     assert fields(unpack(wide_bin)) == fields(ours)
     assert wide_bin.count(b"\xa2ee\xc5\x01\x00") == 1
 
+    assert fields(unpack(wide_str)) == fields(ours)
+    assert wide_str.count(b"\xa2ee\xda\x01\x00") == 1
+    assert len(wide_str) == len(wide_bin)
+
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
          "the same advertisement with its keys in the order unpack reads them"),
@@ -3244,6 +3256,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-bin16", RNS.Packet.RESOURCE_ADV, wide_bin,
          "a pair of no field holding 256 bytes, so that its length leaves the "
          "head byte and takes two of its own; the eleven still read"),
+        ("resource-advertisement-str16", RNS.Packet.RESOURCE_ADV, wide_str,
+         "the same 256 bytes as a string, which is the same measurement under "
+         "another head byte; the eleven still read"),
     ]
 
     link = session["link"]

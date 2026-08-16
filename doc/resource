@@ -125,8 +125,10 @@ all of them plaintexts the layers above the packet never build:
                                           a float of four bytes
     resource-advertisement-bin16          one pair of no field, holding
                                           256 bytes
+    resource-advertisement-str16          the same 256 bytes, as a
+                                          string
 
-The last five are the direction a decoder is likeliest to get wrong,
+The last six are the direction a decoder is likeliest to get wrong,
 because nothing the reference writes today exercises it. The twelfth
 key is two bytes where every name in the format is one, and its value
 is a float64 where the format holds only uints and bins, so a reader
@@ -174,6 +176,13 @@ a packet to itself. A large resource writes a bin16 for its own
 hashmap, which is the same head byte read as a field rather than
 stepped over; the two are different code and a decoder can hold one and
 not the other.
+
+The ninth is str16, the same measurement under another head byte. A
+string and a binary differ in what their bytes mean and not in how far
+they reach, and the two vectors are the same length, so a decoder that
+holds one head byte and not the other passes the eighth and fails this.
+
+    RNS/vendor/umsgpack.py#_pack_string
 
 Five types are outside all of them: str32, bin32, ext32 and the two
 32-bit containers each need more bytes or elements than a packet holds.
