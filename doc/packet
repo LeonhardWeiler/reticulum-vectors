@@ -51,7 +51,14 @@ values the reference defines and no vector uses print as two hex digits
 rather than as a keyword. test/plain/unnamed-context carries
 CACHE_REQUEST for that reason.
 
-    RNS/Packet.py#CACHE_REQUEST
+Which values those are is a fact about the corpus and not about the
+reference. The context is an argument of the constructor, so a sender
+chooses any of them: test/linkdata/link-proof-context carries LINKPROOF,
+which no object of the reference sets and which has a name here all the
+same. CACHE_REQUEST, COMMAND and COMMAND_STATUS are the three left
+without one, and they print alike, which is why one vector covers them.
+
+    RNS/Packet.py#CACHE_REQUEST, RNS/Packet.py#LINKPROOF
 
 
 Flags
@@ -448,10 +455,10 @@ See doc/fields for every name that can appear in a rejection.
 
 What has no vector
 
-Three things a decoder must handle have no vector here, and none of
-them is an oversight. A vector records what the reference produced, so
-a case the reference cannot be made to produce has no bytes to record.
-Passing the corpus says nothing about any of the three.
+Two things a decoder must handle have no vector here, and neither is an
+oversight. A vector records what the reference produced, so a case the
+reference cannot be made to produce has no bytes to record. Passing the
+corpus says nothing about either.
 
 What puts a case here is that no reference function can be made to
 write the bytes. It is not that the layers above the packet do not
@@ -474,20 +481,13 @@ write".
         are the rule and not a sample of it. Repeating them per kind
         would be a table of permutations. RNS/Packet.py#unpack.
 
-    a context byte the reference defines and no object sets
-
-        0xfd is LINKPROOF and nothing sets it; see doc/link. Others
-        are defined and unused, and a context with no name prints as
-        two hex digits. test/plain/unnamed-context is the vector for
-        that behaviour rather than for any one of the values.
-
     a transport type of relay or tunnel
 
         One bit holds two of the four values RNS/Transport.py#types
         defines. See the Flags section above.
 
-Building any of the three means composing bytes the reference did not
-write, which is the one thing raw does not hold. See CLAUDE.md.
+Building either means composing bytes the reference did not write,
+which is the one thing raw does not hold. See CLAUDE.md.
 
 
 Vector format: proof

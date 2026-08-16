@@ -248,6 +248,7 @@ encrypted at all:
     0xfa   keepalive       one byte, in clear, not a token: 0xff from the initiator and 0xfe in reply
     0xfb   link identify   identity public key || signature
     0xfc   link close      the link id
+    0xfd   link proof      nothing; no layer of the reference reads it
     0xfe   link rtt        msgpack float, sent by the initiator
 
     RNS/Packet.py#KEEPALIVE, RNS/Link.py#keepalive_packet,
@@ -256,9 +257,13 @@ encrypted at all:
 A decoder that treats every packet on a link as encrypted fails on
 keepalives, and on delivery proofs.
 
-0xfd is defined as LINKPROOF and no packet carries it. Nothing in the
-reference sets that context, and the corpus has no vector for it
-because there is nothing to record.
+0xfd is defined as LINKPROOF and no object of the reference sets it. It
+is on the wire all the same, because the context is an argument of the
+constructor and pack writes the byte without asking what it means. The
+payload is a token like any other and no rule applies to the plaintext,
+which is the whole of what test/linkdata/link-proof-context records: it
+is test/linkdata/minimal with one byte changed and the same nine bytes
+inside.
 
     RNS/Packet.py#LINKPROOF
 

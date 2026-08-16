@@ -339,11 +339,11 @@ Ask, in order:
 
 If the first answer is yes, stop.
 
-The third has been asked and answered for three cases, and doc/packet,
-section "What has no vector", holds the three with the reason each one
-cannot be produced. Read it before proposing a vector for any of them.
+The third has been asked and answered for two cases, and doc/packet,
+section "What has no vector", holds both with the reason neither can be
+produced. Read it before proposing a vector for either.
 
-Four have left that list since it was written, and all four left the
+Five have left that list since it was written, and all five left the
 same way: the reason was read again and did not hold. One turned out to
 be a truncation like any other. The second, a resource payload of the
 wrong msgpack shape, was excluded because the layers above the packet
@@ -358,7 +358,10 @@ excluded because `Link.__init__` draws its key with
 `X25519PrivateKey.generate` — which describes the honest initiator and
 not the sender, who chooses the bytes of a link request as freely as a
 plaintext, and whose choice test/encrypted/low-order-ephemeral had
-already recorded one layer down. That is the argument for writing the
+already recorded one layer down. The fifth left in the same hour as the
+fourth: a context byte the reference defines and no object sets, where
+"no object sets it" was never the question either, because the context
+is an argument of the constructor. That is the argument for writing the
 list rather than carrying it in someone's head, and for reading a
 reason rather than counting on it.
 

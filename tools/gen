@@ -2291,6 +2291,17 @@ def gen_linkdata(RNS, w, verify, session):
                        (short + initiator_identity.sign(link.link_id + short))[:-1],
                        context=RNS.Packet.LINKIDENTIFY).send()
 
+            # The one context the reference defines that no object of
+            # the reference sets. It is not unreachable: context is an
+            # argument of the constructor, so a sender chooses it the
+            # way it chooses a plaintext, and pack writes the byte
+            # without asking what it means. Nothing above the packet
+            # reads it, so the plaintext is the one from minimal and
+            # the two vectors differ in the context field alone.
+            # RNS/Packet.py#LINKPROOF.
+            RNS.Packet(link, b"reticulum",
+                       context=RNS.Packet.LINKPROOF).send()
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2314,16 +2325,21 @@ def gen_linkdata(RNS, w, verify, session):
          "the same plaintext in the response context, where a two-element array is expected"),
         ("identify-short", sent[13],
          "an identify proof of 127 bytes, one short of the length the reference requires"),
+        ("link-proof-context", sent[14],
+         "a context the reference defines and no object of it sets; nothing reads the plaintext"),
     ]
 
-    # The seven above whose plaintext was chosen here rather than built
+    # The eight above whose plaintext was chosen here rather than built
     # by a layer of the reference. They are sent through the reference
     # all the same, and the difference is in the source rather than in
     # the bytes around it. identify-elsewhere is one of them: the
     # signature in it is the reference's own, over data chosen here.
+    # link-proof-context is the one where the context byte was chosen
+    # too, and the constructor takes it the same way.
     chosen = {"channel-short", "request-short", "request-truncated",
               "identify-elsewhere", "request-not-an-array",
-              "response-not-an-array", "identify-short"}
+              "response-not-an-array", "identify-short",
+              "link-proof-context"}
 
     for name, packet, purpose in cases:
         blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]

@@ -63,6 +63,7 @@ linkdata/identify-elsewhere
 linkdata/identify-short
 linkdata/keepalive
 linkdata/link-id-mismatch
+linkdata/link-proof-context
 linkdata/low-order-request
 linkdata/minimal
 linkdata/request
