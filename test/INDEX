@@ -76,6 +76,7 @@ linkdata/resource-advertisement-bin32
 linkdata/resource-advertisement-duplicate-key
 linkdata/resource-advertisement-ext-types
 linkdata/resource-advertisement-ext16
+linkdata/resource-advertisement-ext32
 linkdata/resource-advertisement-extra-key
 linkdata/resource-advertisement-float32
 linkdata/resource-advertisement-foreign-types

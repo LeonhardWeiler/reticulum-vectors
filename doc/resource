@@ -132,6 +132,8 @@ cases, all of them plaintexts the layers above the packet never build:
                                           body behind it
     resource-advertisement-str32          the same length under the
                                           string head byte
+    resource-advertisement-ext32          the same length, and a type
+                                          byte it does not count
 
 Every vector from the twelfth key down is the direction a decoder is
 likeliest to get wrong, because nothing the reference writes today
@@ -215,6 +217,15 @@ The twelfth is str32, and it is the eleventh under another head byte.
 bin16 and str16 are the same length as each other because their bodies
 are; these two are the same length because neither has a body, so the
 head byte is the one byte in the two plaintexts that differs.
+
+The thirteenth closes the class. An ext32 header is six bytes where the
+two above are five: the type byte sits behind the four-byte length and
+outside it, so the cut keeps a byte the length does not count and this
+plaintext is one byte longer than either of theirs. That is the same
+byte ext16 is longer than bin16 and str16 by, measured where there is
+no body for it to be confused with.
+
+    RNS/vendor/umsgpack.py#_pack_ext
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven

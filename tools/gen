@@ -466,11 +466,12 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return FOREIGN, at + size
 
-    if kind in (0xc7, 0xc8):
+    if kind in (0xc7, 0xc8, 0xc9):
         # The width the length itself is written in, which is the only
-        # thing that separates these two, and the type byte that
-        # follows it is outside the length either way.
-        width = kind - 0xc6
+        # thing that separates these three, and the type byte that
+        # follows it is outside the length in all of them. The widths
+        # double: 0xc9 writes four bytes and not three.
+        width = 1 << (kind - 0xc7)
         if ran_out(width):
             return SHORT, len(data)
         size = int.from_bytes(data[at:at + width], "big")
@@ -3208,6 +3209,15 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     # between them is the head byte itself.
     huge_str = cut_after("s" * 65536, b"\xa2ee\xdb\x00\x01\x00\x00")
 
+    # ext32, the third, and the one whose header is six bytes where the
+    # two above are five. The type byte sits behind the length and
+    # outside it, so the cut keeps a byte the length does not count, and
+    # this plaintext is one byte longer than either of theirs for the
+    # same reason ext16 is one byte longer than bin16 and str16.
+    # RNS/vendor/umsgpack.py#_pack_ext.
+    huge_ext = cut_after(umsgpack.Ext(9, b"\xee" * 65536),
+                         b"\xa2ee\xc9\x00\x01\x00\x00\x09")
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3322,6 +3332,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-str32", RNS.Packet.RESOURCE_ADV, huge_str,
          "the same four-byte length under the string head byte, and the same "
          "nought bytes behind it; eleven dashes"),
+        ("resource-advertisement-ext32", RNS.Packet.RESOURCE_ADV, huge_ext,
+         "the same length again, behind it the type byte the length does not "
+         "count, and behind that nothing; eleven dashes"),
     ]
 
     link = session["link"]
