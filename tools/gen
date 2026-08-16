@@ -397,9 +397,9 @@ def msgpack_read(data, at=0):
 
     Read here rather than through umsgpack so that expect stays this
     program's own reading of raw; gen_request asserts the two agree. A
-    float64 comes back as its eight bytes, because that is what expect
-    records and what a decimal would have to survive a round trip to
-    reproduce. Anything outside the subset raises.
+    float comes back as its bytes, because that is what expect records
+    and what a decimal would have to survive a round trip to reproduce.
+    Anything outside the subset raises.
 
         RNS/vendor/umsgpack.py#_pack2
     """
@@ -425,8 +425,14 @@ def msgpack_read(data, at=0):
     if kind < 0x80:                        return kind, at
     if kind >= 0xe0:                       return kind - 0x100, at
     if kind in (0xc2, 0xc3):               return kind == 0xc3, at
-    if kind == 0xcb:
-        return (SHORT, len(data)) if ran_out(8) else (data[at:at + 8], at + 8)
+    if kind in (0xca, 0xcb):
+        # Four bytes or eight, and neither is read as a number here for
+        # the reason the docstring gives. umsgpack writes the shorter
+        # width only for a caller that asks for single precision.
+        size = 4 if kind == 0xca else 8
+        if ran_out(size):
+            return SHORT, len(data)
+        return data[at:at + size], at + size
 
     if kind in (0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3):
         signed = kind >= 0xd0
@@ -3125,6 +3131,15 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     ext_map["ff"] = umsgpack.Ext(3, b"\x03" * 3)
     ext_types = umsgpack.packb(ext_map)
 
+    # The other width foreign leaves out. force_float_precision is an
+    # argument of packb and not a function replaced for the call: the
+    # bytes below are umsgpack's own, written the way it writes a float
+    # for any caller that asks for four bytes rather than eight. The
+    # advertisement holds no float of its own, so the option reaches
+    # this pair and nothing else. RNS/vendor/umsgpack.py#_pack_float.
+    single = umsgpack.packb(dict({k: adv[k] for k in read_order}, ee=1.5),
+                            force_float_precision="single")
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3177,6 +3192,10 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
             for k in ("aa", "bb", "cc", "dd", "ee", "ff")} \
         == {0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xc7}
 
+    assert fields(unpack(single)) == fields(ours)
+    assert single.count(b"\xa2ee\xca") == 1
+    assert umsgpack.packb(1.5).startswith(b"\xcb")
+
     cases = [
         ("resource-advertisement-reordered", RNS.Packet.RESOURCE_ADV, reordered,
          "the same advertisement with its keys in the order unpack reads them"),
@@ -3206,6 +3225,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-ext-types", RNS.Packet.RESOURCE_ADV, ext_types,
          "six pairs holding the ext widths a packet can reach, each a type "
          "byte wider than the bin width it resembles; the eleven still read"),
+        ("resource-advertisement-float32", RNS.Packet.RESOURCE_ADV, single,
+         "a pair holding a float32, the width packb writes only for a caller "
+         "that forces single precision; the eleven still read"),
     ]
 
     link = session["link"]

@@ -121,8 +121,10 @@ all of them plaintexts the layers above the packet never build:
                                           every type; the eleven read
     resource-advertisement-ext-types      six pairs of no field, of the
                                           ext widths; the eleven read
+    resource-advertisement-float32        one pair of no field, holding
+                                          a float of four bytes
 
-The last three are the direction a decoder is likeliest to get wrong,
+The last four are the direction a decoder is likeliest to get wrong,
 because nothing the reference writes today exercises it. The twelfth
 key is two bytes where every name in the format is one, and its value
 is a float64 where the format holds only uints and bins, so a reader
@@ -153,11 +155,17 @@ loses the eleven.
 
     RNS/vendor/umsgpack.py#_pack_ext
 
-Five types are outside both vectors: str32, bin32, ext32 and the two
-32-bit containers need more bytes or elements than a packet holds, and
-float32 is written only for a caller that forces single precision.
+The seventh holds a width neither of them reaches. A float of four
+bytes is what packb writes for a caller that asks it for single
+precision, and asking is not replacing: the option is packb's own
+argument and every byte of the map is still umsgpack's. An
+advertisement holds no float anywhere, so a reader that has met one has
+met it in a pair like this one.
 
     RNS/vendor/umsgpack.py#_pack_float
+
+Five types are outside all three: str32, bin32, ext32 and the two
+32-bit containers each need more bytes or elements than a packet holds.
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven

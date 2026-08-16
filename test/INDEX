@@ -74,6 +74,7 @@ linkdata/resource-advertisement
 linkdata/resource-advertisement-duplicate-key
 linkdata/resource-advertisement-ext-types
 linkdata/resource-advertisement-extra-key
+linkdata/resource-advertisement-float32
 linkdata/resource-advertisement-foreign-types
 linkdata/resource-advertisement-large
 linkdata/resource-advertisement-metadata

@@ -1184,15 +1184,15 @@ static void mp_skip_head(struct mp *m, unsigned h)
 	 *
 	 * Five widths are absent because no packet holds one: str32, bin32,
 	 * ext32 and the two 32-bit container headers each need more than
-	 * 65535 bytes or elements. So is float32, which umsgpack writes
-	 * only for a caller that forces single precision.
-	 * RNS/vendor/umsgpack.py#_pack_float. */
+	 * 65535 bytes or elements. Nothing else is: a float of four bytes
+	 * is written for a caller that asks packb for single precision, and
+	 * asking is not replacing. RNS/vendor/umsgpack.py#_pack_float. */
 	if (h < 0x80 || h >= 0xe0)                 return;	/* fixint */
 	if (h == 0xc0 || h == 0xc2 || h == 0xc3)   return;	/* nil, bool */
 	if ((h & 0xe0) == 0xa0) { mp_take(m, h & 0x1f); return; }
 	if (h == 0xcc || h == 0xd0) { mp_take(m, 1); return; }
 	if (h == 0xcd || h == 0xd1) { mp_take(m, 2); return; }
-	if (h == 0xce || h == 0xd2) { mp_take(m, 4); return; }
+	if (h == 0xce || h == 0xd2 || h == 0xca) { mp_take(m, 4); return; }
 	if (h == 0xcf || h == 0xd3 || h == 0xcb) { mp_take(m, 8); return; }
 	if (h == 0xc4 || h == 0xd9) { mp_take(m, (size_t)mp_be(mp_take(m, 1), 1)); return; }
 	if (h == 0xc5 || h == 0xda) { mp_take(m, (size_t)mp_be(mp_take(m, 2), 2)); return; }
