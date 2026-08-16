@@ -2108,17 +2108,26 @@ def describe_linkdata(request_raw, responder_private, raw, verify):
                                ("minimum_length", TOKEN_OVERHEAD))
 
     initiator_public = rh["payload"][:KEYHALF]
-    shared = X25519PrivateKey.from_private_bytes(responder_private).exchange(
-        X25519PublicKey.from_public_bytes(initiator_public))
-    derived = hkdf_sha256(64, shared, link_id)
+
+    # The key is in the link request rather than in this packet, so the
+    # point of small order that costs a packet its secret arrives here
+    # one packet earlier. The pinned backend raises rather than
+    # returning the all-zero secret; describe_encrypted says the rest.
+    try:
+        shared = X25519PrivateKey.from_private_bytes(responder_private).exchange(
+            X25519PublicKey.from_public_bytes(initiator_public))
+    except ValueError:
+        shared = None
+
+    derived = hkdf_sha256(64, shared, link_id) if shared is not None else None
 
     t = token_open(payload, derived)
     plaintext = t["plaintext"]
 
     lines += token_parts(t) + [
-        field("shared_key",     shared.hex()),
-        field("signing_key",    derived[:32].hex()),
-        field("encryption_key", derived[32:].hex()),
+        field("shared_key",     "-" if shared is None else shared.hex()),
+        field("signing_key",    "-" if derived is None else derived[:32].hex()),
+        field("encryption_key", "-" if derived is None else derived[32:].hex()),
     ] + token_plaintext(t)
 
     # A channel envelope is six bytes of big-endian header and then the
@@ -2344,6 +2353,39 @@ def gen_linkdata(RNS, w, verify, session):
     # the packet that establishes one; this is the traffic that follows.
     built("link-id-mismatch", base[:2] + bytes(ADDRLEN) + base[2 + ADDRLEN:],
         "address field replaced with zeroes; the token opens and the packet is for another link")
+
+    # The one packet on a link whose key agreement fails. On a link the
+    # ephemeral key is not in the packet: it is in the link request that
+    # opened the link, which is line 1 of raw. Replacing it there is the
+    # same cut test/encrypted/low-order-ephemeral makes one layer down,
+    # and the initiator chooses those bytes as freely as it chooses a
+    # plaintext.
+    #
+    # The address field moves with it. A link id is the hash of the
+    # request, so a request with another key opens another link, and
+    # leaving the address alone would report a second fault that
+    # link-id-mismatch above already carries alone. The id is the
+    # reference's, read back from the altered request through the
+    # function the responder uses. RNS/Link.py#link_id_from_lr_packet.
+    lo_request = request_raw[:HEADER1LEN] + bytes(KEYHALF) \
+               + request_raw[HEADER1LEN + KEYHALF:]
+    assert len(lo_request) == len(request_raw)
+
+    lo_packet = RNS.Packet(None, None)
+    lo_packet.raw = lo_request
+    lo_packet.unpack()
+    lo_id = RNS.Link.link_id_from_lr_packet(lo_packet)
+
+    from RNS.Cryptography.X25519 import X25519PrivateKey as InternalX25519
+    assert InternalX25519.from_private_bytes(responder_private) \
+        .exchange(bytes(KEYHALF)) == bytes(KEYHALF)
+
+    lo_raw = base[:2] + lo_id + base[2 + ADDRLEN:]
+    w.vector("linkdata", "low-order-request",
+        "the link request carries a point of small order; no shared secret exists",
+        [lo_request.hex(), responder_private.hex(), lo_raw.hex()],
+        describe_linkdata(lo_request, responder_private, lo_raw, verify),
+        source="constructed by tools/gen from linkdata/minimal")
 
     gen_request(RNS, w, verify, session, link, request_raw, responder_private)
     return link, sent[0]

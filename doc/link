@@ -196,6 +196,12 @@ packet to a destination uses, and it is in no packet: a decoder that
 did not follow the request cannot derive the key even holding both
 private keys.
 
+The peer public is the x25519_public of the link request, so a point of
+small order there leaves the whole link without a secret rather than
+one packet. test/linkdata/low-order-request carries such a request, and
+its packet reports the six fields doc/encryption lists as "-". The link
+id moves with the point, because the request is what it is hashed from.
+
 The context is empty. get_context returns nothing, and hkdf turns
 that into an empty string rather than refusing it.
 

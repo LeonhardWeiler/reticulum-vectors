@@ -102,6 +102,11 @@ distinction plaintext_length already carries.
 An implementation that returns the zero secret rather than refusing
 will report hmac_valid no here, not "-", and the vector will say so.
 
+test/linkdata/low-order-request is the same six lines one layer up. On
+a link no packet carries an ephemeral key, so the point that costs the
+agreement is in the link request instead, and it arrives one packet
+earlier. See doc/link, section "Key derivation".
+
 
 Key derivation
 

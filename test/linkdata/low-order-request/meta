@@ -1,0 +1,3 @@
+source             constructed by tools/gen from linkdata/minimal
+determinism        encode
+purpose            the link request carries a point of small order; no shared secret exists

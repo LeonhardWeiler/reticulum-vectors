@@ -448,10 +448,10 @@ See doc/fields for every name that can appear in a rejection.
 
 What has no vector
 
-Four things a decoder must handle have no vector here, and none of them
-is an oversight. A vector records what the reference produced, so a
-case the reference cannot be made to produce has no bytes to record.
-Passing the corpus says nothing about any of the four.
+Three things a decoder must handle have no vector here, and none of
+them is an oversight. A vector records what the reference produced, so
+a case the reference cannot be made to produce has no bytes to record.
+Passing the corpus says nothing about any of the three.
 
 What puts a case here is that no reference function can be made to
 write the bytes. It is not that the layers above the packet do not
@@ -486,17 +486,7 @@ write".
         One bit holds two of the four values RNS/Transport.py#types
         defines. See the Flags section above.
 
-    a link packet with no key agreement
-
-        test/encrypted/low-order-ephemeral carries the case for a
-        packet to a destination, where the ephemeral key is in the
-        packet and can be any point. On a link the key comes from the
-        link request, and Link.__init__ draws it with
-        X25519PrivateKey.generate, so no link request the reference
-        writes carries a point that yields no secret.
-        RNS/Link.py#X25519PrivateKey.
-
-Building any of the four means composing bytes the reference did not
+Building any of the three means composing bytes the reference did not
 write, which is the one thing raw does not hold. See CLAUDE.md.
 
 

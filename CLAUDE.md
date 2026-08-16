@@ -339,11 +339,11 @@ Ask, in order:
 
 If the first answer is yes, stop.
 
-The third has been asked and answered for four cases, and doc/packet,
-section "What has no vector", holds the four with the reason each one
+The third has been asked and answered for three cases, and doc/packet,
+section "What has no vector", holds the three with the reason each one
 cannot be produced. Read it before proposing a vector for any of them.
 
-Three have left that list since it was written, and all three left the
+Four have left that list since it was written, and all four left the
 same way: the reason was read again and did not hold. One turned out to
 be a truncation like any other. The second, a resource payload of the
 wrong msgpack shape, was excluded because the layers above the packet
@@ -353,9 +353,19 @@ handed a chosen plaintext to Link.encrypt. It now has six vectors, and
 it has found a defect in cmd/dump twice. The third, a token of 48
 bytes, was excluded because `PKCS7.pad` writes no such token, by which
 time test/group/zero-padding had been on file for ten days with `pad`
-replaced by the identity. That is the argument for writing the list
-rather than carrying it in someone's head, and for reading a reason
-rather than counting on it.
+replaced by the identity. The fourth, a link with no key agreement, was
+excluded because `Link.__init__` draws its key with
+`X25519PrivateKey.generate` — which describes the honest initiator and
+not the sender, who chooses the bytes of a link request as freely as a
+plaintext, and whose choice test/encrypted/low-order-ephemeral had
+already recorded one layer down. That is the argument for writing the
+list rather than carrying it in someone's head, and for reading a
+reason rather than counting on it.
+
+The fourth was not found by rereading the list. It was found by a
+coverage build of cmd/dump against the whole corpus, as `if (agreed)`
+on the link derivation, unreached by 51 linkdata vectors. Rereading the
+reason is what answered it; the branch is what asked.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:
