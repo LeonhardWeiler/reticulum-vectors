@@ -4,7 +4,7 @@ Run on 2026-08-16 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3300448873
+    corpus 1455758318
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  103 / 118  51 / 62
-    rsReticulum         07ca721   2026-08-02   92 / 118  43 / 62
-    go-reticulum        06621cc   2026-04-28   90 / 118  39 / 62
-    Reticulum-rs        be7a7fc   2026-07-31   67 / 118  19 / 62
-    microReticulum      40fa628   2026-07-20   61 / 118  16 / 62
-    rns.js              d4602ca   2025-02-10   44 / 118   3 / 62
-    sgiath/reticulum    0c4904e   2026-07-09   39 / 118   3 / 62
+    Reticulum-Go        48f1517   2026-07-25  108 / 123  56 / 67
+    rsReticulum         07ca721   2026-08-02   97 / 123  48 / 67
+    go-reticulum        06621cc   2026-04-28   90 / 123  39 / 67
+    Reticulum-rs        be7a7fc   2026-07-31   72 / 123  24 / 67
+    microReticulum      40fa628   2026-07-20   61 / 123  16 / 67
+    rns.js              d4602ca   2025-02-10   44 / 123   3 / 67
+    sgiath/reticulum    0c4904e   2026-07-09   39 / 123   3 / 67
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 118, not 140: every harness exits 77 for at least five kinds, and
+Out of 123, not 145: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,38 +46,27 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-107 / 123; the row above is the same run restricted to the 118 the
+112 / 128; the row above is the same run restricted to the 123 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the three
-delivery proofs made on a link, which are filed under proof. 27 of them
+delivery proofs made on a link, which are filed under proof. 32 of them
 are the resource contexts.
 
-Five vectors were added since the last run and the corpus grew from 135
-to 140. All five are link data packets, so both denominators moved by
-five and by the same vectors. No new finding came out of them: one
-existing finding grew by two vectors, three rows moved up by three, five
-and five, and four did not move at all. What they found instead is a
-defect in cmd/dump, which is the sixth corpus fault and is recorded
-below.
+Five vectors were added since the last run and the corpus grew from 140
+to 145. All five are link data packets, so both denominators moved by
+five and by the same vectors, and they close the widths msgpack
+defines. The four-byte class needs more than 65535 bytes or elements,
+which is more than a packet holds, and that was on file as the reason
+all five stayed out. It is the reason a whole value stays out. A header
+is what a packet holds of one, so each vector is packb's own output for
+a value that reaches the width with every byte of the body cut off.
 
-All five are an advertisement carrying a pair with no field behind it,
-and each holds a msgpack width this format does not otherwise use and no
-vector had reached: the ext types, a float of four bytes, and the three
-widths whose length outgrows the head byte. Every one of them had a
-reason on file for being left out, and reading the three reasons again
-is what removed them. umsgpack writes an ext for any Ext a caller packs
-and needs no handler registered; force_float_precision is an argument of
-packb and not a function replaced for the call; and a value of 256 bytes
-does not fit beside the types one vector already carried, which is not
-the same as not fitting at all.
-
-They were found the way the sixteen before them were: a coverage build
-of cmd/dump against the corpus, reading the branches its own decoder
-implements and no vector reached. Two of the five are a branch that was
-there and had never been taken. The other three are a branch that was
-not there, which is the defect.
+No new finding came out of them, and no implementation moved for a
+reason of its own: three rows gained five each and four did not move.
+What they found instead is a defect in tools/gen, which is the seventh
+corpus fault and is recorded below.
 
 Seven harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
@@ -402,6 +391,52 @@ second reader written twice agreeing twice on the same gap, a run after
 the first time it happened. What kept it from being a third is that
 doc/resource carried the three reasons in writing where they could be
 read again.
+
+
+The seventh corpus fault, in the other reader, and not about a width
+
+The five four-byte widths were the last on the list, and closing them
+found nothing in cmd/dump: an unknown head byte sets bad, running out
+of body sets bad, and the vectors ask for nothing else. tools/gen was
+the reader that had it wrong, twice, in the same place.
+
+    an array that ran out    It came back as a list of dashes, because
+                             that is the rule for a request body: the
+                             elements reached stand and the rest are
+                             dashes. Inside a map it is not that rule.
+                             umsgpack builds the dictionary or raises,
+                             so a pair holding such an array is a pair
+                             it never finished and the map is nothing.
+                             gen reported the eleven keys. cmd/dump
+                             reported dashes.
+
+    a map that was nothing   It came back as None, which is what a nil
+                             comes back as, so a map inside a map that
+                             umsgpack refuses was read by the map
+                             around it as a value it holds. The same
+                             eleven keys, the same disagreement.
+
+Both were reachable only from inside a map, and no vector had put a
+container inside one that the plaintext did not hold whole.
+resource-advertisement-foreign-types carries an array and a map in the
+pairs of no field, and both of them are complete.
+
+incomplete() is the fix for the first and reaches to any depth. The
+second is fixed by making such a map SHORT rather than a nil, which the
+first already knew what to do with. No existing vector changed a byte.
+
+This is the fourth fault a third time over. That one was the array rule
+applied to a map, at the top of an advertisement that stops inside a
+length prefix. This is the same rule applied to the same map, one level
+in: not the map itself running out, but a container inside it doing so.
+The rule was corrected where it was found and stayed wrong one level
+below, where no vector reached until now.
+
+It is also the first fault where gen was wrong and cmd/dump was right.
+The first was wrong in both, and the fifth and sixth were wrong in
+cmd/dump and grew gen the same widths afterwards. The two readers exist
+so that expect and raw are read by different code; this is the first
+time the reading that produces expect was the one that had it wrong.
 
 
 Six of the seven produce the adopted signature from the private key and
@@ -741,7 +776,7 @@ value is a width no vector had carried.
 
 Four of the seven fail all five for the reason they already fail almost
 every advertisement, and the numbers say so: rns.js and sgiath fail all
-16 of them, microReticulum 15 and Reticulum-rs 13. Nothing new is
+21 of them, microReticulum 20 and Reticulum-rs 13. Nothing new is
 learned from those four here.
 
 The three that read advertisements are where the five earn their place,
@@ -755,6 +790,34 @@ reader has the widths; it does not have the type byte.
 
 The three widths cmd/dump had to be taught are the sixth corpus fault,
 and it is the second time this reader has been taught the same lesson.
+
+Five took it from 140 to 145, all of them link data packets and all of
+them the four-byte class: a header for a value of 65536 bytes or
+elements, with every byte of the body cut off.
+
+    linkdata/resource-advertisement-bin32     failed by four, finding 30
+    linkdata/resource-advertisement-str32     failed by four, finding 30
+    linkdata/resource-advertisement-ext32     failed by four, finding 30
+    linkdata/resource-advertisement-array32   failed by four, finding 30
+    linkdata/resource-advertisement-map32     failed by four, finding 30
+
+These five are weaker than the ten before them and were written knowing
+it. A cut map reads as eleven dashes, which is also what a reader that
+has never met the head byte prints, so no row here separates knowing
+the width from not knowing it. Two rows are the proof. Reticulum-Go
+fails ext16 and passes ext32; Reticulum-rs fails bin16 and str16 and
+passes bin32 and str32. A map that is nothing gives a value in it
+nothing to be measured wrongly. What the five do separate is the reader
+that takes 65536 from a length and moves it before it compares the
+number to what is left. None of the seven does that.
+
+Four fail all five, and it is the same four that fail almost every
+advertisement: rns.js and sgiath fail all 21 of them, microReticulum
+20, go-reticulum 10. Only go-reticulum's failure is about these
+vectors, and it is finding 30 in five more shapes. The three that read
+advertisements to the end pass all five.
+
+What the five found is in tools/gen and is the seventh corpus fault.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -1707,8 +1770,10 @@ error rather than a stop
 Affects go-reticulum. Vectors test/linkdata/request-truncated,
 test/linkdata/request-not-an-array, test/linkdata/response-not-an-array,
 test/linkdata/resource-advertisement-no-hash,
-test/linkdata/resource-advertisement-not-a-map and
-test/linkdata/resource-advertisement-not-a-number.
+test/linkdata/resource-advertisement-not-a-map,
+test/linkdata/resource-advertisement-not-a-number and the five
+test/linkdata/resource-advertisement-bin32, -str32, -ext32, -array32
+and -map32.
 
 The plaintext is one byte, 0x93, a msgpack array header announcing
 three elements over a body that holds none. The reference reads the
@@ -1753,8 +1818,15 @@ well-formed msgpack that the reference reads, and only one of eleven
 fields has nothing behind it. go-reticulum answers for all eleven, and
 for the twenty-five other fields of the record, with one line.
 
+Five more added since carry it into the four-byte widths, and its own
+words name all five the same way: "insufficient data", for a map whose
+last pair announces 65536 bytes or elements and holds none of them.
+Everything ahead of the cut is well-formed msgpack, and 25 fields of
+the record have nothing to do with the payload at all. The reference
+answers eleven dashes and keeps the other 25.
+
 An error line where a field belongs is the harness reporting honestly
-what the implementation returned. Nothing in these six vectors is a
+what the implementation returned. Nothing in these 11 vectors is a
 packet the implementation reads wrongly. The whole finding is what it
 does with a payload it cannot read to the end, and the corpus format is
 built so that the difference shows: the reference stops reading, and
