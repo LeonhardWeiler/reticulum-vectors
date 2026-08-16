@@ -441,13 +441,13 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return int.from_bytes(data[at:at + size], "big", signed=signed), at + size
 
-    if kind in (0xc4, 0xc5, 0xc6, 0xd9, 0xda):
+    if kind in (0xc4, 0xc5, 0xc6, 0xd9, 0xda, 0xdb):
         # A string and a binary differ in what the bytes mean and not in
         # how their length is written. RNS/vendor/umsgpack.py#_pack_string.
-        # The widths double rather than step: 0xc6 writes its length in
-        # four bytes and not in three, and a packet holds those four
-        # bytes and none of the 65536 they can announce.
-        text  = kind in (0xd9, 0xda)
+        # The widths double rather than step: 0xc6 and 0xdb write their
+        # length in four bytes and not in three, and a packet holds those
+        # four bytes and none of the 65536 they can announce.
+        text  = kind >= 0xd9
         width = 1 << (kind - (0xd9 if text else 0xc4))
         if ran_out(width):
             return SHORT, len(data)
@@ -3201,6 +3201,13 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
 
     huge_bin = cut_after(b"\xbb" * 65536, b"\xa2ee\xc6\x00\x01\x00\x00")
 
+    # str32, the second of the class, and the same measurement under
+    # another head byte. bin16 and str16 are the same length as each
+    # other because their bodies are; these two are the same length
+    # because neither has a body at all, so the one byte that differs
+    # between them is the head byte itself.
+    huge_str = cut_after("s" * 65536, b"\xa2ee\xdb\x00\x01\x00\x00")
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3312,6 +3319,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-bin32", RNS.Packet.RESOURCE_ADV, huge_bin,
          "a pair of no field whose four-byte length announces 65536 bytes and "
          "is followed by none of them; eleven dashes"),
+        ("resource-advertisement-str32", RNS.Packet.RESOURCE_ADV, huge_str,
+         "the same four-byte length under the string head byte, and the same "
+         "nought bytes behind it; eleven dashes"),
     ]
 
     link = session["link"]

@@ -86,6 +86,7 @@ linkdata/resource-advertisement-not-a-map
 linkdata/resource-advertisement-not-a-number
 linkdata/resource-advertisement-reordered
 linkdata/resource-advertisement-str16
+linkdata/resource-advertisement-str32
 linkdata/resource-advertisement-truncated
 linkdata/resource-cancel
 linkdata/resource-cancel-receiver

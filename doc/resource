@@ -130,6 +130,8 @@ cases, all of them plaintexts the layers above the packet never build:
     resource-advertisement-ext16          the same 256 bytes, as an ext
     resource-advertisement-bin32          a length of 65536 with no
                                           body behind it
+    resource-advertisement-str32          the same length under the
+                                          string head byte
 
 Every vector from the twelfth key down is the direction a decoder is
 likeliest to get wrong, because nothing the reference writes today
@@ -208,6 +210,11 @@ other. What it separates is both of them from the reader that adds
 resource-advertisement-truncated stops one byte earlier than this one,
 before a length rather than after one, and the two bugs are not the
 same bug.
+
+The twelfth is str32, and it is the eleventh under another head byte.
+bin16 and str16 are the same length as each other because their bodies
+are; these two are the same length because neither has a body, so the
+head byte is the one byte in the two plaintexts that differs.
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven
