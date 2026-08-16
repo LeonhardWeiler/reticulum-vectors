@@ -4,7 +4,7 @@ Run on 2026-08-16 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3615495460
+    corpus 3300448873
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  100 / 113  48 / 57
-    rsReticulum         07ca721   2026-08-02   87 / 113  38 / 57
-    go-reticulum        06621cc   2026-04-28   85 / 113  34 / 57
-    Reticulum-rs        be7a7fc   2026-07-31   67 / 113  19 / 57
-    microReticulum      40fa628   2026-07-20   61 / 113  16 / 57
-    rns.js              d4602ca   2025-02-10   44 / 113   3 / 57
-    sgiath/reticulum    0c4904e   2026-07-09   39 / 113   3 / 57
+    Reticulum-Go        48f1517   2026-07-25  103 / 118  51 / 62
+    rsReticulum         07ca721   2026-08-02   92 / 118  43 / 62
+    go-reticulum        06621cc   2026-04-28   90 / 118  39 / 62
+    Reticulum-rs        be7a7fc   2026-07-31   67 / 118  19 / 62
+    microReticulum      40fa628   2026-07-20   61 / 118  16 / 62
+    rns.js              d4602ca   2025-02-10   44 / 118   3 / 62
+    sgiath/reticulum    0c4904e   2026-07-09   39 / 118   3 / 62
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 113, not 135: every harness exits 77 for at least five kinds, and
+Out of 118, not 140: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,43 +46,38 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-104 / 118; the row above is the same run restricted to the 113 the
+107 / 123; the row above is the same run restricted to the 118 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the three
-delivery proofs made on a link, which are filed under proof. 22 of them
+delivery proofs made on a link, which are filed under proof. 27 of them
 are the resource contexts.
 
-Four vectors were added since the last run and the corpus grew from 131
-to 135. Three are packets to a destination and one is a link data
-packet, so both denominators moved and the link column moved by one.
-Six new findings came out of them, 36 to 41, no existing count fell,
-and the rows moved by nothing at all to two. A seventh harness fault
-came out of them as well and is recorded below; it is worth one of
-those rows. The last paragraphs of "How the corpus grew" say what each
-answered.
+Five vectors were added since the last run and the corpus grew from 135
+to 140. All five are link data packets, so both denominators moved by
+five and by the same vectors. No new finding came out of them: one
+existing finding grew by two vectors, three rows moved up by three, five
+and five, and four did not move at all. What they found instead is a
+defect in cmd/dump, which is the sixth corpus fault and is recorded
+below.
 
-Three of the four turn on the padding inside a token, which no vector
-had reached before: pad writes 1 to 16 bytes and the reference's own
-reader accepts a length of nought and refuses one of 17, so both ends
-of what it accepts lay outside what it writes. One of the three ends a
-run in a core dump, and it is the first vector in the corpus that does.
-See doc/encryption, section "Padding the writer does not write".
+All five are an advertisement carrying a pair with no field behind it,
+and each holds a msgpack width this format does not otherwise use and no
+vector had reached: the ext types, a float of four bytes, and the three
+widths whose length outgrows the head byte. Every one of them had a
+reason on file for being left out, and reading the three reasons again
+is what removed them. umsgpack writes an ext for any Ext a caller packs
+and needs no handler registered; force_float_precision is an argument of
+packb and not a function replaced for the call; and a value of 256 bytes
+does not fit beside the types one vector already carried, which is not
+the same as not fitting at all.
 
-They were found the way the twelve before them were: a coverage build
+They were found the way the sixteen before them were: a coverage build
 of cmd/dump against the corpus, reading the branches its own decoder
-implements and no vector reached. Three of the four are one such
-branch, the one that decides whether a token opens after its hmac has
-already passed, and it had never been taken. The fourth found a defect
-in cmd/dump rather than in any implementation, which is the fifth
-corpus fault and is recorded below.
-
-One of the three had a second finder. doc/packet listed a token of 48
-bytes as a case the reference could not be asked for, and it could, by
-the replacement a vector already on file had made for its own bytes.
-Reading that reason again is what took it off the list, which is the
-third reason to leave it and still none added.
+implements and no vector reached. Two of the five are a branch that was
+there and had never been taken. The other three are a branch that was
+not there, which is the defect.
 
 Seven harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
@@ -364,7 +359,49 @@ types in it. That is the second reader written twice agreeing twice on
 the same mistake, and doc/resource had not said this one either way.
 
 Two of the three implementations that read an advertisement pass the
-vector; the third is finding 39.
+vector; the third is finding 40.
+
+
+The sixth corpus fault, in the same reader again, one run later
+
+The fifth said cmd/dump knew eight msgpack widths and gave up on any
+other, and taught it the rest. The rest turned out to be five short.
+Three widths were left out on a written reason, and each reason was
+about what would be inconvenient to ask the reference for rather than
+about what the reference can write:
+
+    ext, six widths     "umsgpack writes them only for a handler
+                        someone registered". It writes one for any
+                        umsgpack.Ext a caller packs, and nothing is
+                        registered here or in the reference.
+
+    float32             "written only for a caller that forces single
+                        precision". force_float_precision is an
+                        argument of packb. Passing it replaces no
+                        function and every byte stays umsgpack's.
+
+    the 256-byte class  bin16 and str16 were held and never taken;
+                        ext16 was not held at all. The reason on file
+                        was that such a value does not fit beside the
+                        types foreign-types carries, which is true and
+                        is not the reason it was read as.
+
+    test/linkdata/resource-advertisement-ext-types
+    test/linkdata/resource-advertisement-ext16
+    test/linkdata/resource-advertisement-float32
+        one pair of no field each, and the eleven behind it
+
+An ext value is where a decoder can be wrong in a way the bin widths
+never let it be: the length counts the body and the type byte sits
+outside it, so a reader that measures an ext as a bin lands one byte
+inside the pair after it. That is what ext16 asks and what bin16, the
+same 256 bytes without the type byte, does not.
+
+tools/gen grew the same three widths for the same reason, which is the
+second reader written twice agreeing twice on the same gap, a run after
+the first time it happened. What kept it from being a third is that
+doc/resource carried the three reasons in writing where they could be
+read again.
 
 
 Six of the seven produce the adopted signature from the private key and
@@ -686,6 +723,38 @@ finding 37. It is the first vector in the corpus to crash an
 implementation rather than to disagree with one, and what it takes is
 48 bytes: an iv, an hmac, and no ciphertext for the padding length to
 be read from.
+
+Five took it from 135 to 140, all of them link data packets and all of
+them the same shape: an advertisement with one pair of no field, whose
+value is a width no vector had carried.
+
+    linkdata/resource-advertisement-ext-types
+                                   failed by five, finding 40
+    linkdata/resource-advertisement-ext16
+                                   failed by five, finding 40
+    linkdata/resource-advertisement-float32
+                                   failed by four
+    linkdata/resource-advertisement-bin16
+                                   failed by four
+    linkdata/resource-advertisement-str16
+                                   failed by four
+
+Four of the seven fail all five for the reason they already fail almost
+every advertisement, and the numbers say so: rns.js and sgiath fail all
+16 of them, microReticulum 15 and Reticulum-rs 13. Nothing new is
+learned from those four here.
+
+The three that read advertisements are where the five earn their place,
+and they split. rsReticulum and go-reticulum pass all five, which is the
+same answer they gave to foreign-types and for the same reason: a
+msgpack library measures a value it has no field for and the eleven
+names still resolve. Reticulum-Go passes the float and both 256-byte
+values and fails the two that hold an ext, which narrows finding 40 from
+"a value it has no width for" to a family it has no case for. Its map
+reader has the widths; it does not have the type byte.
+
+The three widths cmd/dump had to be taught are the sixth corpus fault,
+and it is the second time this reader has been taught the same lesson.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -2000,8 +2069,10 @@ reads it.
 
 Finding 40: a msgpack value with no field costs the whole map
 
-Affects Reticulum-Go. Vector
-test/linkdata/resource-advertisement-foreign-types.
+Affects Reticulum-Go. Vectors
+test/linkdata/resource-advertisement-foreign-types,
+test/linkdata/resource-advertisement-ext-types and
+test/linkdata/resource-advertisement-ext16.
 
 The reference hands the plaintext to umsgpack, which builds a
 dictionary out of whatever types it holds, and looks eleven names up in
@@ -2025,6 +2096,17 @@ rsReticulum and go-reticulum both pass it, and both read the map
 through a msgpack library rather than by hand. That is the whole
 difference: a library steps over what it does not need, and eleven
 names still resolve.
+
+Three vectors added a run later say how wide the gap is, and it is
+narrower than the finding was first written. Reticulum-Go passes a
+float of four bytes and passes 256 bytes as both a bin16 and a str16,
+so its reader does have the widths and does move a length it reads out
+of two bytes. What it does not have is the ext family: it fails both
+vectors that hold one, and it fails them the same way, with the eleven
+fields behind the pair going to dashes. An ext is the one value in
+msgpack whose length does not cover the whole of it, because the type
+byte sits outside the count, and a reader assembled by hand from the
+widths a format uses has no reason to have met one.
 
 cmd/dump had the same defect and the same shape of it, which is the
 fifth corpus fault above. It is worth saying twice that two decoders
@@ -2118,16 +2200,18 @@ tag RNS_REF_TAG, which defaults to 1.4.0, and asserts against them in
 that tag holds today. It scores highest here of the seven by a margin,
 and it is the only one whose author can already answer the question
 this corpus asks. What it does not have is the rejections: every one of
-its 48 tests is an input that decodes, and eight of its 13 failures
+its 48 tests is an input that decodes, and eight of its 15 failures
 here are an input that does not. Six of the eight are a threshold named
 at the wrong number and two are a rule it applies and does not report.
 That is the half of a wire format a generator writes last, because
-nothing in an implementation asks for it. The other five are findings
-28, 29, 32, 35 and 39, and every one of them is an input that decodes
-and a verdict about it that the reference reaches differently.
+nothing in an implementation asks for it. The other seven are findings
+28, 32, 35, 39 and 40, the last of them three times, and every one of
+them is an input that decodes and a verdict about it that the reference
+reaches differently. Finding 29 is a sixteenth failure, on the one kind
+it runs that the other six harnesses skip.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-74 vectors here. Its runner covers HKDF, tokens, packet pack and
+79 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the
