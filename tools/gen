@@ -392,6 +392,19 @@ SHORT = object()
 FOREIGN = object()
 
 
+def incomplete(value):
+    """Whether the body ran out inside a value, at any depth.
+
+    Only a map asks. An array keeps what it reached and dashes the rest,
+    but a pair whose value is such an array is a pair umsgpack never
+    finished, so the map around it was never built and none of its keys
+    read. See doc/link and doc/resource.
+    """
+    if value is SHORT:
+        return True
+    return isinstance(value, list) and any(incomplete(e) for e in value)
+
+
 def msgpack_read(data, at=0):
     """One value of the msgpack subset the reference puts on a link.
 
@@ -486,23 +499,30 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return data[at:at + size].decode("utf-8"), at + size
 
-    if kind & 0xf0 in (0x80, 0x90) or kind in (0xdc, 0xde):
+    if kind & 0xf0 in (0x80, 0x90) or kind in (0xdc, 0xdd, 0xde):
         # A container announces how many elements follow, in the head
-        # byte or in the two bytes after it. A map counts pairs.
+        # byte or in the two or four bytes after it. A map counts pairs.
+        # 0xdd counts more elements than a packet holds bytes, so the
+        # count is read and the elements it announces are not there.
         count = kind & 0x0f
-        if kind in (0xdc, 0xde):
-            if ran_out(2):
+        if kind in (0xdc, 0xdd, 0xde):
+            width = 4 if kind == 0xdd else 2
+            if ran_out(width):
                 return SHORT, len(data)
-            count, at = int.from_bytes(data[at:at + 2], "big"), at + 2
+            count, at = int.from_bytes(data[at:at + width], "big"), at + width
 
-        if kind & 0xf0 == 0x90 or kind == 0xdc:
-            # An element the body does not hold is the dash a nil prints
-            # as, and the elements before it stand. That is the read this
-            # format's array bodies are described by; see doc/link.
+        if kind & 0xf0 == 0x90 or kind in (0xdc, 0xdd):
+            # An element the body does not hold stays SHORT here and is
+            # the dash a nil prints as by the time msgpack_elements is
+            # done with it, and the elements before it stand. That is the
+            # read this format's array bodies are described by; see
+            # doc/link. A map is not: incomplete() below reaches into
+            # this list, because a pair holding an array that ran out is
+            # a pair umsgpack never finished.
             out = []
             for _ in range(count):
                 value, at = msgpack_read(data, at)
-                out.append(None if value is SHORT else value)
+                out.append(value)
             return out, at
 
         # A map is whole or it is nothing, which is the one place this
@@ -518,7 +538,7 @@ def msgpack_read(data, at=0):
         for _ in range(count):
             key, at   = msgpack_read(data, at)
             value, at = msgpack_read(data, at)
-            whole = whole and key is not SHORT and value is not SHORT \
+            whole = whole and not incomplete(key) and not incomplete(value) \
                           and key not in out
             out[key] = value
         return (out if whole else None), at
@@ -545,7 +565,11 @@ def msgpack_elements(data, count):
     value = msgpack_one(data)
     if not isinstance(value, list):
         value = []
-    return (value + [None] * count)[:count]
+    # An element the array announced and the body did not hold is SHORT
+    # from msgpack_read and a dash from here on, which is the same answer
+    # an element that is there and is nil gets.
+    return [None if e is SHORT else e
+            for e in (value + [None] * count)[:count]]
 
 
 # The kinds cmd/dump can rebuild raw for. signature is not among them:
@@ -3218,6 +3242,15 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     huge_ext = cut_after(umsgpack.Ext(9, b"\xee" * 65536),
                          b"\xa2ee\xc9\x00\x01\x00\x00\x09")
 
+    # array32, where the four bytes count elements and not bytes. The
+    # three above are stepped over by adding a length to a pointer; this
+    # one is stepped over by reading 65536 values, and a reader that
+    # takes the count for a byte count moves 65536 bytes it does not
+    # have. Both mistakes end here, and the second is why this vector is
+    # not the first three under a fourth head byte.
+    huge_array = cut_after(list(range(65536)),
+                           b"\xa2ee\xdd\x00\x01\x00\x00")
+
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
     # the corpus stops between two values; this one stops inside a
@@ -3335,6 +3368,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-ext32", RNS.Packet.RESOURCE_ADV, huge_ext,
          "the same length again, behind it the type byte the length does not "
          "count, and behind that nothing; eleven dashes"),
+        ("resource-advertisement-array32", RNS.Packet.RESOURCE_ADV, huge_array,
+         "a pair of no field announcing 65536 elements and holding none, where "
+         "the four bytes count elements and not bytes; eleven dashes"),
     ]
 
     link = session["link"]

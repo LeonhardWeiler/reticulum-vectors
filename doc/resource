@@ -134,6 +134,8 @@ cases, all of them plaintexts the layers above the packet never build:
                                           string head byte
     resource-advertisement-ext32          the same length, and a type
                                           byte it does not count
+    resource-advertisement-array32        65536 elements announced and
+                                          none held
 
 Every vector from the twelfth key down is the direction a decoder is
 likeliest to get wrong, because nothing the reference writes today
@@ -226,6 +228,21 @@ byte ext16 is longer than bin16 and str16 by, measured where there is
 no body for it to be confused with.
 
     RNS/vendor/umsgpack.py#_pack_ext
+
+The fourteenth is array32, where the four bytes count elements and not
+bytes. The three above are stepped over by adding a length to a
+pointer; this one is stepped over by reading 65536 values, and it holds
+none of them. A reader that takes the count for a byte count moves
+65536 bytes it does not have, and a reader that reads it as elements
+runs out on the first. Both end in eleven dashes, which is why this
+vector is not the three above under a fourth head byte.
+
+An array is where the dash in a request body means the element was not
+reached and the elements before it stand. That rule does not reach
+inside a map: a pair whose value is an array the plaintext ran out of
+is a pair umsgpack never finished, so the map was never built and the
+eleven do not read. tools/gen read it the other way until this vector,
+and reported the eleven where cmd/dump reported dashes.
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven
