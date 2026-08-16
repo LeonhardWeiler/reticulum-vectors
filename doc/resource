@@ -136,6 +136,8 @@ cases, all of them plaintexts the layers above the packet never build:
                                           byte it does not count
     resource-advertisement-array32        65536 elements announced and
                                           none held
+    resource-advertisement-map32          65536 pairs announced and
+                                          none held
 
 Every vector from the twelfth key down is the direction a decoder is
 likeliest to get wrong, because nothing the reference writes today
@@ -243,6 +245,20 @@ inside a map: a pair whose value is an array the plaintext ran out of
 is a pair umsgpack never finished, so the map was never built and the
 eleven do not read. tools/gen read it the other way until this vector,
 and reported the eleven where cmd/dump reported dashes.
+
+The fifteenth closes the class. A map32 counts pairs, so the same four
+bytes announce twice the values array32 announces, and this one holds
+none of them either. It is a map inside a map, which is where an inner
+map that is nothing has to be told from an inner map holding a nil: the
+first takes the outer map with it and the second is a value like any
+other. tools/gen had the same gap here it had at array32, and closing
+it is why a map that is nothing is no longer read as a nil anywhere.
+
+    RNS/vendor/umsgpack.py#_pack_map
+
+With that, every type msgpack defines has a vector here. The one head
+byte that has none is 0xc1, which the format reserves and no packer
+writes.
 
 The fifth vector is also where the map's own header stops being a
 fixmap. 16 pairs is where the count leaves the head byte, and eleven

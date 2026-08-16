@@ -377,10 +377,12 @@ def hexf(b):
     return b.hex() if b else "-"
 
 
-# A value the body does not hold, either because the reader never
-# reached it or because it ran out inside it. Distinct from a nil, which
-# is a value the body does hold and which several fields legitimately
-# carry, and the distinction is what lets a map tell the two apart.
+# A value there is no reading of: the reader never reached it, or it ran
+# out inside it, or it is a map umsgpack refuses to build. Distinct from
+# a nil, which is a value the body does hold and which several fields
+# legitimately carry, and the distinction is what lets a map tell the two
+# apart. A map that is nothing is this and not a nil for the same reason:
+# a map inside a map is a pair the outer one never finished.
 SHORT = object()
 
 # A value of an ext type, which carries a type byte the format assigns
@@ -499,14 +501,15 @@ def msgpack_read(data, at=0):
             return SHORT, len(data)
         return data[at:at + size].decode("utf-8"), at + size
 
-    if kind & 0xf0 in (0x80, 0x90) or kind in (0xdc, 0xdd, 0xde):
+    if kind & 0xf0 in (0x80, 0x90) or kind in (0xdc, 0xdd, 0xde, 0xdf):
         # A container announces how many elements follow, in the head
         # byte or in the two or four bytes after it. A map counts pairs.
-        # 0xdd counts more elements than a packet holds bytes, so the
-        # count is read and the elements it announces are not there.
+        # The two four-byte widths count more elements than a packet
+        # holds bytes, so the count is read and the elements it announces
+        # are not there.
         count = kind & 0x0f
-        if kind in (0xdc, 0xdd, 0xde):
-            width = 4 if kind == 0xdd else 2
+        if kind in (0xdc, 0xdd, 0xde, 0xdf):
+            width = 4 if kind in (0xdd, 0xdf) else 2
             if ran_out(width):
                 return SHORT, len(data)
             count, at = int.from_bytes(data[at:at + width], "big"), at + width
@@ -530,6 +533,8 @@ def msgpack_read(data, at=0):
         # or raises, and RNS/Resource.py#unpack looks eleven names up in
         # what it built, so a map that ran out and a map that names one
         # key twice both leave no field of the advertisement readable.
+        # Such a map is SHORT and not a nil, so that a map inside a map
+        # takes the outer one with it the way an array that ran out does.
         #
         #     RNS/vendor/umsgpack.py#DuplicateKeyException,
         #     RNS/vendor/umsgpack.py#InsufficientDataException
@@ -541,7 +546,7 @@ def msgpack_read(data, at=0):
             whole = whole and not incomplete(key) and not incomplete(value) \
                           and key not in out
             out[key] = value
-        return (out if whole else None), at
+        return (out if whole else SHORT), at
 
     raise ValueError("msgpack: %02x is not a type this reads" % kind)
 
@@ -3216,7 +3221,7 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         cut = packed[:packed.index(header) + len(header)]
         # The pair is the twelfth and last, so the body is all the cut
         # drops, and what is left is eleven whole pairs and a header.
-        assert msgpack_one(cut) is None
+        assert msgpack_one(cut) is SHORT
         try:
             umsgpack.unpackb(cut)
             raise AssertionError("umsgpack read a value that is not there")
@@ -3250,6 +3255,15 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
     # not the first three under a fourth head byte.
     huge_array = cut_after(list(range(65536)),
                            b"\xa2ee\xdd\x00\x01\x00\x00")
+
+    # map32, which closes the class. Its four bytes count pairs, so it
+    # announces twice as many values as array32 does at the same number,
+    # and it holds none of them either. The pair is a map inside a map,
+    # which is where an inner map that is nothing has to be told from an
+    # inner map holding a nil: the first takes the outer map with it and
+    # the second does not. RNS/vendor/umsgpack.py#_pack_map.
+    huge_map = cut_after({str(i): i for i in range(65536)},
+                         b"\xa2ee\xdf\x00\x01\x00\x00")
 
     # The reference's own advertisement, cut where the byte that says
     # how long the resource hash is would be. Every other truncation in
@@ -3371,6 +3385,9 @@ def gen_resource_shape(RNS, w, verify, session, advertisement):
         ("resource-advertisement-array32", RNS.Packet.RESOURCE_ADV, huge_array,
          "a pair of no field announcing 65536 elements and holding none, where "
          "the four bytes count elements and not bytes; eleven dashes"),
+        ("resource-advertisement-map32", RNS.Packet.RESOURCE_ADV, huge_map,
+         "the same four bytes counting pairs, which is twice as many values "
+         "and none of them held; eleven dashes"),
     ]
 
     link = session["link"]
