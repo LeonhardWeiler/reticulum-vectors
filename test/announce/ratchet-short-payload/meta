@@ -1,0 +1,3 @@
+source             constructed by tools/gen from announce/ratchet
+determinism        decode
+purpose            one byte short of the minimum payload of an announce that carries a ratchet

@@ -23,6 +23,18 @@ Payload
 Without a ratchet the payload is at least 148 bytes, with one at least
 180. Anything beyond the signature is app data.
 
+Four vectors carry the two thresholds, because a minimum that ignores
+the context flag passes the lower pair:
+
+    test/announce/short-payload           147 bytes, rejected
+    test/announce/minimal                 148 bytes, decodes
+    test/announce/ratchet-short-payload   179 bytes, rejected
+    test/announce/ratchet                 180 bytes, decodes
+
+A decoder that holds the minimum at 148 and still reads a ratchet takes
+the third, assembles a signature of 63 bytes, and rejects it for the
+signature rather than for the length.
+
     RNS/Destination.py#announce_data, RNS/Identity.py#validate_announce
 
 

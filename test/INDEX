@@ -10,6 +10,7 @@ announce/non-canonical-s
 announce/path-response
 announce/ratchet
 announce/ratchet-and-app-data
+announce/ratchet-short-payload
 announce/short-header
 announce/short-header-2
 announce/short-payload

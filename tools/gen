@@ -1423,6 +1423,16 @@ def gen_announce(RNS, w, tmpdir, verify):
     built("short-payload", base[:-1],
         "one byte short of the minimum payload")
 
+    # The same threshold with the ratchet flag set, where it stands 32
+    # bytes higher. Only the lower of the two was on file, and one
+    # minimum cannot tell the flag was read: a decoder that leaves the
+    # minimum at 148 and still parses a ratchet takes this packet,
+    # reads a signature 63 bytes long and rejects it for the signature
+    # rather than for the length.
+    built("ratchet-short-payload", raws["ratchet"][:-1],
+        "one byte short of the minimum payload of an announce that carries a ratchet",
+        base="ratchet")
+
     # One byte short of a header 1 header. Nothing about the packet can
     # be read, not even the context byte, so the rejection names a
     # length and not a payload.
