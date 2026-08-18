@@ -4,7 +4,7 @@ Run on 2026-08-18 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3637089286
+    corpus 3439780861
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  110 / 125  58 / 69
-    rsReticulum         07ca721   2026-08-02   98 / 125  49 / 69
-    go-reticulum        06621cc   2026-04-28   91 / 125  40 / 69
-    Reticulum-rs        be7a7fc   2026-07-31   73 / 125  25 / 69
-    microReticulum      40fa628   2026-07-20   61 / 125  16 / 69
-    rns.js              d4602ca   2025-02-10   44 / 125   3 / 69
-    sgiath/reticulum    0c4904e   2026-07-09   39 / 125   3 / 69
+    Reticulum-Go        48f1517   2026-07-25  112 / 127  58 / 69
+    rsReticulum         07ca721   2026-08-02  100 / 127  49 / 69
+    go-reticulum        06621cc   2026-04-28   93 / 127  40 / 69
+    Reticulum-rs        be7a7fc   2026-07-31   75 / 127  25 / 69
+    microReticulum      40fa628   2026-07-20   63 / 127  16 / 69
+    rns.js              d4602ca   2025-02-10   45 / 127   3 / 69
+    sgiath/reticulum    0c4904e   2026-07-09   40 / 127   3 / 69
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 125, not 147: every harness exits 77 for at least five kinds, and
+Out of 127, not 149: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,7 +46,7 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-114 / 130; the row above is the same run restricted to the 125 the
+116 / 132; the row above is the same run restricted to the 127 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
@@ -54,19 +54,17 @@ The link column is every vector of the three link kinds plus the three
 delivery proofs made on a link, which are filed under proof. 32 of them
 are the resource contexts.
 
-Two vectors were added since the last run and the corpus grew from 145
-to 147. Both are link data packets, so both denominators moved by two
-and by the same vectors, and both came off the list of what has no
-vector: a written reason, read again, that did not hold. One is a
-context byte the reference defines and no object of it sets, which is
-not the same as a byte no sender can choose. The other is a link
-request carrying a point of small order, excluded because Link.__init__
-draws its key with X25519PrivateKey.generate, which describes the
-honest initiator and not the sender.
+Two vectors were added since the last run and the corpus grew from 147
+to 149. Neither is a link data packet, so the link column did not move.
+One is the minimum payload of an announce that carries a ratchet, which
+stands 32 bytes above the minimum without one. The other is the context
+flag set on a packet that is not an announce. Neither came off the list
+of what has no vector: both are cases the corpus had not stated.
 
-Four rows gained the first and one gained both. What the second found
-is a harness fault in four of the seven, which is the eighth and is
-recorded below, and one finding, which is 42.
+Every row gained the first. Five gained the second, and the two that
+did not fail it for the reasons they already fail every encrypted
+vector, findings 5 and 7. Neither vector found anything new, and no
+harness changed.
 
 Eight harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
@@ -893,6 +891,31 @@ over the whole request and been wrong before it, which is finding 9.
 A rejection vector is for separating decoders that a valid one agrees
 about, and this is the first here to separate them four ways on a
 link.
+
+Two took it from 147 to 149, and neither came off that list or out of
+a coverage build. Both are cases the corpus had not stated, and both
+are of kinds every harness runs.
+
+    announce/ratchet-short-payload  passed by all seven
+    encrypted/context-flag          failed by two, findings 5 and 7
+
+The first is the minimum payload of an announce that carries a ratchet,
+which stands 32 bytes above the minimum without one. Only the lower
+threshold was on file, and one threshold cannot show that the flag
+above it was read. All seven raise the minimum, so the vector separates
+none of them and says only that the rule is held where it was not
+asked before.
+
+The second is the context flag set on a packet that is not an announce.
+It is a keyword of Packet's constructor, so a sender sets it on a
+packet of any type, where it names nothing. All seven read the header
+correctly, and the two that fail the vector fail every encrypted vector
+already.
+
+It was a plain packet first, and measuring it is why it is not. All
+seven exit 77 for the plain kind, so a vector filed there is skipped by
+every one of them and moves nothing but the denominators. Which kind a
+vector is written in decides whether it is evidence.
 
 
 Finding 1: the hop limit is not applied at parse time
