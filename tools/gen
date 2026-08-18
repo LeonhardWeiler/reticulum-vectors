@@ -1380,7 +1380,7 @@ def describe_announce(raw, verify):
 
 
 def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag, tmpdir,
-                 flagged=None):
+                 flagged=None, accepted=True):
     identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
 
     with pinned(RNS, tag):
@@ -1406,8 +1406,20 @@ def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag,
             packet.flags = packet.get_packed_flags()
         packet.pack()
 
-    # The reference implementation must accept what it produced.
-    assert RNS.Identity.validate_announce(packet)
+    if flagged is None:
+        # The reference implementation must accept what it produced.
+        assert RNS.Identity.validate_announce(packet)
+    else:
+        # validate_announce reads packet.context_flag, the attribute,
+        # and a flag chosen above reaches the byte and not the
+        # attribute. Reading the bytes back is what a receiver does and
+        # what the vector claims, so the verdict is taken from a packet
+        # unpacked from raw. RNS/Packet.py#Packet.unpack.
+        received = RNS.Packet(None, None)
+        received.raw = packet.raw
+        assert received.unpack()
+        assert RNS.Identity.validate_announce(received) == accepted
+
     return packet.raw
 
 
@@ -1541,6 +1553,33 @@ def gen_announce(RNS, w, tmpdir, verify):
                        "announce-transport-flag-alone", tmpdir, flagged=transport_flag_alone)
     w.vector("announce", "transport-flag-alone",
         "the transport bit set on a header 1: a packet that says it is in transit and carries no transport id",
+        [raw.hex()],
+        describe_announce(raw, verify),
+        source=FLAGGED_SOURCE)
+
+    # The last pair the flags byte leaves uncrossed. The context flag
+    # is set on two announces and both are broadcast; the transport bit
+    # is set on two packets and neither has the context flag.
+    #
+    # The transport type is also not one bit. get_packed_flags shifts
+    # the whole value left by four, so TUNNEL writes bit 5 along with
+    # bit 4. On a ratchet announce bit 5 is already set and the value
+    # writes the pair, which is why it is the writer here: doc/packet
+    # held that RELAY and TUNNEL had no bytes to record, and these are
+    # the bytes one of them writes.
+    #
+    # The announce decodes whole, so a decoder has to read bit 5 as a
+    # ratchet with bit 4 set beside it. One that takes the four high
+    # bits together against the patterns it has seen has seen 0x00,
+    # 0x20, 0x40 and 0x50, and not this.
+    def transport_type_tunnel(RNS, packet):
+        packet.transport_type = 3       # RNS/Transport.py#TUNNEL
+
+    raw = announce_raw(RNS, 0, ("rns_unit_tests", "link", "establish"), None, True, False,
+                       "announce-transport-type-tunnel", tmpdir,
+                       flagged=transport_type_tunnel)
+    w.vector("announce", "transport-type-tunnel",
+        "transport type TUNNEL, which writes the transport bit and the context flag together; the ratchet this announce carries is what the context flag already asked for",
         [raw.hex()],
         describe_announce(raw, verify),
         source=FLAGGED_SOURCE)

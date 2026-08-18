@@ -101,7 +101,12 @@ RNS/Transport.py#types defines. RELAY and TUNNEL do not survive a pack:
 get_packed_flags shifts the value left by four, so 2 lands on the
 context flag and 3 on the context flag and the transport bit together,
 and unpack reads the bit back as broadcast or transport either way.
-There is no vector for them because there are no bytes to record.
+
+What does not survive is the value, not the packet.
+test/announce/transport-type-tunnel is packed from TUNNEL and carries
+bit 5 and bit 4 together, which is the pair no other vector holds. A
+receiver reads the two bits and has no way to say which of the two
+values wrote them.
 
     RNS/Transport.py#RELAY, RNS/Transport.py#TUNNEL
 

@@ -16,6 +16,7 @@ announce/short-header
 announce/short-header-2
 announce/short-payload
 announce/transport-flag-alone
+announce/transport-type-tunnel
 destination/app-name-only
 destination/empty-aspect
 destination/five-components
