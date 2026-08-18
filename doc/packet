@@ -94,6 +94,14 @@ There is no vector for them because there are no bytes to record.
 
 The context flag has no fixed meaning. Its interpretation depends on
 the packet type; for announces it signals the presence of a ratchet.
+It is an argument of the constructor, so a sender sets it on a packet
+of any type, and every other type reads past it. test/plain/context-flag
+is such a packet. A decoder that reads the flag before it reads the
+packet type, or that masks the flags byte one bit too wide and takes
+the transport type with it, decodes every other packet in the corpus
+and not this one.
+
+    RNS/Packet.py#FLAG_SET
 
 Bit 7 is not read by Packet.unpack, which is why every other field
 above is described from RNS/Packet.py#header_type and this one is

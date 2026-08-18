@@ -126,6 +126,7 @@ pathrequest/short
 pathrequest/tagged
 pathrequest/tagless
 pathrequest/transport
+plain/context-flag
 plain/empty
 plain/payload
 plain/unnamed-context
