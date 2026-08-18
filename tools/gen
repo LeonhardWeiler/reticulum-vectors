@@ -2532,7 +2532,8 @@ def inline_threads(RNS):
         threading.Thread = real
 
 
-def resource_transfer(RNS, tag, data, complete=True, metadata=None):
+def resource_transfer(RNS, tag, data, complete=True, metadata=None,
+                      auto_compress=False):
     """One resource, carried from advertisement to proof.
 
     Every packet is the reference's own. What is replaced is the
@@ -2566,7 +2567,7 @@ def resource_transfer(RNS, tag, data, complete=True, metadata=None):
     try:
         with pinned(RNS, tag + "-resource"), inline_threads(RNS):
             with captured(RNS) as out:
-                resource = RNS.Resource(data, sender, auto_compress=False,
+                resource = RNS.Resource(data, sender, auto_compress=auto_compress,
                                         metadata=metadata)
             advertisement = out[0]
             advertisement.link = receiver
@@ -3582,6 +3583,17 @@ def gen_resource(RNS, w, verify):
     segment_session, _, segment_adv = resource_segment(
         RNS, "resource-segment", bytes(range(256)) * 4096)
 
+    # bz2 before the link encryption, which the reference tries on every
+    # resource and keeps where it saved something. auto_compress is a
+    # keyword of the constructor and every transfer above passes it
+    # False, so this is the data of the first advertisement and one
+    # argument. What moves is bit 1 of the flags byte, the part count,
+    # and t: the transfer size counts the compressed bytes where d
+    # counts the bytes the receiver ends up with.
+    # RNS/Resource.py#compressed_data.
+    packed_session, _, packed = resource_transfer(
+        RNS, "resource-compressed", b"reticulum" * 200, auto_compress=True)
+
     cases = [
         (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
          "the msgpack map that opens a transfer"),
@@ -3605,6 +3617,9 @@ def gen_resource(RNS, w, verify):
          "100000 bytes: the sizes as msgpack uint32, the part count as uint8, and a full hashmap as bin16"),
         (segment_session, segment_adv, "resource-advertisement-split",
          "segment 2 of 2, whose original hash names the first segment and not itself"),
+        (packed_session, packed[RNS.Packet.RESOURCE_ADV],
+         "resource-advertisement-compressed",
+         "the same 1800 bytes compressed: bit 1 of the flags, and a transfer size under the data size"),
     ]
     # msgpack_read is this program's own reading. The advertisement is
     # the one resource payload the reference will read back, so it is

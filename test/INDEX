@@ -78,6 +78,7 @@ linkdata/resource-advertisement
 linkdata/resource-advertisement-array32
 linkdata/resource-advertisement-bin16
 linkdata/resource-advertisement-bin32
+linkdata/resource-advertisement-compressed
 linkdata/resource-advertisement-duplicate-key
 linkdata/resource-advertisement-ext-types
 linkdata/resource-advertisement-ext16

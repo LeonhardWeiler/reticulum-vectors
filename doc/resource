@@ -340,8 +340,8 @@ The flags byte is six bits, low to high:
 
     RNS/Resource.py#self.f
 
-Only the byte is recorded. Three of the six bits have a vector, and
-each comes with an object that sets it rather than from a table of
+Only the byte is recorded. Four of the six bits have a vector, and each
+comes with an object that sets it rather than from a table of
 permutations; see doc/packet. Bit 0 is set in every transfer here,
 because a resource on a link is encrypted. Bit 5 is set in
 test/linkdata/resource-advertisement-metadata, whose resource was
@@ -349,6 +349,21 @@ constructed with metadata: the map is the same 11 keys and nothing but
 this byte says the metadata is there. Bit 2 is set in
 test/linkdata/resource-advertisement-split, and what it is for is the
 section below.
+
+Bit 1 is set in test/linkdata/resource-advertisement-compressed. The
+reference compresses with bz2 before it encrypts, keeps the result
+where it came out smaller, and says so in this bit alone: t counts the
+compressed bytes and d the bytes the receiver ends up with, and neither
+field states which of the two happened. That vector and
+test/linkdata/resource-advertisement carry the same 1800 bytes and
+differ in one argument to the constructor, so t falls from 1856 to 112
+and the part count from 4 to 1.
+
+    RNS/Resource.py#compressed_data
+
+t below d is therefore not a mark of compression. It is also what a
+segment of a split resource writes, where t counts the segment and d
+the whole; see below.
 
 The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries,
 which is 74 at this MTU. A resource with more parts than that carries
