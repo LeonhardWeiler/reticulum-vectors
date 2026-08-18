@@ -370,6 +370,16 @@ coverage build of cmd/dump against the whole corpus, as `if (agreed)`
 on the link derivation, unreached by 51 linkdata vectors. Rereading the
 reason is what answered it; the branch is what asked.
 
+Two more vectors were found by neither, and what asked was a third
+thing. A coverage build measures branches and not combinations of
+field values, so two lines a vector each reaches are not a vector that
+reaches both. The minimum payload of an announce rises by 32 bytes when
+the context flag is set, and only the lower threshold was on file. The
+flag itself was set on two announces and on no other packet, though it
+is a keyword of the constructor like the context byte before it. What
+asked was crossing the values in expect against each other: a value
+that occurs under one kind only is the question.
+
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:
 
@@ -391,3 +401,9 @@ every row in CONFORMANCE counts against a larger number. Either is
 defensible and cbdb8d3 already chose the second once. Choose it
 deliberately. The row above is what six harnesses cost the last time
 the first was chosen.
+
+The same is true of a kind that already exists and no harness knows.
+Four of them are skipped by all seven today, and a vector filed in one
+is skipped with it: it measures nobody and moves nothing but the
+denominators. Which kind a vector is written in is therefore part of
+writing it, not a detail of where it lands. CONFORMANCE names the four.
