@@ -89,6 +89,11 @@ Six rules
    it gates. test/encrypted/low-order-ephemeral is that vector: no key
    agreement exists, and expect holds six dashes because of it.
 
+   test/linkdata/low-order-request is the same case one layer up, where
+   the point is a field of the link request rather than of the packet.
+   Four harnesses that had the rule on the packet path failed it on the
+   link path, so the two call sites are named separately here.
+
    A library that logs to standard output writes into the field stream.
    Send its output to standard error before the first call; cmd/check
    reads only standard output.

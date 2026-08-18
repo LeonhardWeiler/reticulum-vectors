@@ -500,17 +500,16 @@ defmodule Dump do
         {:ok, request} = decode(request_raw)
         peer = binary_part(request.data, 0, 32)
 
-        shared = :crypto.compute_key(:eddh, peer, responder_private, :x25519)
-        derived = Crypto.hkdf(shared, id, <<>>, 64)
-        half = div(byte_size(derived), 2)
-        <<signing::binary-size(half), encryption::binary>> = derived
-
-        fernet = Fernet.new(derived)
-        hmac_ok = Fernet.sig_valid?(fernet, payload)
-
-        plaintext =
-          case Fernet.decrypt(fernet, payload) do
-            {:ok, pt} -> pt
+        # The same refusal as on the encrypted path, one layer up: the
+        # x25519 public is a field of the link request, so a sender
+        # chooses it, and :crypto.compute_key raises on a point of small
+        # order rather than returning the all-zero secret. doc/harness
+        # rule 6: the token is on the wire either way and the six fields
+        # it gates are "-".
+        shared =
+          try do
+            :crypto.compute_key(:eddh, peer, responder_private, :x25519)
+          rescue
             _ -> nil
           end
 
@@ -518,80 +517,101 @@ defmodule Dump do
         f("ciphertext", hx(ct))
         f("hmac", hx(mac))
         f("shared_key", hx(shared))
-        f("signing_key", hx(signing))
-        f("encryption_key", hx(encryption))
-        f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
 
-        case plaintext do
-          nil ->
-            f("plaintext_length", "-")
-            f("plaintext", "-")
+        if shared == nil do
+          Enum.each(
+            ~w(signing_key encryption_key hmac_valid plaintext_length plaintext),
+            &f(&1, "-")
+          )
+        else
+          derived = Crypto.hkdf(shared, id, <<>>, 64)
+          half = div(byte_size(derived), 2)
+          <<signing::binary-size(half), encryption::binary>> = derived
 
-          pt ->
-            f("plaintext_length", Integer.to_string(byte_size(pt)))
-            f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
+          fernet = Fernet.new(derived)
+          hmac_ok = Fernet.sig_valid?(fernet, payload)
 
-            # sgiath/reticulum defines the channel context byte and has
-            # no envelope code behind it. Printed absent, which fails
-            # the vector. See ../README.
-            if context == Reticulum.Packet.Context.channel() and byte_size(pt) >= 6 do
-              f("msgtype", "-")
-              f("sequence", "-")
-              f("declared_length", "-")
-              f("message", "-")
+          plaintext =
+            case Fernet.decrypt(fernet, payload) do
+              {:ok, pt} -> pt
+              _ -> nil
             end
 
-            # sgiath/reticulum names all seven resource contexts in
-            # lib/reticulum/packet/context.ex and has no Resource module
-            # at all, so there is nothing to call for any of them.
-            alias Reticulum.Packet.Context
+          f("signing_key", hx(signing))
+          f("encryption_key", hx(encryption))
+          f("hmac_valid", if(hmac_ok, do: "yes", else: "no"))
 
-            if context == Context.resource_adv() do
-              Enum.each(
-                ~w(transfer_size data_size resource_parts resource_hash
-                   resource_random original_hash segment_index total_segments
-                   request_id resource_flags hashmap),
-                &f(&1, "-")
-              )
-            end
+          case plaintext do
+            nil ->
+              f("plaintext_length", "-")
+              f("plaintext", "-")
 
-            if context == Context.resource_req() do
-              Enum.each(~w(hashmap_exhausted last_map_hash resource_hash
-                           requested_hashes), &f(&1, "-"))
-            end
+            pt ->
+              f("plaintext_length", Integer.to_string(byte_size(pt)))
+              f("plaintext", if(pt == <<>>, do: "-", else: hx(pt)))
 
-            if context == Context.resource_hmu() do
-              Enum.each(~w(resource_hash segment_index hashmap), &f(&1, "-"))
-            end
+              # sgiath/reticulum defines the channel context byte and has
+              # no envelope code behind it. Printed absent, which fails
+              # the vector. See ../README.
+              if context == Reticulum.Packet.Context.channel() and byte_size(pt) >= 6 do
+                f("msgtype", "-")
+                f("sequence", "-")
+                f("declared_length", "-")
+                f("message", "-")
+              end
 
-            if context in [Context.resource_icl(), Context.resource_rcl()] do
-              f("resource_hash", "-")
-            end
+              # sgiath/reticulum names all seven resource contexts in
+              # lib/reticulum/packet/context.ex and has no Resource module
+              # at all, so there is nothing to call for any of them.
+              alias Reticulum.Packet.Context
 
-            # sgiath/reticulum has no constant for either context and no
-            # code that reads what these packets carry. Nothing to call.
-            if context == 0x09 do
-              f("request_time", "-")
-              f("request_path_hash", "-")
-              f("request_data", "-")
-            end
+              if context == Context.resource_adv() do
+                Enum.each(
+                  ~w(transfer_size data_size resource_parts resource_hash
+                     resource_random original_hash segment_index total_segments
+                     request_id resource_flags hashmap),
+                  &f(&1, "-")
+                )
+              end
 
-            if context == 0x0A do
-              f("request_id", "-")
-              f("response_data", "-")
-            end
+              if context == Context.resource_req() do
+                Enum.each(~w(hashmap_exhausted last_map_hash resource_hash
+                             requested_hashes), &f(&1, "-"))
+              end
 
-            if context == Reticulum.Packet.Context.linkidentify() and byte_size(pt) == 128 do
-              pub = binary_part(pt, 0, 64)
-              sig = binary_part(pt, 64, 64)
-              signed = id <> pub
-              {:ok, who} = Identity.from_public_key(pub)
-              f("identity_public", hx(pub))
-              f("identity_hash", hx(who.hash))
-              f("identity_signed", hx(signed))
-              f("identity_valid",
-                if(Identity.validate(who, signed, sig), do: "yes", else: "no"))
-            end
+              if context == Context.resource_hmu() do
+                Enum.each(~w(resource_hash segment_index hashmap), &f(&1, "-"))
+              end
+
+              if context in [Context.resource_icl(), Context.resource_rcl()] do
+                f("resource_hash", "-")
+              end
+
+              # sgiath/reticulum has no constant for either context and no
+              # code that reads what these packets carry. Nothing to call.
+              if context == 0x09 do
+                f("request_time", "-")
+                f("request_path_hash", "-")
+                f("request_data", "-")
+              end
+
+              if context == 0x0A do
+                f("request_id", "-")
+                f("response_data", "-")
+              end
+
+              if context == Reticulum.Packet.Context.linkidentify() and byte_size(pt) == 128 do
+                pub = binary_part(pt, 0, 64)
+                sig = binary_part(pt, 64, 64)
+                signed = id <> pub
+                {:ok, who} = Identity.from_public_key(pub)
+                f("identity_public", hx(pub))
+                f("identity_hash", hx(who.hash))
+                f("identity_signed", hx(signed))
+                f("identity_valid",
+                  if(Identity.validate(who, signed, sig), do: "yes", else: "no"))
+              end
+          end
         end
       end
     else

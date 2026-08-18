@@ -726,9 +726,20 @@ func doLinkData(b [][]byte) {
 	ct := p.Data[16 : len(p.Data)-32]
 	mac := p.Data[len(p.Data)-32:]
 
+	// The same refusal as on the encrypted path, one layer up: the
+	// x25519 public is a field of the link request, so a sender chooses
+	// it, and a point of small order yields no secret to derive a link
+	// key from. The token is still on the wire and is printed.
 	shared, err := cryptography.DeriveSharedSecret(responderPrivate, request.Data[:32])
 	if err != nil {
-		panic(err)
+		f("iv", hx(iv))
+		f("ciphertext", hx(ct))
+		f("hmac", hx(mac))
+		for _, n := range []string{"shared_key", "signing_key", "encryption_key",
+			"hmac_valid", "plaintext_length", "plaintext"} {
+			f(n, "-")
+		}
+		return
 	}
 
 	// The salt is the link id and the context empty, and 64 bytes are

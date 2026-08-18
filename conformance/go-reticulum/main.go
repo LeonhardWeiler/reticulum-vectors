@@ -744,14 +744,30 @@ func linkdata(b [][]byte) {
 	}
 
 	request, requestLink := validateRequest(requestRaw)
-	if requestLink == nil {
-		panic("the link request does not validate")
+	if request == nil {
+		panic("the link request does not decode")
 	}
-	linkID := requestLink.LinkID
+
+	// LinkValidateRequest sets the link id and then runs the handshake,
+	// and it returns nil for the whole link when the handshake fails.
+	// The id it had already computed goes with it, so go-reticulum
+	// states none where the reference reads one out of the request
+	// bytes alone. doc/harness rule 6: what it produced nothing for is
+	// "-", and the fields after it still stand.
+	agreed := requestLink != nil
+	var linkID []byte
+	if agreed {
+		linkID = requestLink.LinkID
+	}
 
 	printHeader(p, raw)
-	f("link_id", hx(linkID))
-	f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
+	if agreed {
+		f("link_id", hx(linkID))
+		f("link_id_match", yesNo(bytes.Equal(p.DestinationHash, linkID)))
+	} else {
+		f("link_id", "-")
+		f("link_id_match", "-")
+	}
 
 	// A resource part is not encrypted by the packet layer: the
 	// resource encrypted the whole stream through the link and cut the
@@ -782,6 +798,20 @@ func linkdata(b [][]byte) {
 		iv = p.Data[:16]
 		ct = p.Data[16 : len(p.Data)-32]
 		mac = p.Data[len(p.Data)-32:]
+	}
+
+	// The agreement already failed inside LinkValidateRequest above, so
+	// there is no link key and nothing after it to derive. The token is
+	// on the wire either way and is printed.
+	if !agreed {
+		f("iv", hx(iv))
+		f("ciphertext", hx(ct))
+		f("hmac", hx(mac))
+		for _, n := range []string{"shared_key", "signing_key", "encryption_key",
+			"hmac_valid", "plaintext_length", "plaintext"} {
+			f(n, "-")
+		}
+		return
 	}
 
 	// The link keeps its private key unexported, so the agreement uses
@@ -950,10 +980,18 @@ func main() {
 	}
 	kind, path := os.Args[1], os.Args[2]
 
+	// rns.Log writes through fmt.Println, so anything the library logs
+	// at or below Loglevel lands in the field stream. os.Stdout is read
+	// at each call, so pointing it at standard error moves the log and
+	// leaves the fields, which are written to the handle saved here.
+	// cmd/check reads only standard output. doc/harness rule 6.
+	stdout := os.Stdout
+	os.Stdout = os.Stderr
+
 	defer func() {
 		if r := recover(); r != nil {
 			line := strings.SplitN(fmt.Sprintf("%v", r), "\n", 2)[0]
-			fmt.Printf("%-*s %s\n", W, "error", line)
+			fmt.Fprintf(stdout, "%-*s %s\n", W, "error", line)
 		}
 	}()
 
@@ -987,5 +1025,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, "kind not implemented: "+kind)
 		os.Exit(77)
 	}
-	fmt.Print(strings.Join(out, "\n") + "\n")
+	fmt.Fprint(stdout, strings.Join(out, "\n")+"\n")
 }

@@ -445,8 +445,23 @@ function linkdata(blobs) {
     const ct = haveToken ? p.data.slice(16, -32) : Buffer.alloc(0);
     const mac = haveToken ? p.data.slice(-32) : Buffer.alloc(0);
 
+    // The same refusal as on the encrypted path, one layer up: the
+    // x25519 public is a field of the link request, so a sender chooses
+    // it, and @noble/curves refuses a point of small order rather than
+    // returning the all-zero secret. doc/harness rule 6: the token is
+    // on the wire either way and the six fields it gates are "-".
     const initiatorPublic = request.data.slice(0, Link.ECPUBSIZE / 2);
-    const shared = Buffer.from(x25519.getSharedSecret(responderPrivate, initiatorPublic));
+    let shared = null;
+    try {
+        shared = Buffer.from(x25519.getSharedSecret(responderPrivate, initiatorPublic));
+    } catch (e) {
+        f("iv", hex(iv));
+        f("ciphertext", hex(ct));
+        f("hmac", hex(mac));
+        for (const n of ["shared_key", "signing_key", "encryption_key",
+                         "hmac_valid", "plaintext_length", "plaintext"]) f(n, "-");
+        return;
+    }
 
     // Follows src/link.js:289. The 32 is rns.js's own.
     const derived = Cryptography.hkdf(32, shared, linkId);
