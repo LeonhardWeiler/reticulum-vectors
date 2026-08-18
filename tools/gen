@@ -2624,6 +2624,52 @@ def resource_transfer(RNS, tag, data, complete=True, metadata=None):
     return session, resource, seen
 
 
+def resource_segment(RNS, tag, data):
+    """The second segment of a split resource.
+
+    A resource longer than MAX_EFFICIENT_SIZE is not sent at once. The
+    reference cuts it into segments, builds the next one in
+    __prepare_next_segment while the one before it is still running, and
+    advertises it when that one concludes. Both of those lines are run
+    here, so the second segment is the reference's own object built with
+    the reference's own arguments. What is left out is the transfer
+    between the two advertisements, which is the same scheduling
+    resource_transfer replaces and shapes no byte of the second one.
+
+        RNS/Resource.py#MAX_EFFICIENT_SIZE,
+        RNS/Resource.py#__prepare_next_segment
+    """
+    ResMod = sys.modules["RNS.Resource"]
+    real_watchdog = ResMod.Resource.watchdog_job
+    ResMod.Resource.watchdog_job = lambda self: None
+
+    session = link_session(RNS, tag)
+    sender  = session["link"]
+    sender.status = RNS.Link.ACTIVE
+
+    try:
+        with pinned(RNS, tag + "-resource"), inline_threads(RNS):
+            with captured(RNS):
+                first = RNS.Resource(data, sender, auto_compress=False)
+
+            # A link advertises one resource at a time, and the room the
+            # second segment needs is the room the first one gives back.
+            # RNS/Link.py#ready_for_new_resource.
+            sender.resource_concluded(first)
+
+            with captured(RNS) as out:
+                first.next_segment.advertise()
+    finally:
+        ResMod.Resource.watchdog_job = real_watchdog
+
+    second = first.next_segment
+    assert first.split and first.total_segments == 2
+    assert second.segment_index == 2
+    assert second.original_hash == first.hash
+    assert second.original_hash != second.hash
+    return session, second, out[0]
+
+
 def gen_linkpacketproof(RNS, w, verify, session, link, proved):
     """A delivery proof on a link, which the two ends sign differently.
 
@@ -3526,6 +3572,16 @@ def gen_resource(RNS, w, verify):
         RNS, "resource-large", bytes(range(256)) * 390 + bytes(160),
         complete=False)
 
+    # Past MAX_EFFICIENT_SIZE the reference stops sending a resource in
+    # one piece, and a second segment is the only object of the
+    # reference whose original hash is not its own hash: the first
+    # segment names the transfer, every segment after it names itself.
+    # A decoder that reads o and h from one field passes every other
+    # advertisement here. The data is one byte past the threshold, so
+    # the segment holds that byte and the total size states the rest.
+    segment_session, _, segment_adv = resource_segment(
+        RNS, "resource-segment", bytes(range(256)) * 4096)
+
     cases = [
         (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
          "the msgpack map that opens a transfer"),
@@ -3547,6 +3603,8 @@ def gen_resource(RNS, w, verify):
         (large_session, large[RNS.Packet.RESOURCE_ADV],
          "resource-advertisement-large",
          "100000 bytes: the sizes as msgpack uint32, the part count as uint8, and a full hashmap as bin16"),
+        (segment_session, segment_adv, "resource-advertisement-split",
+         "segment 2 of 2, whose original hash names the first segment and not itself"),
     ]
     # msgpack_read is this program's own reading. The advertisement is
     # the one resource payload the reference will read back, so it is

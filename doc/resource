@@ -13,10 +13,15 @@ Constants
     SDU                 464 bytes     RNS/Resource.py#SDU
     HASHMAP_MAX_LEN     74  entries   RNS/Resource.py#HASHMAP_MAX_LEN
     WINDOW              4   parts     RNS/Resource.py#WINDOW
+    MAX_EFFICIENT_SIZE  1048575 bytes RNS/Resource.py#MAX_EFFICIENT_SIZE
 
 HASHMAP_MAX_LEN is derived from the link MDU and is how many four-byte
-map hashes fit in one advertisement or one update. It decides where a
-transfer needs a second segment, and nothing on the wire states it.
+map hashes fit in one advertisement or one update. It decides where the
+hashmap of a transfer needs a second packet, and nothing on the wire
+states it.
+
+MAX_EFFICIENT_SIZE decides something else: where the transfer needs a
+second segment. See "Segments" below.
 
 
 Contexts
@@ -335,21 +340,51 @@ The flags byte is six bits, low to high:
 
     RNS/Resource.py#self.f
 
-Only the byte is recorded. Two of the six bits have a vector, and each
-comes with an object that sets it rather than from a table of
+Only the byte is recorded. Three of the six bits have a vector, and
+each comes with an object that sets it rather than from a table of
 permutations; see doc/packet. Bit 0 is set in every transfer here,
 because a resource on a link is encrypted. Bit 5 is set in
 test/linkdata/resource-advertisement-metadata, whose resource was
 constructed with metadata: the map is the same 11 keys and nothing but
-this byte says the metadata is there.
+this byte says the metadata is there. Bit 2 is set in
+test/linkdata/resource-advertisement-split, and what it is for is the
+section below.
 
 The hashmap in an advertisement holds at most HASHMAP_MAX_LEN entries,
-which is 74 at this MTU. A resource with more parts than that
-advertises the first segment and sends the rest later, which is what
-0x04 is for. test/linkdata/resource-advertisement-large is such an
-advertisement: it declares 216 parts and carries 74 hashes, and the
-count and the length of the hashmap are the only two places that say
-so.
+which is 74 at this MTU. A resource with more parts than that carries
+the first 74 and sends the rest in hashmap updates, context 0x04.
+test/linkdata/resource-advertisement-large is such an advertisement: it
+declares 216 parts and carries 74 hashes, and the count and the length
+of the hashmap are the only two places that say so. It is not a split
+resource: its flags byte is 0x01 and it advertises one segment.
+
+
+Segments
+
+A resource of more than MAX_EFFICIENT_SIZE is cut into segments, and
+each segment is advertised, transferred and proved on its own. The
+threshold is a size and not a part count, so it has nothing to do with
+HASHMAP_MAX_LEN above.
+
+    total segments = ((total size - 1) // MAX_EFFICIENT_SIZE) + 1
+
+    RNS/Resource.py#total_segments
+
+Segment 1 reads the first MAX_EFFICIENT_SIZE bytes less the metadata,
+every segment after it reads MAX_EFFICIENT_SIZE.
+
+Three fields of the map carry it. i is the index, from 1. l is the
+total. o is the hash of segment 1, which is the name the whole transfer
+goes by, while h names this segment alone. For segment 1 the two are
+equal, and o is set from h where the constructor is given no original
+hash; for every segment after it they differ.
+
+    RNS/Resource.py#original_hash
+
+test/linkdata/resource-advertisement-split is segment 2 of 2 and the
+only vector in the corpus where o and h disagree. d is the size of the
+whole resource and t the encrypted length of this segment alone, so
+this is also the one advertisement where t is far below d.
 
 
 Part request, 0x03
