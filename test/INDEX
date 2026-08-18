@@ -24,6 +24,7 @@ destination/utf8-decomposed
 destination/utf8-precomposed
 encrypted/altered-hmac
 encrypted/block-aligned
+encrypted/context-flag
 encrypted/empty
 encrypted/empty-token
 encrypted/long-padding
@@ -126,7 +127,6 @@ pathrequest/short
 pathrequest/tagged
 pathrequest/tagless
 pathrequest/transport
-plain/context-flag
 plain/empty
 plain/payload
 plain/unnamed-context

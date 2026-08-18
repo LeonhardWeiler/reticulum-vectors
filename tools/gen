@@ -1520,33 +1520,18 @@ def gen_plain(RNS, w):
     cases = [
         ("payload", (RNS.Transport.APP_NAME, "path", "request"),
          destination_hash + bytes.fromhex("0102030405060708090a"),
-         RNS.Packet.FLAG_UNSET,
          "26 bytes of payload, delivered unencrypted and undecomposed"),
         ("empty", (RNS.Transport.APP_NAME, "path", "request"), b"",
-         RNS.Packet.FLAG_UNSET,
          "no payload at all, which a plain destination permits and an encrypted one cannot"),
-        # The context flag means a ratchet for an announce and nothing
-        # for any other packet, and until this vector every packet here
-        # that carried it set was an announce. It is an argument of the
-        # constructor, so a sender sets it on any packet at all. A
-        # decoder that reads it as a ratchet wherever it finds it, or
-        # that masks the flags byte one bit too wide and loses the
-        # transport type with it, is right about every other packet in
-        # the corpus and wrong about this one.
-        ("context-flag", (RNS.Transport.APP_NAME, "path", "request"),
-         destination_hash + bytes.fromhex("0102030405060708090a"),
-         RNS.Packet.FLAG_SET,
-         "the context flag set on a packet that is not an announce, where it names nothing"),
     ]
 
-    for name, aspects, data, context_flag, purpose in cases:
+    for name, aspects, data, purpose in cases:
         with pinned(RNS, "plain-" + name):
             out = RNS.Destination(None, RNS.Destination.OUT, RNS.Destination.PLAIN,
                                   aspects[0], *aspects[1:])
             packet = RNS.Packet(out, data, packet_type=RNS.Packet.DATA,
                                 transport_type=RNS.Transport.BROADCAST,
-                                header_type=RNS.Packet.HEADER_1,
-                                context_flag=context_flag)
+                                header_type=RNS.Packet.HEADER_1)
             packet.pack()
 
         # The property the kind exists to record: nothing was encrypted.
@@ -3621,7 +3606,8 @@ def private_to_public(private):
     return x + e
 
 
-def encrypted_raw(RNS, key_index, aspects, plaintext, use_ratchet, tag, unpadded=False):
+def encrypted_raw(RNS, key_index, aspects, plaintext, use_ratchet, tag,
+                  unpadded=False, context_flag=None):
     from RNS.Cryptography import PKCS7
 
     private   = bytes.fromhex(UPSTREAM_KEYS[key_index][0])
@@ -3648,7 +3634,11 @@ def encrypted_raw(RNS, key_index, aspects, plaintext, use_ratchet, tag, unpadded
         try:
             if unpadded:
                 PKCS7.pad = staticmethod(lambda data, bs=16: data)
-            packet = RNS.Packet(destination, plaintext)
+            # context_flag is a keyword of the constructor like any
+            # other, so the flag is set where the packet is built and
+            # not written into the bytes afterwards.
+            flag = RNS.Packet.FLAG_UNSET if context_flag is None else context_flag
+            packet = RNS.Packet(destination, plaintext, context_flag=flag)
             packet.pack()
         finally:
             PKCS7.pad = real_pad
@@ -3672,6 +3662,24 @@ def gen_encrypted(RNS, w):
         w.vector("encrypted", name, purpose,
             [private.hex(), ratchet.hex() if ratchet else "-", raw.hex()],
             describe_encrypted(raw, private, ratchet))
+
+    # The context flag means a ratchet for an announce and nothing for
+    # any other packet, and every vector that carried it set was an
+    # announce. It is a keyword of the constructor, so a sender sets it
+    # on a packet of any type. A decoder that reads it as a ratchet
+    # wherever it finds it takes 32 bytes off a payload that begins with
+    # an ephemeral key; one that masks the flags byte a bit too wide
+    # loses the transport type with it. Either reads every other packet
+    # in the corpus correctly.
+    flag_private, _, flagged = encrypted_raw(RNS, *LINK_DESTINATION, b"reticulum", False,
+                                             "encrypted-context-flag",
+                                             context_flag=RNS.Packet.FLAG_SET)
+    assert flagged[0] & 0x20
+
+    w.vector("encrypted", "context-flag",
+        "the context flag set on a packet that is not an announce, where it names nothing",
+        [flag_private.hex(), "-", flagged.hex()],
+        describe_encrypted(flagged, flag_private, None))
 
     private, ratchet, raw = made["minimal"]
     built = derived_from(w, "encrypted", "minimal",
