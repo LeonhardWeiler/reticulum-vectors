@@ -343,8 +343,8 @@ The third has been asked and answered for two cases, and doc/packet,
 section "What has no vector", holds both with the reason neither can be
 produced. Read it before proposing a vector for either.
 
-Six exclusions have been read again and not held since that list was
-written, and all six went the same way. One turned out to
+Seven exclusions have been read again and not held since that list was
+written, and all seven went the same way. One turned out to
 be a truncation like any other. The second, a resource payload of the
 wrong msgpack shape, was excluded because the layers above the packet
 do not build such a payload, which is not the question the third asks:
@@ -365,12 +365,17 @@ is an argument of the constructor. The sixth was not on the list at
 all: doc/link held the declared length of a channel envelope as a field
 the corpus could not disagree with, because `Envelope.pack` writes it
 from the message it packed, which is a sentence about the writer where
-the question is what the sender chooses. Where the reason is kept
-changed nothing about how it fell, and that is the point: the rule is
-about the reason, so read every exclusion the corpus states and not
-only the ones collected in one place. That is the argument for writing
-the list rather than carrying it in someone's head, and for reading a
-reason rather than counting on it.
+the question is what the sender chooses. The seventh was not on the
+list either: doc/packet held that the transport type values RELAY and
+TUNNEL had no vector because there were no bytes to record, where
+`get_packed_flags` shifts the value left by four and writes two bits
+for either of them. What does not survive a pack is the value, and the
+sentence was about the value where the question is the packet. Where
+the reason is kept changed nothing about how it fell, and that is the
+point: the rule is about the reason, so read every exclusion the corpus
+states and not only the ones collected in one place. That is the
+argument for writing the list rather than carrying it in someone's
+head, and for reading a reason rather than counting on it.
 
 The fourth was not found by rereading the list. It was found by a
 coverage build of cmd/dump against the whole corpus, as `if (agreed)`
@@ -396,6 +401,27 @@ So the question is not only which value occurs under one kind. It is
 also which values never vary together, and the answer to that one is
 found by asking what object the reference would have to be handed to
 make them vary. Here it was four constructor arguments.
+
+Three more came the same way and cost nothing but the asking. The
+header type and the transport type are one bit each and two arguments
+of the same constructor, and 111 vectors were header 1 and broadcast
+against two that were header 2 and transport: neither bit had ever
+been set without the other, because everything that routes a packet
+writes both at once. The context flag and the transport bit had never
+been set together either. Coverage did not move across all three: the
+same lines and the same branches were reached before and after, which
+is the clearest statement of what it cannot ask.
+
+Two candidates were measured the same way and did not become vectors,
+and both answers came from the third question rather than from the
+list. A token with a valid hmac over a ciphertext that is not a
+multiple of 16 has no bytes: the backend refuses the block length even
+with `PKCS7.pad` replaced by the identity, which is the replacement
+that took the 48-byte token off the list above. An Ed25519 signature
+with S exactly equal to L can be constructed, and would not be sharp,
+because R would fail the equation for a second reason and two decoders
+could reject it while disagreeing about why. A rejection that two
+decoders can pass for different reasons is not a rejection.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:
