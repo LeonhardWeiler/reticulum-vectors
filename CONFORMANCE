@@ -1,10 +1,10 @@
 Conformance of independent implementations
 
-Run on 2026-08-16 against the corpus test/ holds at that date, through
+Run on 2026-08-18 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 1455758318
+    corpus 3637089286
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  108 / 123  56 / 67
-    rsReticulum         07ca721   2026-08-02   97 / 123  48 / 67
-    go-reticulum        06621cc   2026-04-28   90 / 123  39 / 67
-    Reticulum-rs        be7a7fc   2026-07-31   72 / 123  24 / 67
-    microReticulum      40fa628   2026-07-20   61 / 123  16 / 67
-    rns.js              d4602ca   2025-02-10   44 / 123   3 / 67
-    sgiath/reticulum    0c4904e   2026-07-09   39 / 123   3 / 67
+    Reticulum-Go        48f1517   2026-07-25  110 / 125  58 / 69
+    rsReticulum         07ca721   2026-08-02   98 / 125  49 / 69
+    go-reticulum        06621cc   2026-04-28   91 / 125  40 / 69
+    Reticulum-rs        be7a7fc   2026-07-31   73 / 125  25 / 69
+    microReticulum      40fa628   2026-07-20   61 / 125  16 / 69
+    rns.js              d4602ca   2025-02-10   44 / 125   3 / 69
+    sgiath/reticulum    0c4904e   2026-07-09   39 / 125   3 / 69
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 123, not 145: every harness exits 77 for at least five kinds, and
+Out of 125, not 147: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,7 +46,7 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-112 / 128; the row above is the same run restricted to the 123 the
+114 / 130; the row above is the same run restricted to the 125 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
@@ -54,21 +54,21 @@ The link column is every vector of the three link kinds plus the three
 delivery proofs made on a link, which are filed under proof. 32 of them
 are the resource contexts.
 
-Five vectors were added since the last run and the corpus grew from 140
-to 145. All five are link data packets, so both denominators moved by
-five and by the same vectors, and they close the widths msgpack
-defines. The four-byte class needs more than 65535 bytes or elements,
-which is more than a packet holds, and that was on file as the reason
-all five stayed out. It is the reason a whole value stays out. A header
-is what a packet holds of one, so each vector is packb's own output for
-a value that reaches the width with every byte of the body cut off.
+Two vectors were added since the last run and the corpus grew from 145
+to 147. Both are link data packets, so both denominators moved by two
+and by the same vectors, and both came off the list of what has no
+vector: a written reason, read again, that did not hold. One is a
+context byte the reference defines and no object of it sets, which is
+not the same as a byte no sender can choose. The other is a link
+request carrying a point of small order, excluded because Link.__init__
+draws its key with X25519PrivateKey.generate, which describes the
+honest initiator and not the sender.
 
-No new finding came out of them, and no implementation moved for a
-reason of its own: three rows gained five each and four did not move.
-What they found instead is a defect in tools/gen, which is the seventh
-corpus fault and is recorded below.
+Four rows gained the first and one gained both. What the second found
+is a harness fault in four of the seven, which is the eighth and is
+recorded below, and one finding, which is 42.
 
-Seven harness faults have been found and fixed. They are recorded here
+Eight harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
 numbers mean. The counts beside each fix are the rows before and after
 it, against the corpus it was measured on and not the rows above. Five
@@ -78,15 +78,19 @@ of them predate the run above and changed no harness in it:
     rsReticulum       57 -> 58      rns.js            37 -> 39
     Reticulum-rs      48 -> 49      sgiath/reticulum  32 -> 33
 
-The sixth changed five harnesses for the run before the one above:
+The sixth changed five harnesses, two runs before the one above:
 
     go-reticulum      76 -> 77      rns.js            42 -> 41
     rsReticulum       76 -> 76      sgiath/reticulum  35 -> 36
     microReticulum    57 -> 57
 
-The seventh changed one harness for the run above:
+The seventh changed one harness for the run before the one above:
 
     Reticulum-rs      66 -> 67
+
+The eighth changed four harnesses and one row, for the run above:
+
+    Reticulum-Go     113 -> 114
 
 What found each of them, in the order they were found:
 
@@ -170,6 +174,34 @@ What found each of them, in the order they were found:
                                    still fails, on findings 39 and 41,
                                    and they are its own.
 
+    linkdata/low-order-request     The second entry above, one layer
+                                   up, in four harnesses that had the
+                                   fix on the packet path and not on
+                                   the link. Three let the refused
+                                   agreement out as an exception that
+                                   replaced every field, and the fourth
+                                   panicked on a link its library had
+                                   already refused. All four print the
+                                   token and six dashes now.
+                                   Reticulum-Go gains one; the other
+                                   three fail it for reasons of their
+                                   own, finding 42 once and finding 9
+                                   twice.
+
+                                   go-reticulum logs the refusal at
+                                   LOG_ERROR through fmt.Println, which
+                                   is standard output, so the line
+                                   landed in the field stream ahead of
+                                   the fields. That is the second half
+                                   of rule 6 and the same fault
+                                   microReticulum had at
+                                   announce/short-header; the harness
+                                   points os.Stdout at standard error
+                                   and writes its fields to the handle
+                                   it saved. No row moves for it: the
+                                   vector was already failing on the
+                                   link id.
+
 The first three were named in the run before last and left standing.
 That was the wrong call twice over: a footnote saying the evidence is
 wrong is not evidence, and the fourth was invisible for as long as the
@@ -190,6 +222,15 @@ That is the fix working. A harness that prints a constant agrees with
 every vector until one disagrees, and what the correction bought is
 three implementations failing announce/no-header in the open instead of
 passing it on a number their code does not name.
+
+The eighth is the second one over again, and that is what makes it
+worth its own entry. The rule was written for the packet path and three
+harnesses were corrected there; four of them then met the same refusal
+one layer up, and all four got it wrong, the three corrected ones in
+the way they had already been corrected for. A fix applied where a
+vector found it is a fix applied at one call site, and nothing looked
+for the other one until a vector reached it. That is an argument for
+the vector rather than for the harness.
 
 
 The first corpus fault, found by a seventh implementation
@@ -538,11 +579,12 @@ signalled.
 
 Reticulum-Go is a second. It establishes the link, derives the same
 keys, decrypts every packet on it, and reads more of what those packets
-carry than any of the six. Six of its nine link failures are thresholds
-on a payload too short to be what its context byte said it was:
-findings 22, 23, 26 and 27. Not one of those is a packet it reads
-wrongly. The other three are, and all three are a msgpack value it
-reads or refuses differently: findings 32, 35 and 39.
+carry than any of the six. Six of its eleven link failures are
+thresholds on a payload too short to be what its context byte said it
+was: findings 22, 23, 26, 27 and 34. Not one of those is a packet it
+reads wrongly. The other five are, and all five are a msgpack value it
+reads or refuses differently: findings 32, 35 and 40, the last of them
+three times.
 
 
 How the corpus grew
@@ -630,9 +672,9 @@ under the same finding as the body that runs out.
 
 It also handed one implementation a pass that says nothing good about
 it. microReticulum decrypts the large advertisement correctly, and it
-is the only one of the 44 linkdata vectors it decrypts at all beyond
-the two that are not encrypted. Finding 11 says why, and the reason is
-the finding rather than an exception to it.
+was the only one of the 44 linkdata vectors the corpus held then that
+it decrypted at all beyond the two that are not encrypted. Finding 11
+says why, and the reason is the finding rather than an exception to it.
 
 One took it from 116 to 117, of a kind every harness runs, and it was
 written against the corpus as well: doc/packet named three thresholds
@@ -818,6 +860,39 @@ vectors, and it is finding 30 in five more shapes. The three that read
 advertisements to the end pass all five.
 
 What the five found is in tools/gen and is the seventh corpus fault.
+
+Two took it from 145 to 147, both of them link data packets, and both
+came off doc/packet's list of what has no vector rather than out of a
+coverage build. Five entries have left that list now and every one of
+them left the same way: the reason was read again and did not hold.
+
+    linkdata/link-proof-context    passed by four, failed by three
+    linkdata/low-order-request     passed by one, failed by six,
+                                   finding 42
+
+The first is the context byte 0xfd on a link data packet. Its written
+reason was that no object of the reference sets it, which is a sentence
+about the objects and not about the wire: context is an argument of
+Packet.__init__ and pack writes the byte. The four that establish a
+link at all read it correctly. Of the three that do not, rns.js is the
+only one of the seven with no name for 0xfd, and it prints the byte;
+the vector was already lost on the link id, so nothing in the numbers
+says so and this is where it is said.
+
+The second is the one that earns the pair. Its reason was that
+Link.__init__ draws its key with X25519PrivateKey.generate, which
+describes the honest initiator; the x25519 public is a field of the
+link request, so a sender chooses it as freely as it chooses a
+plaintext. It splits the seven four ways, and the six that fail it fail
+it in three distinct places. One passes. Three return the all-zero
+secret and derive a link key from it, which is finding 16 one layer up
+from where it was measured. One states no link id at all, which is
+finding 42. Two never reach the agreement, having taken the link id
+over the whole request and been wrong before it, which is finding 9.
+
+A rejection vector is for separating decoders that a valid one agrees
+about, and this is the first here to separate them four ways on a
+link.
 
 
 Finding 1: the hop limit is not applied at parse time
@@ -1312,6 +1387,15 @@ direction.
 Every reader of an announce can compute the derivation that follows,
 because the salt is the recipient's identity hash and that is public.
 See doc/encryption, section Contributory behaviour.
+
+The same three do the same thing on a link, measured one run later
+against test/linkdata/low-order-request, where the point is in the link
+request rather than in the packet. The secret is the same 32 zero bytes
+and the two keys under it are not, because the salt of the link
+derivation is the link id and not an identity hash. That is the whole
+of the difference: the missing refusal is in the primitive, and both
+callers inherit it. Nothing here is a second finding, and none of the
+three moves for it.
 
 
 Finding 17: microReticulum accepts a non-canonical Ed25519 scalar
@@ -2222,6 +2306,43 @@ Reticulum-Go is the only implementation that answers this vector
 correctly, and it does it by having the two bounds the reference has.
 
 
+Finding 42: a link id is discarded with the handshake that failed after
+it
+
+Affects go-reticulum. Vector test/linkdata/low-order-request.
+
+The link id is a truncated hash of the link request packet with the
+signalling bytes chopped off. Nothing in it is a key and nothing in it
+is agreed: the reference reads one out of the request bytes alone, and
+does it in a function that takes the packet and nothing else
+(RNS/Link.py#link_id_from_lr_packet).
+
+go-reticulum computes the same id in the same way and then throws it
+away. LinkValidateRequest sets it on the link and runs the handshake
+four steps later:
+
+    rns/link.go:1278   link.setLinkID(packet)
+    rns/link.go:1311   if err := link.Handshake(); err != nil {
+                           return nil
+
+The handshake refuses the point of small order, which agrees with the
+pinned backend, and the nil takes the id with it. There is no other
+export that yields one: linkIDFromLinkRequestPacket is unexported and
+reached only through the constructor above.
+
+So go-reticulum states no link id for this packet and cannot say
+whether it was addressed to this link, where the corpus holds the id
+and yes. It prints two dashes and the token behind them, and the six
+fields the agreement gates are dashes for the same reason as everyone
+else's.
+
+The refusal is right and the coupling is what this vector separates: an
+implementation that cannot name a link until the link is up cannot say
+which link a packet it has to drop was for. Every other implementation
+that computes an id at all computes this one, including the two that
+compute it wrongly.
+
+
 What the implementations say about themselves
 
 Four of the seven publish a claim about compatibility with python-rns.
@@ -2283,7 +2404,7 @@ reaches differently. Finding 29 is a sixteenth failure, on the one kind
 it runs that the other six harnesses skip.
 
 sgiath/reticulum has six reference files and a Python runner, and fails
-79 vectors here. Its runner covers HKDF, tokens, packet pack and
+86 vectors here. Its runner covers HKDF, tokens, packet pack and
 unpack, IFAC and proofs, all through generated fixtures, and its
 identity is loaded from a seed every time. Nothing in it loads an
 identity from a stored private key, which is finding 7, and that is the
