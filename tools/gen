@@ -1530,6 +1530,21 @@ def gen_announce(RNS, w, tmpdir, verify):
         describe_announce(raw, verify),
         source=FLAGGED_SOURCE)
 
+    # The other half of the same pair. Here bit 4 is set and bit 6 is
+    # not, so the packet says it is in transit and carries one address.
+    # The decoder above reads 16 bytes of the public key as a
+    # destination hash and finds the announce 16 bytes short.
+    def transport_flag_alone(RNS, packet):
+        packet.transport_type = RNS.Transport.TRANSPORT
+
+    raw = announce_raw(RNS, 0, ("rns_unit_tests", "link", "establish"), None, False, False,
+                       "announce-transport-flag-alone", tmpdir, flagged=transport_flag_alone)
+    w.vector("announce", "transport-flag-alone",
+        "the transport bit set on a header 1: a packet that says it is in transit and carries no transport id",
+        [raw.hex()],
+        describe_announce(raw, verify),
+        source=FLAGGED_SOURCE)
+
     return base
 
 
