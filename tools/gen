@@ -2671,6 +2671,68 @@ def resource_segment(RNS, tag, data):
     return session, second, out[0]
 
 
+LARGE_PATH = "/vectors/large"
+
+
+def resource_request(RNS, tag, body):
+    """A request and a response that do not fit one packet.
+
+    Link.request packs the request and sends it as a packet where it
+    fits and as a resource where it does not; handle_request does the
+    same with the answer. Those two calls are the only places the
+    reference sets q, and bits 3 and 4 of the flags byte are how an
+    advertisement says which of the two it opens.
+
+    The body comes off a deterministic stream rather than one repeated
+    word, because the two calls take auto_compress from their caller and
+    default it to true. A body bz2 can shrink would set bit 1 as well,
+    and each of these vectors is here for one bit.
+
+        RNS/Link.py#packed_request, RNS/Link.py#packed_response
+    """
+    from RNS.vendor import umsgpack
+
+    ResMod = sys.modules["RNS.Resource"]
+    real_watchdog = ResMod.Resource.watchdog_job
+    ResMod.Resource.watchdog_job = lambda self: None
+
+    session   = link_session(RNS, tag)
+    responder = session["link"]
+    responder.status = RNS.Link.ACTIVE
+    session["in_destination"].register_request_handler(LARGE_PATH,
+        response_generator=lambda path, data, rid, lid, ident, at: body,
+        allow=RNS.Destination.ALLOW_ALL)
+
+    def advertisement(packets):
+        found = [p for p in packets if p.context == RNS.Packet.RESOURCE_ADV]
+        assert len(found) == 1
+        return found[0]
+
+    try:
+        with pinned(RNS, tag + "-resource"), inline_threads(RNS):
+            initiator = initiator_link(RNS, session)
+            initiator.status = RNS.Link.ACTIVE
+
+            # Over the mdu on the way out. Nothing answers it here: the
+            # advertisement is the packet wanted and the transfer behind
+            # it is the one resource_transfer already carries.
+            with captured(RNS) as asked:
+                initiator.request(LARGE_PATH, data=body)
+
+            # Under the mdu on the way out and over it on the way back,
+            # so the request is a packet the responder can be handed the
+            # way gen_request hands it one.
+            with captured(RNS) as small:
+                initiator.request(LARGE_PATH, data=b"reticulum")
+            with captured(RNS) as answered:
+                responder.handle_request(small[0].getTruncatedHash(),
+                    umsgpack.unpackb(responder.decrypt(small[0].raw[HEADER1LEN:])))
+    finally:
+        ResMod.Resource.watchdog_job = real_watchdog
+
+    return session, advertisement(asked), advertisement(answered)
+
+
 def gen_linkpacketproof(RNS, w, verify, session, link, proved):
     """A delivery proof on a link, which the two ends sign differently.
 
@@ -3594,6 +3656,14 @@ def gen_resource(RNS, w, verify):
     packed_session, _, packed = resource_transfer(
         RNS, "resource-compressed", b"reticulum" * 200, auto_compress=True)
 
+    # q is nil in every advertisement above, because a resource carries
+    # a request id only where the layer above it had one. The two that
+    # do are the two the reference builds itself, and they are the only
+    # advertisements here that are not a transfer somebody asked for by
+    # other means.
+    asking_session, asked_adv, answered_adv = resource_request(
+        RNS, "resource-asked", DetRandom("resource-asked-body").bytes(1024))
+
     cases = [
         (single, seen[RNS.Packet.RESOURCE_ADV], "resource-advertisement",
          "the msgpack map that opens a transfer"),
@@ -3620,6 +3690,10 @@ def gen_resource(RNS, w, verify):
         (packed_session, packed[RNS.Packet.RESOURCE_ADV],
          "resource-advertisement-compressed",
          "the same 1800 bytes compressed: bit 1 of the flags, and a transfer size under the data size"),
+        (asking_session, asked_adv, "resource-advertisement-request",
+         "a request too large for one packet, which names itself in q and sets bit 3"),
+        (asking_session, answered_adv, "resource-advertisement-response",
+         "the answer to one that was small enough, naming the request in q and setting bit 4"),
     ]
     # msgpack_read is this program's own reading. The advertisement is
     # the one resource payload the reference will read back, so it is

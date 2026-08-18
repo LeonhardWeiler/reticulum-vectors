@@ -93,6 +93,8 @@ linkdata/resource-advertisement-no-hash
 linkdata/resource-advertisement-not-a-map
 linkdata/resource-advertisement-not-a-number
 linkdata/resource-advertisement-reordered
+linkdata/resource-advertisement-request
+linkdata/resource-advertisement-response
 linkdata/resource-advertisement-split
 linkdata/resource-advertisement-str16
 linkdata/resource-advertisement-str32
