@@ -58,6 +58,7 @@ keyset/upstream-4
 linkdata/altered-hmac
 linkdata/channel
 linkdata/channel-eof
+linkdata/channel-length-mismatch
 linkdata/channel-short
 linkdata/close
 linkdata/identify

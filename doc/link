@@ -420,11 +420,13 @@ whole.
 
     RNS/Channel.py#unpack
 
-The corpus carries the two vectors the reference can produce and none
-where the two disagree, because it cannot produce one: Envelope.pack
-writes the length from the message it packed. A decoder that truncates
-to the declared length is therefore indistinguishable here and wrong on
-the network.
+test/linkdata/channel-length-mismatch declares a length of nought over
+11 bytes of message, and the reference reads that message back whole.
+Envelope.pack writes the field from the message it packed and can write
+no other value, which is not the same as the reference not producing
+the packet: what a link carries is chosen by whoever sends it, and this
+plaintext is packed and encrypted by the reference like any other. A
+decoder that truncates to the declared length delivers nothing here.
 
 The message type is the message's own, not the channel's. 0xff00 is
 reserved for the stream messages RNS/Buffer.py sends; everything below

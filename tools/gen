@@ -2312,6 +2312,28 @@ def gen_linkdata(RNS, w, verify, session):
             RNS.Packet(link, b"reticulum",
                        context=RNS.Packet.LINKPROOF).send()
 
+            # An envelope whose length field disagrees with the message
+            # after it. Envelope.pack writes that field from the message
+            # it just packed, which is why the corpus carried no such
+            # vector, and it is the same reason channel-short and
+            # link-proof-context were once not written either: what a
+            # link carries is chosen by whoever sends it. The six bytes
+            # are the reference's own struct format and the message is
+            # the message from the first channel vector.
+            #
+            # The reference reads it back below, so the vector states
+            # what unpack does with the field rather than what pack
+            # writes into it.
+            mislabelled = struct.pack(">HHH", StreamDataMessage.MSGTYPE, 2, 0) \
+                        + messages[0].pack()
+            RNS.Packet(link, mislabelled,
+                       context=RNS.Packet.CHANNEL).send()
+
+            read = Envelope(outlet, raw=mislabelled)
+            assert read.unpack({StreamDataMessage.MSGTYPE: StreamDataMessage}) \
+                .pack() == messages[0].pack()
+            assert read.sequence == 2
+
     cases = [
         ("minimal",   sent[0], "nine bytes of plaintext over the link"),
         ("identify",  sent[1], "the initiator names itself, signing over the link id"),
@@ -2337,9 +2359,11 @@ def gen_linkdata(RNS, w, verify, session):
          "an identify proof of 127 bytes, one short of the length the reference requires"),
         ("link-proof-context", sent[14],
          "a context the reference defines and no object of it sets; nothing reads the plaintext"),
+        ("channel-length-mismatch", sent[15],
+         "an envelope declaring a length of nought over 11 bytes of message, which is delivered whole"),
     ]
 
-    # The eight above whose plaintext was chosen here rather than built
+    # The nine above whose plaintext was chosen here rather than built
     # by a layer of the reference. They are sent through the reference
     # all the same, and the difference is in the source rather than in
     # the bytes around it. identify-elsewhere is one of them: the
@@ -2349,7 +2373,7 @@ def gen_linkdata(RNS, w, verify, session):
     chosen = {"channel-short", "request-short", "request-truncated",
               "identify-elsewhere", "request-not-an-array",
               "response-not-an-array", "identify-short",
-              "link-proof-context"}
+              "link-proof-context", "channel-length-mismatch"}
 
     for name, packet, purpose in cases:
         blobs = [request_raw.hex(), responder_private.hex(), packet.raw.hex()]
