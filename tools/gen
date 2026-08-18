@@ -112,6 +112,16 @@ UNPADDED_SOURCE     = GENERATED_SOURCE + \
 CHOSEN_SOURCE       = "plaintext chosen by tools/gen, packed and encrypted by " \
                       "python-rns %s (%s)" % (PIN_VERSION, PIN)
 
+# A packet whose header flags are chosen here. header_type,
+# transport_type and transport_id are keyword arguments of
+# RNS/Packet.py#Packet.__init__ that Destination.announce does not pass
+# on, and __init__ only assigns them, so they are set on the packet it
+# returns and before it is packed. get_packed_flags and pack write
+# every byte, which makes raw the reference's output as it is for a
+# chosen plaintext. What was chosen is which of five bits are set.
+FLAGGED_SOURCE      = "header flags chosen by tools/gen, packed by " \
+                      "python-rns %s (%s)" % (PIN_VERSION, PIN)
+
 # Constructed here, not upstream. The pair pins the clamping rule: the
 # X25519 scalar is stored as given and clamped only when used, so the
 # two keys differ while their public keys and identity hashes agree.
@@ -1369,7 +1379,8 @@ def describe_announce(raw, verify):
     ]
 
 
-def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag, tmpdir):
+def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag, tmpdir,
+                 flagged=None):
     identity = RNS.Identity.from_bytes(bytes.fromhex(UPSTREAM_KEYS[key_index][0]))
 
     with pinned(RNS, tag):
@@ -1379,6 +1390,20 @@ def announce_raw(RNS, key_index, aspects, app_data, ratchet, path_response, tag,
             destination.enable_ratchets(os.path.join(tmpdir, tag))
 
         packet = destination.announce(app_data=app_data, path_response=path_response, send=False)
+        # Three of the header flags are keyword arguments of
+        # RNS/Packet.py#Packet.__init__ that announce does not pass on,
+        # and __init__ does nothing with them but assign. Setting them
+        # between the two calls reaches the same attributes the
+        # constructor would have set.
+        #
+        # __init__ also packs the flags byte and stores it, and pack
+        # only writes what is stored. Asking get_packed_flags again is
+        # what the constructor did with the same attributes; without it
+        # pack writes a header 2 body under a header 1 flags byte,
+        # which is not a packet the reference would emit.
+        if flagged is not None:
+            flagged(RNS, packet)
+            packet.flags = packet.get_packed_flags()
         packet.pack()
 
     # The reference implementation must accept what it produced.
@@ -1481,6 +1506,29 @@ def gen_announce(RNS, w, tmpdir, verify):
     # packet, because that is where it costs something.
     built("non-canonical-s", base[:-SIGLEN] + non_canonical(base[-SIGLEN:]),
         "signature S re-encoded as S+L; the announce decodes and matches, and the pinned backend rejects it")
+
+    # The header type and the transport type are two bits of the same
+    # byte and two arguments of the same constructor, and no vector
+    # above holds one without the other: 111 are header 1 and
+    # broadcast, two are header 2 and transport. Coverage cannot ask
+    # for this, because a vector reaches both lines either way. What
+    # asks is crossing the two fields against each other.
+    #
+    # Bit 6 alone gives the header its length. A decoder that reads the
+    # length from bit 4 is right about all 113 and takes the transport
+    # id here for a destination hash.
+    def header_2_broadcast(RNS, packet):
+        packet.header_type    = RNS.Packet.HEADER_2
+        packet.transport_id   = transport_id
+        packet.transport_type = RNS.Transport.BROADCAST
+
+    raw = announce_raw(RNS, 0, ("rns_unit_tests", "link", "establish"), None, False, False,
+                       "announce-header-2-broadcast", tmpdir, flagged=header_2_broadcast)
+    w.vector("announce", "header-2-broadcast",
+        "header 2 with the transport bit clear: two addresses in the header, on a packet that says it is not in transit",
+        [raw.hex()],
+        describe_announce(raw, verify),
+        source=FLAGGED_SOURCE)
 
     return base
 

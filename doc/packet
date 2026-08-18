@@ -83,6 +83,16 @@ One byte at offset 0.
 The header type bit encodes header 1 as zero. Vectors print the
 human-facing numbering, so bit 6 clear appears as header_type 1.
 
+Bit 6 and bit 4 are written together by everything that routes a
+packet: mangle_hops sets both in one expression, and so does every
+place Transport rewrites the flags byte. They are two arguments of the
+constructor all the same, and the header length follows bit 6 alone.
+test/announce/header-2-broadcast is a header 2 whose transport bit is
+clear. A decoder that takes the length from bit 4 reads its transport
+id as a destination hash.
+
+    RNS/Transport.py#mangle_hops
+
 The transport type is one bit and holds two of the four values
 RNS/Transport.py#types defines. RELAY and TUNNEL do not survive a pack:
 get_packed_flags shifts the value left by four, so 2 lands on the
