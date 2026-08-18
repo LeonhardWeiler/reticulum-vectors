@@ -4,7 +4,7 @@ Run on 2026-08-18 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3439780861
+    corpus 3963143901
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  112 / 127  58 / 69
-    rsReticulum         07ca721   2026-08-02  100 / 127  49 / 69
-    go-reticulum        06621cc   2026-04-28   93 / 127  40 / 69
-    Reticulum-rs        be7a7fc   2026-07-31   75 / 127  25 / 69
-    microReticulum      40fa628   2026-07-20   63 / 127  16 / 69
-    rns.js              d4602ca   2025-02-10   45 / 127   3 / 69
-    sgiath/reticulum    0c4904e   2026-07-09   40 / 127   3 / 69
+    Reticulum-Go        48f1517   2026-07-25  117 / 132  63 / 74
+    rsReticulum         07ca721   2026-08-02  104 / 132  53 / 74
+    go-reticulum        06621cc   2026-04-28   98 / 132  45 / 74
+    Reticulum-rs        be7a7fc   2026-07-31   75 / 132  25 / 74
+    microReticulum      40fa628   2026-07-20   65 / 132  18 / 74
+    rns.js              d4602ca   2025-02-10   45 / 132   3 / 74
+    sgiath/reticulum    0c4904e   2026-07-09   40 / 132   3 / 74
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 127, not 149: every harness exits 77 for at least five kinds, and
+Out of 132, not 154: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,25 +46,49 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-116 / 132; the row above is the same run restricted to the 127 the
+121 / 137; the row above is the same run restricted to the 132 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
 The link column is every vector of the three link kinds plus the three
-delivery proofs made on a link, which are filed under proof. 32 of them
+delivery proofs made on a link, which are filed under proof. 36 of them
 are the resource contexts.
 
-Two vectors were added since the last run and the corpus grew from 147
-to 149. Neither is a link data packet, so the link column did not move.
-One is the minimum payload of an announce that carries a ratchet, which
-stands 32 bytes above the minimum without one. The other is the context
-flag set on a packet that is not an announce. Neither came off the list
-of what has no vector: both are cases the corpus had not stated.
+Five vectors were added since the last run and the corpus grew from 149
+to 154. All five are link data packets, so both columns moved by the
+same amount. Four are resource advertisements and one is a channel
+envelope:
 
-Every row gained the first. Five gained the second, and the two that
-did not fail it for the reasons they already fail every encrypted
-vector, findings 5 and 7. Neither vector found anything new, and no
-harness changed.
+    resource-advertisement-split        segment 2 of 2: o names the
+                                        first segment and h this one,
+                                        which no vector separated
+    resource-advertisement-compressed   bit 1, and t below d
+    resource-advertisement-request      bit 3, and q not nil
+    resource-advertisement-response     bit 4, and q not nil
+    channel-length-mismatch             a declared length of nought
+                                        over 11 bytes of message
+
+The four advertisements were found by crossing the values in expect
+against each other: all 21 advertisements on file were one segment,
+uncompressed, with q nil, so four of the six flag bits had no vector
+and two derivations had only their degenerate case. The fifth was
+excluded in doc/link rather than on doc/packet's list, as a packet
+Envelope.pack cannot write. What the sender chooses is not what pack
+writes, which is the sixth such reason to be read again and not hold,
+and the first of the six that was written somewhere else.
+
+No harness changed. Reticulum-Go and go-reticulum gained all five,
+rsReticulum four, microReticulum two, and Reticulum-rs, rns.js and
+sgiath/reticulum none. No finding is new, and one is measured
+differently: finding 11 had microReticulum's rate at one link in 32,
+and the four new sessions are what say otherwise.
+
+The channel vector is decided by two implementations and no more. Four
+of the seven harnesses print declared_length as a dash because their
+Envelope discards the field, so they fail it for the reason they
+already fail test/linkdata/channel. Reticulum-Go and go-reticulum read
+the field, and both deliver the message whole: neither truncates to the
+length it declares. The trap is on file and nobody is in it.
 
 Eight harness faults have been found and fixed. They are recorded here
 because a harness is evidence and a change to one changes what the
@@ -917,6 +941,52 @@ seven exit 77 for the plain kind, so a vector filed there is skipped by
 every one of them and moves nothing but the denominators. Which kind a
 vector is written in decides whether it is evidence.
 
+Five took it from 149 to 154, and four of the five were found by a
+third method again: crossing the values in expect against each other.
+All 21 resource advertisements on file were one segment, uncompressed,
+with a nil request id, which is one object type sampled 21 times.
+
+    linkdata/resource-advertisement-split       failed by four
+    linkdata/resource-advertisement-compressed  failed by four
+    linkdata/resource-advertisement-request     failed by three
+    linkdata/resource-advertisement-response    failed by three
+    linkdata/channel-length-mismatch            failed by five
+
+The four advertisements set the four flag bits that had none, and each
+carries what its bit is about. The split one is the sharpest: it is
+segment 2 of 2, and o and h disagree in no other vector here, so a
+reader taking both from one field passed until now. It also found
+doc/resource attributing the split bit to HASHMAP_MAX_LEN, which
+decides where the hashmap needs a second packet and not where the
+transfer needs a second segment.
+
+None of the four separates a reader that reads the map from one that
+does not, which is what almost every failure above them is. Three
+implementations read an advertisement to the end and all three read
+these four correctly. What they add is a corpus that states the four
+bits and the two derivations, not a row that moved.
+
+The fifth is the sixth exclusion to be read again and not hold, and the
+first of the six that was not written on doc/packet's list. doc/link
+had the declared length of a channel envelope as a field the corpus
+could not disagree with, because Envelope.pack writes it from the
+message it packed. What pack writes is not what a sender chooses, and
+three vectors of this kind were already plaintexts chosen by tools/gen.
+Where the reason is written turns out not to matter; that it is written
+does.
+
+That vector is decided by two implementations. Four harnesses print
+declared_length as a dash, because their Envelope discards the field,
+and they fail it where they already fail test/linkdata/channel.
+Reticulum-Go and go-reticulum read the field and deliver the message
+whole regardless, which is what the reference does.
+
+The five also refined finding 11, which had the rate of microReticulum's
+missing clamp at one link in 32. Each of them brought a link session of
+its own, the corpus now holds nine, and one of the new ones is a scalar
+microReticulum agrees on without its being in clamped form. Bit 255 is
+a clamping step no ladder reads.
+
 
 Finding 1: the hop limit is not applied at parse time
 
@@ -1180,9 +1250,9 @@ derives 64 (src/link.js:289), which is finding 5 in the link path: even
 past the length check, the token would be keyed for AES-128.
 
 
-Finding 11: microReticulum decrypts one link packet in 32
+Finding 11: microReticulum decrypts one link session in 16
 
-Affects microReticulum. 29 of the 32 test/linkdata/ vectors. Same root
+Affects microReticulum. 56 of the 61 test/linkdata/ vectors. Same root
 cause as findings 4 and 6.
 
     reference       35bb1f6a74b45436fc2dee15496e76511173bd6eb57d36f8...
@@ -1197,26 +1267,53 @@ compute different secrets, the HMAC fails, and nothing decrypts.
 Finding 6 recorded this as an edge case that broke ratchets. On a link
 it is not an edge case: every link key is drawn the same way, so the
 rate is the rate. microReticulum reads the link request correctly and
-verifies the proof correctly, and then cannot decrypt a packet on 31
-links out of 32.
+verifies the proof correctly, and then cannot decrypt a packet on most
+links. How many is measured below, and it is not one in 32: not every
+step of the clamp is one the two ends disagree over.
 
-The corpus now holds the 32nd. Its link sessions are separate, each
-with its own responder scalar, and the one behind
-test/linkdata/resource-advertisement-large came out already in clamped
-form:
+The corpus holds nine link sessions, each with a responder scalar of
+its own, and microReticulum agrees with the reference on three of them.
+Which three says what clamping step is the one that matters:
 
-    resource-advertisement        2c...b5   clamps to 28...75
-    resource-advertisement-large  28...65   clamps to itself
+    responder scalar   clamps to     agrees
+    -------------------------------------------
+    e6...e7            e0...67       no
+    2c...b5            28...75       no
+    b7...34            b0...74       no
+    04...42            00...42       no
+    07...a7            00...67       no
+    76...02            70...42       no
+    28...65            itself        yes
+    d8...d2            d8...52       yes
+    a8...62            itself        yes
 
-microReticulum decrypts the second and fails the first, which is the
-diagnosis rather than a counterexample to it. Two more of its passes on
-this kind are keepalive and resource-part, the two link packets the
-reference does not encrypt. Everything else on a link is the wrong
-secret.
+Six differ in the low three bits of byte 0 and none of those agree.
+Two of the three that agree are in clamped form. The third,
+d8...d2 behind test/linkdata/resource-advertisement-request, is not:
+clamping clears bit 255 of it. microReticulum agrees on it all the
+same, because a Montgomery ladder over 255 bits never reads that bit.
 
-That an implementation can pass one vector of a kind and fail 29 on the
-value of one byte is the argument for generating each session
-separately rather than reusing one link throughout.
+So the missing step is not clamping in general. The low three bits
+decide every row here: they are set in all six that disagree and clear
+in all three that agree. Bit 255 decides nothing, and bit 254 is not
+separated at all, because it is set in two of the six that disagree and
+those two are explained by their low bits already. On the ladder it
+should matter, which would put the rate at one session in 16 rather
+than the one in eight the low bits alone give, and the corpus cannot
+say which.
+
+The a8...62 session is the sharpest of the three: microReticulum
+derives its keys correctly and still fails both of its vectors, on
+finding 26. A right secret is not a right reader.
+
+Two more of its passes on this kind are keepalive and resource-part,
+the two link packets the reference does not encrypt. Everything else on
+a link is the wrong secret.
+
+That an implementation can pass three sessions of a kind and fail six
+on the low three bits of one byte is the argument for generating each
+session separately rather than reusing one link throughout. One link
+would have made this finding a single yes or no.
 
 
 Finding 12: rsReticulum accepts a proof stripped of its signalling

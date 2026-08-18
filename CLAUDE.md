@@ -343,8 +343,8 @@ The third has been asked and answered for two cases, and doc/packet,
 section "What has no vector", holds both with the reason neither can be
 produced. Read it before proposing a vector for either.
 
-Five have left that list since it was written, and all five left the
-same way: the reason was read again and did not hold. One turned out to
+Six exclusions have been read again and not held since that list was
+written, and all six went the same way. One turned out to
 be a truncation like any other. The second, a resource payload of the
 wrong msgpack shape, was excluded because the layers above the packet
 do not build such a payload, which is not the question the third asks:
@@ -361,8 +361,15 @@ plaintext, and whose choice test/encrypted/low-order-ephemeral had
 already recorded one layer down. The fifth left in the same hour as the
 fourth: a context byte the reference defines and no object sets, where
 "no object sets it" was never the question either, because the context
-is an argument of the constructor. That is the argument for writing the
-list rather than carrying it in someone's head, and for reading a
+is an argument of the constructor. The sixth was not on the list at
+all: doc/link held the declared length of a channel envelope as a field
+the corpus could not disagree with, because `Envelope.pack` writes it
+from the message it packed, which is a sentence about the writer where
+the question is what the sender chooses. Where the reason is kept
+changed nothing about how it fell, and that is the point: the rule is
+about the reason, so read every exclusion the corpus states and not
+only the ones collected in one place. That is the argument for writing
+the list rather than carrying it in someone's head, and for reading a
 reason rather than counting on it.
 
 The fourth was not found by rereading the list. It was found by a
@@ -379,6 +386,16 @@ flag itself was set on two announces and on no other packet, though it
 is a keyword of the constructor like the context byte before it. What
 asked was crossing the values in expect against each other: a value
 that occurs under one kind only is the question.
+
+Four more came the same way and sharpened it. All 21 resource
+advertisements on file were one segment, uncompressed, with a nil
+request id: 21 vectors of one object type, which reads as coverage and
+is one sample. Four of the six flag bits had no vector, and two
+derivations had only their degenerate case, o equal to h and t above d.
+So the question is not only which value occurs under one kind. It is
+also which values never vary together, and the answer to that one is
+found by asking what object the reference would have to be handed to
+make them vary. Here it was four constructor arguments.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:
