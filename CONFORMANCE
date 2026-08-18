@@ -4,7 +4,7 @@ Run on 2026-08-18 against the corpus test/ holds at that date, through
 the harnesses in conformance/, at the implementation commits named
 below. Every row is reproducible only at its commit.
 
-    corpus 3963143901
+    corpus 2547295856
 
 That number is what cmd/check prints beside the result: a checksum over
 test/INDEX and every raw and expect. A count does not identify a
@@ -23,19 +23,19 @@ these implementations write.
 
     implementation      commit    date        result    of which link
     ----------------------------------------------------------------
-    Reticulum-Go        48f1517   2026-07-25  117 / 132  63 / 74
-    rsReticulum         07ca721   2026-08-02  104 / 132  53 / 74
-    go-reticulum        06621cc   2026-04-28   98 / 132  45 / 74
-    Reticulum-rs        be7a7fc   2026-07-31   75 / 132  25 / 74
-    microReticulum      40fa628   2026-07-20   65 / 132  18 / 74
-    rns.js              d4602ca   2025-02-10   45 / 132   3 / 74
-    sgiath/reticulum    0c4904e   2026-07-09   40 / 132   3 / 74
+    Reticulum-Go        48f1517   2026-07-25  120 / 135  63 / 74
+    rsReticulum         07ca721   2026-08-02  107 / 135  53 / 74
+    go-reticulum        06621cc   2026-04-28  101 / 135  45 / 74
+    Reticulum-rs        be7a7fc   2026-07-31   77 / 135  25 / 74
+    microReticulum      40fa628   2026-07-20   68 / 135  18 / 74
+    rns.js              d4602ca   2025-02-10   48 / 135   3 / 74
+    sgiath/reticulum    0c4904e   2026-07-09   43 / 135   3 / 74
 
 Two implementations are Go and their names differ by a hyphen and a
 capital. Reticulum-Go is Quad4-Software/Reticulum-Go; go-reticulum is
 svanichkin/go-reticulum. They share no code.
 
-Out of 132, not 154: every harness exits 77 for at least five kinds, and
+Out of 135, not 157: every harness exits 77 for at least five kinds, and
 those 22 vectors are skipped rather than counted against anyone.
 
     plain           3 vectors
@@ -46,7 +46,7 @@ those 22 vectors are skipped rather than counted against anyone.
 
 One of the 22 is no longer a skip for everyone. Reticulum-Go's harness
 runs the ifac kind and passes four of the five, so its own run reads
-121 / 137; the row above is the same run restricted to the 132 the
+124 / 140; the row above is the same run restricted to the 135 the
 other six can be compared on. The fifth fails, which is finding 29.
 See "The interface access codes, measured once" below.
 
@@ -54,34 +54,25 @@ The link column is every vector of the three link kinds plus the three
 delivery proofs made on a link, which are filed under proof. 36 of them
 are the resource contexts.
 
-Five vectors were added since the last run and the corpus grew from 149
-to 154. All five are link data packets, so both columns moved by the
-same amount. Four are resource advertisements and one is a channel
-envelope:
+Three vectors were added since the last run and the corpus grew from
+154 to 157. All three are announces, so the link column did not move at
+all and every row gained from the same three:
 
-    resource-advertisement-split        segment 2 of 2: o names the
-                                        first segment and h this one,
-                                        which no vector separated
-    resource-advertisement-compressed   bit 1, and t below d
-    resource-advertisement-request      bit 3, and q not nil
-    resource-advertisement-response     bit 4, and q not nil
-    channel-length-mismatch             a declared length of nought
-                                        over 11 bytes of message
+    header-2-broadcast     bit 6 set, bit 4 clear
+    transport-flag-alone   bit 4 set, bit 6 clear
+    transport-type-tunnel  bit 5 and bit 4, written by one value
 
-The four advertisements were found by crossing the values in expect
-against each other: all 21 advertisements on file were one segment,
-uncompressed, with q nil, so four of the six flag bits had no vector
-and two derivations had only their degenerate case. The fifth was
-excluded in doc/link rather than on doc/packet's list, as a packet
-Envelope.pack cannot write. What the sender chooses is not what pack
-writes, which is the sixth such reason to be read again and not hold,
-and the first of the six that was written somewhere else.
+They come from crossing the values in expect against each other, the
+same method the four advertisements came from. The header type and the
+transport type are two bits of the flags byte and two arguments of
+Packet's constructor, and no vector held one without the other: 111
+were header 1 and broadcast, two were header 2 and transport. The
+context flag and the transport bit had never been set together either.
 
-No harness changed. Reticulum-Go and go-reticulum gained all five,
-rsReticulum four, microReticulum two, and Reticulum-rs, rns.js and
-sgiath/reticulum none. No finding is new, and one is measured
-differently: finding 11 had microReticulum's rate at one link in 32,
-and the four new sessions are what say otherwise.
+No harness changed. Six of the seven gained all three. Reticulum-rs
+gained two and fails transport-type-tunnel, which carries a ratchet: it
+fails every announce that carries one, so nothing here is new about it.
+No finding is new and none is measured differently.
 
 The channel vector is decided by two implementations and no more. Four
 of the seven harnesses print declared_length as a dash because their
@@ -987,6 +978,45 @@ its own, the corpus now holds nine, and one of the new ones is a scalar
 microReticulum agrees on without its being in clamped form. Bit 255 is
 a clamping step no ladder reads.
 
+Three took it from 154 to 157, by the same crossing and on the field
+the four advertisements did not reach: the flags byte.
+
+    announce/header-2-broadcast     passed by all seven
+    announce/transport-flag-alone   passed by all seven
+    announce/transport-type-tunnel  failed by one, finding 2
+
+The header type and the transport type are one bit each, bit 6 and bit
+4. Everything that routes a packet writes both at once, mangle_hops
+among them, so the corpus had inherited the pairing from the only
+writer that produces it: 111 vectors were header 1 and broadcast, two
+were header 2 and transport, and none held one without the other.
+
+The length of the header follows bit 6 alone. The first vector is a
+header 2 with the transport bit clear, where a decoder reading the
+length from bit 4 takes the transport id for a destination hash; the
+second is the reverse, where the same decoder reads half the public key
+as a destination hash. Neither alone separates the two readings,
+because on every other packet here either bit predicts the other. All
+seven read bit 6, so the pair separates none of them and says the rule
+is held where it had not been asked.
+
+The third is the context flag and the transport bit together, which no
+vector had. What writes them is the transport type itself: it is not
+one bit but two of four values, and get_packed_flags shifts the whole
+value left by four, so TUNNEL puts 3 across bit 5 and bit 4. This is
+also the byte doc/packet said did not exist, on the reading that RELAY
+and TUNNEL do not survive a pack. The value does not; the packet does.
+
+Reticulum-rs is the one that fails it, and not for the flags. The
+announce carries a ratchet, and Reticulum-rs fails announce/ratchet and
+announce/ratchet-and-app-data already, which is finding 2. It reads
+the header of all three correctly.
+
+None of the three moved a finding. What they add is a corpus that
+states the two bits separately, which is what a coverage build cannot
+ask for: both lines are reached either way, and a build measures
+branches and not combinations of field values.
+
 
 Finding 1: the hop limit is not applied at parse time
 
@@ -1029,12 +1059,16 @@ doc/packet, section Hops.
 
 Finding 2: ratchet announces are rejected
 
-Affects Reticulum-rs. Vectors test/announce/ratchet and test/announce/ratchet-and-app-data.
+Affects Reticulum-rs. Vectors test/announce/ratchet,
+test/announce/ratchet-and-app-data and
+test/announce/transport-type-tunnel.
 
 DestinationAnnounce::validate (destination.rs:115) never reads the
 context flag and never parses a ratchet. The 32 ratchet bytes are read
 as the first half of the signature, so every announce carrying a
-ratchet fails signature verification and is dropped.
+ratchet fails signature verification and is dropped. The third vector
+was written for the flags byte and is failed for this: it reads the
+header correctly and the ratchet not at all.
 
 This is the trap described in doc/announce, section Ratchet. It is the
 most consequential finding here: ratchets are enabled per destination
