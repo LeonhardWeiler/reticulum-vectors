@@ -343,85 +343,19 @@ The third has been asked and answered for two cases, and doc/packet,
 section "What has no vector", holds both with the reason neither can be
 produced. Read it before proposing a vector for either.
 
-Seven exclusions have been read again and not held since that list was
-written, and all seven went the same way. One turned out to
-be a truncation like any other. The second, a resource payload of the
-wrong msgpack shape, was excluded because the layers above the packet
-do not build such a payload, which is not the question the third asks:
-what a link carries is chosen by the sender, and four vectors already
-handed a chosen plaintext to Link.encrypt. It now has six vectors, and
-it has found a defect in cmd/dump twice. The third, a token of 48
-bytes, was excluded because `PKCS7.pad` writes no such token, by which
-time test/group/zero-padding had been on file for ten days with `pad`
-replaced by the identity. The fourth, a link with no key agreement, was
-excluded because `Link.__init__` draws its key with
-`X25519PrivateKey.generate` — which describes the honest initiator and
-not the sender, who chooses the bytes of a link request as freely as a
-plaintext, and whose choice test/encrypted/low-order-ephemeral had
-already recorded one layer down. The fifth left in the same hour as the
-fourth: a context byte the reference defines and no object sets, where
-"no object sets it" was never the question either, because the context
-is an argument of the constructor. The sixth was not on the list at
-all: doc/link held the declared length of a channel envelope as a field
-the corpus could not disagree with, because `Envelope.pack` writes it
-from the message it packed, which is a sentence about the writer where
-the question is what the sender chooses. The seventh was not on the
-list either: doc/packet held that the transport type values RELAY and
-TUNNEL had no vector because there were no bytes to record, where
-`get_packed_flags` shifts the value left by four and writes two bits
-for either of them. What does not survive a pack is the value, and the
-sentence was about the value where the question is the packet. Where
-the reason is kept changed nothing about how it fell, and that is the
-point: the rule is about the reason, so read every exclusion the corpus
-states and not only the ones collected in one place. That is the
-argument for writing the list rather than carrying it in someone's
-head, and for reading a reason rather than counting on it.
+An exclusion is a claim to check again, wherever the corpus states it.
+The question is what a sender can choose, not what the reference
+writes. Three things find a missing vector:
 
-The fourth was not found by rereading the list. It was found by a
-coverage build of cmd/dump against the whole corpus, as `if (agreed)`
-on the link derivation, unreached by 51 linkdata vectors. Rereading the
-reason is what answered it; the branch is what asked.
+    rereading every stated exclusion
+    a coverage build of cmd/dump against the corpus
+    crossing the values in expect: a value that occurs under one kind
+    only, or two values that never vary together
 
-Two more vectors were found by neither, and what asked was a third
-thing. A coverage build measures branches and not combinations of
-field values, so two lines a vector each reaches are not a vector that
-reaches both. The minimum payload of an announce rises by 32 bytes when
-the context flag is set, and only the lower threshold was on file. The
-flag itself was set on two announces and on no other packet, though it
-is a keyword of the constructor like the context byte before it. What
-asked was crossing the values in expect against each other: a value
-that occurs under one kind only is the question.
+Coverage measures branches, not combinations of values.
 
-Four more came the same way and sharpened it. All 21 resource
-advertisements on file were one segment, uncompressed, with a nil
-request id: 21 vectors of one object type, which reads as coverage and
-is one sample. Four of the six flag bits had no vector, and two
-derivations had only their degenerate case, o equal to h and t above d.
-So the question is not only which value occurs under one kind. It is
-also which values never vary together, and the answer to that one is
-found by asking what object the reference would have to be handed to
-make them vary. Here it was four constructor arguments.
-
-Three more came the same way and cost nothing but the asking. The
-header type and the transport type are one bit each and two arguments
-of the same constructor, and 111 vectors were header 1 and broadcast
-against two that were header 2 and transport: neither bit had ever
-been set without the other, because everything that routes a packet
-writes both at once. The context flag and the transport bit had never
-been set together either. Coverage did not move across all three: the
-same lines and the same branches were reached before and after, which
-is the clearest statement of what it cannot ask.
-
-Two candidates were measured the same way and did not become vectors,
-and both answers came from the third question rather than from the
-list. A token with a valid hmac over a ciphertext that is not a
-multiple of 16 has no bytes: the backend refuses the block length even
-with `PKCS7.pad` replaced by the identity, which is the replacement
-that took the 48-byte token off the list above. An Ed25519 signature
-with S exactly equal to L can be constructed, and would not be sharp,
-because R would fail the equation for a second reason and two decoders
-could reject it while disagreeing about why. A rejection that two
-decoders can pass for different reasons is not a rejection.
+A rejection that two decoders can pass for different reasons is not a
+rejection.
 
 Where a new kind lands, measured on the three commits that added one
 (f613b11, 403b6b8, ca34569), in lines outside test/:
@@ -432,21 +366,9 @@ Where a new kind lands, measured on the three commits that added one
     cmd/dump.c                       51 - 189
     CONFORMANCE                      13 -  59
 
-Two things in that order are worth knowing before starting. The C
-decoder is the cheapest part and the generator the dearest, because gen
-builds the object with RNS and reads it back independently and dump only
-reads: the doubled cost is the second reading, which is the product.
+The C decoder is the cheapest part and the generator the dearest.
 
-And a kind costs every harness in conformance/, seven of them today in
-six languages, or it costs the denominator: a harness exits 77 for a
-kind it does not know, so the new vectors are skipped for everyone and
-every row in CONFORMANCE counts against a larger number. Either is
-defensible and cbdb8d3 already chose the second once. Choose it
-deliberately. The row above is what six harnesses cost the last time
-the first was chosen.
-
-The same is true of a kind that already exists and no harness knows.
-Four of them are skipped by all seven today, and a vector filed in one
-is skipped with it: it measures nobody and moves nothing but the
-denominators. Which kind a vector is written in is therefore part of
-writing it, not a detail of where it lands. CONFORMANCE names the four.
+A new kind costs every harness in conformance/, or it is skipped
+(exit 77) and counts against every denominator. Choose deliberately.
+A vector in a kind no harness knows measures nobody; CONFORMANCE names
+those kinds.
